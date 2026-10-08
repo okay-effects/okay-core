@@ -14,7 +14,8 @@ class TestSealed extends munit.FunSuite:
       def apply[X](op: Ask[X], k: X => Eff[R, J, T, T, A]): Eff[R, J, T, T, A] = op match
         case Ask.Number => k(n))(body)
 
-  test("the lawful programs compile"):
+  test("the lawful programs compile: effects alone, control alone, both"):
+    assert(compileErrors("""run[Int](reset(shift[Int, Int, Int](k => k(1).flatMap(k)).map(_ + 1)))""").isEmpty)
     assert(compileErrors("""run[Int](asking(1)(perform(Ask.Number).map(_ + 1)))""").isEmpty)
     assert(compileErrors("""run[Int](asking(1)(reset(shift[Int, Int, Int](k => k(1)).flatMap(x => perform(Ask.Number).map(_ + x)))))""").isEmpty)
 
@@ -26,7 +27,8 @@ class TestSealed extends munit.FunSuite:
     assert(compileErrors("""val r: Res[Ask +: Empty, Int, Int] = Res.Done(-99)""").nonEmpty)
     assert(compileErrors("""def peek(r: Res[Ask +: Empty, Int, Int]): Int = r match { case Res.Done(a) => a; case _ => 0 }""").nonEmpty)
 
-  test("a context cannot be made up"):
+  test("a context cannot be made up, nor one of its own kind"):
+    assert(compileErrors("""class Mine extends Ctx[Empty, Int]""").nonEmpty)
     assert(compileErrors("""given Ctx[Ask +: Empty, Int] = new Ctx[Ask +: Empty, Int]()""").nonEmpty)
     assert(compileErrors("""given Reset[Empty, Int, Int] = new Reset[Empty, Int, Int]()""").nonEmpty)
 
