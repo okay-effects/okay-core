@@ -12,9 +12,11 @@ import scala.annotation.tailrec
  *  - `shift0(k => e)`: `k` the rest up to the nearest delimiter and the delimiter — `λx. ret $ K[x]`; `e` runs in
  *    the delimiter's place, outside it.
  *
- * Four nodes; `step` runs one to its head with a stack of frames, in constant stack.
+ * Four nodes; `step` runs one to its head with a stack of frames, in constant stack. THE KERNEL, hidden: effects
+ * and control are built on it in this package, and nothing outside reaches it — a raw delimiter would catch the
+ * requests on their way to the handlers.
  */
-enum Cont0[I, O, A]:
+private[zero] enum Cont0[I, O, A]:
   case Return[S, A](a: A) extends Cont0[S, S, A]
   case Bind[I, T, O, A, B](m: Cont0[T, O, A], f: A => Cont0[I, T, B]) extends Cont0[I, O, B]
   case Shift0[I1, O1, X1, O, A](f: (A => Cont0[I1, O1, X1]) => O) extends Cont0[Cont0[I1, O1, X1], O, A]
@@ -24,7 +26,7 @@ enum Cont0[I, O, A]:
   def map[B](f: A => B): Cont0[I, O, B] = Bind(this, a => Return(f(a)))
 
 /** what a value goes through, innermost first; as a function, the rest */
-enum Frames[A, I, T, B] extends (A => Cont0[I, T, B]):
+private[zero] enum Frames[A, I, T, B] extends (A => Cont0[I, T, B]):
   case End[S, A]() extends Frames[A, S, S, A]
   case Then[A, X, I, T1, T, B](f: A => Cont0[T1, T, X], next: Frames[X, I, T1, B]) extends Frames[A, I, T, B]
 
@@ -37,11 +39,11 @@ enum Frames[A, I, T, B] extends (A => Cont0[I, T, B]):
       case _ => Cont0.Bind(f(a), next)
 
 /** a program's head: its value, or a capture with the rest */
-enum Head[I, O, A]:
+private[zero] enum Head[I, O, A]:
   case Done[S, A](a: A) extends Head[S, S, A]
   case Cut[I, I1, O1, X1, O, X, A](f: (X => Cont0[I1, O1, X1]) => O, k: Frames[X, I, Cont0[I1, O1, X1], A]) extends Head[I, O, A]
 
-object Cont0:
+private[zero] object Cont0:
   def pure[S, A](a: A): Cont0[S, S, A] = Return(a)
   def shift0[I1, O1, X1, O, A](f: (A => Cont0[I1, O1, X1]) => O): Cont0[Cont0[I1, O1, X1], O, A] = Shift0(f)
   def dollar[I, I2, O2, B, A](ret: A => I)(body: Cont0[I, Cont0[I2, O2, B], A]): Cont0[I2, O2, B] = Dollar(body, ret)

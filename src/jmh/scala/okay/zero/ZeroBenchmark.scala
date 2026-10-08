@@ -23,22 +23,22 @@ class ZeroBenchmark:
   @Param(Array("0", "1", "4"))
   var crossed: Int = 0
 
-  def ticks[R <: Row, S](i: Int, acc: Int)(using Ctx[R, S], Tick :? R): Eff[R, S, Int] =
+  def ticks[R <: Row, J, T](i: Int, acc: Int)(using Ctx[R, J], Tick :? R): Eff[R, J, T, T, Int] =
     if i == 0 then pure(acc) else perform(Tick.Value(1)).flatMap(x => ticks(i - 1, acc + x))
-  def ticking[R <: Row, S, A](using Ctx[R, S])(body: Ctx[Tick +: R, Inner[Tick, R, S, A]] ?=> Eff[Tick +: R, Inner[Tick, R, S, A], A]): Eff[R, S, A] =
-    handle(new Handler[[X] =>> Eff[R, S, X], Tick, A, A]:
+  def ticking[R <: Row, J, T, A](using Ctx[R, J])(body: Body[Tick, R, J, T, A]): Eff[R, J, T, T, A] =
+    handle(new Handler[[X] =>> Eff[R, J, T, T, X], Tick, A, A]:
       def ret(a: A): A = a
-      def apply[X](op: Tick[X], k: X => Eff[R, S, A]): Eff[R, S, A] = op match
+      def apply[X](op: Tick[X], k: X => Eff[R, J, T, T, A]): Eff[R, J, T, T, A] = op match
         case Tick.Value(a) => k(a))(body)
-  def skipping[R <: Row, S, A](using Ctx[R, S])(body: Ctx[Skip +: R, Inner[Skip, R, S, A]] ?=> Eff[Skip +: R, Inner[Skip, R, S, A], A]): Eff[R, S, A] =
-    handle(new Handler[[X] =>> Eff[R, S, X], Skip, A, A]:
+  def skipping[R <: Row, J, T, A](using Ctx[R, J])(body: Body[Skip, R, J, T, A]): Eff[R, J, T, T, A] =
+    handle(new Handler[[X] =>> Eff[R, J, T, T, X], Skip, A, A]:
       def ret(a: A): A = a
-      def apply[X](op: Skip[X], k: X => Eff[R, S, A]): Eff[R, S, A] = op match
+      def apply[X](op: Skip[X], k: X => Eff[R, J, T, T, A]): Eff[R, J, T, T, A] = op match
         case Skip.Value(a) => k(a))(body)
-  def nest[R <: Row, S](d: Int)(using Ctx[R, S], Tick :? R): Eff[R, S, Int] = if d == 0 then ticks(n, 0) else skipping(nest(d - 1))
+  def nest[R <: Row, J, T](d: Int)(using Ctx[R, J], Tick :? R): Eff[R, J, T, T, Int] = if d == 0 then ticks(n, 0) else skipping(nest(d - 1))
 
   @Benchmark
-  def opsZero(): Int = run(ticking(nest(crossed)))
+  def opsZero(): Int = run[Int](ticking(nest(crossed)))
 
 /** QueensBenchmark's on okay.zero */
 @JmhState(Scope.Thread)
@@ -52,14 +52,14 @@ class ZeroQueensBenchmark:
   var size: Int = 0
   enum Among[+A]:
     case Of[A](as: Seq[A]) extends Among[A]
-  def choosing[R <: Row, S, A](using Ctx[R, S])(body: Ctx[Among +: R, Inner[Among, R, S, A]] ?=> Eff[Among +: R, Inner[Among, R, S, A], A]): Eff[R, S, Seq[A]] =
-    handle(new Handler[[X] =>> Eff[R, S, X], Among, A, Seq[A]]:
+  def choosing[R <: Row, J, T, A](using Ctx[R, J])(body: Body[Among, R, J, T, A]): Eff[R, J, T, T, Seq[A]] =
+    handle(new Handler[[X] =>> Eff[R, J, T, T, X], Among, A, Seq[A]]:
       def ret(a: A): Seq[A] = Vector(a)
-      def apply[X](op: Among[X], k: X => Eff[R, S, Seq[A]]): Eff[R, S, Seq[A]] = op match
-        case Among.Of(as) => as.foldLeft(pure[R, S, Seq[A]](Vector.empty))((acc, x) => acc.flatMap(v => k(x).map(v ++ _))))(body)
+      def apply[X](op: Among[X], k: X => Eff[R, J, T, T, Seq[A]]): Eff[R, J, T, T, Seq[A]] = op match
+        case Among.Of(as) => as.foldLeft(pure[R, J, T, Seq[A]](Vector.empty))((acc, x) => acc.flatMap(v => k(x).map(v ++ _))))(body)
   def safe(col: Int, placed: List[Int]): Boolean = placed.zipWithIndex.forall((c, d) => c != col && math.abs(c - col) != d + 1)
-  def place[R <: Row, S](row: Int, placed: List[Int])(using Ctx[R, S], Among :? R): Eff[R, S, List[Int]] =
+  def place[R <: Row, J, T](row: Int, placed: List[Int])(using Ctx[R, J], Among :? R): Eff[R, J, T, T, List[Int]] =
     if row == size then pure(placed)
     else perform(Among.Of((0 until size).filter(safe(_, placed)))).flatMap(col => place(row + 1, col :: placed))
   @Benchmark
-  def queensZero(): Int = run(choosing(place(0, Nil))).length
+  def queensZero(): Int = run[Seq[List[Int]]](choosing(place(0, Nil))).length
