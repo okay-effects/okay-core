@@ -12,13 +12,13 @@ final class PState[C <: Ctx & Singleton, V](val c: C):
   type At[S] = S => c.P[V]
   /** the state, its type `S` unchanged: `shift(k => s => k(s)(s))` */
   def get[S]: Eff[c.R, c.Inner, At[S], At[S], S] =
-    control[c.R, c.Inner, S, At[S], At[S]](k => pure((s: S) => reset[At[S]](using c)[At[S]](k(s)).flatMap(f => f(s))))
+    control[c.R, c.Inner, S, At[S], At[S]](k => pure((s: S) => reset[At[S]](using c)[At[S]](k(s)).flatMap(f => f(s))), <:<.refl)
   /** a state of another type, `S2`, for the rest; the state before was `S`: `shift(k => _ => k(())(s2))` */
   def put[S]: PutFrom[S] = PutFrom[S]()
   final class PutFrom[S]:
     def apply[S2](s2: S2): Eff[c.R, c.Inner, At[S2], At[S], Unit] =
       control[c.R, c.Inner, Unit, At[S2], At[S]](k =>
-        pure((s: S) => reset[At[S]](using c)[At[S]](k(()).map(f => ((_: S) => f(s2)): At[S])).flatMap(g => g(s))))
+        pure((s: S) => reset[At[S]](using c)[At[S]](k(()).map(f => ((_: S) => f(s2)): At[S])).flatMap(g => g(s))), null)
 
 /** `pstate(s0)(st => body)`: the body run from the state `s0`, of type `S0`, to a state of type `S1`; the last state
  * and the value. The body in the run's context, given it: an operation there at the answer the run has moved to,

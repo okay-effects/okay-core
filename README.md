@@ -98,7 +98,7 @@ a value, an operation's request, a `shift`'s — and two modules written on it, 
 | `Cont0.scala` | the kernel, hidden |
 | `Rows.scala` | `Row`, `+:`, `Empty`, `In`, `%`, `Sub`, `Req`, `Paths` |
 | `Eff.scala` | `Eff[R, J, I, O, A]` and `Level` (opaque), `Ctx` (`c.R`, `c.J`, `c.T`, `c.P[A]`, `c.Body`, `c.Reset`), `pure`, `flatMap`, `map`, `delay`, `run`; the protocol |
-| `Control.scala` | `reset[S]`, `shift[A, O]` (Danvy–Filinski's: up to any delimiter — a reset, a handler, the top), `shift0[A, O]` (the body outside the reset) |
+| `Control.scala` | `reset[S]`, `shift[A, O]` (Danvy–Filinski's: up to any delimiter — a reset, a handler, the top; `k` the rest with the delimiter, a handler's clauses too; the answer moved only up to a reset), `shift0[A, O]` (the body outside the reset) |
 | `Effects.scala` | `Handler`, `Answering`, `perform`, `performAt`, `handle`, `Needs`, `A ! Es` |
 | `std/` | `Reader`, `State`, `Writer`, `Throws`, `Choose`, `Emit` (`collect`, `generate`), `PState`, `Async` — `okay.std`'s |
 

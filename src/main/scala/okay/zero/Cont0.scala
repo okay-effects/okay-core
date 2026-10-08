@@ -37,8 +37,10 @@ object Cont0:
   /** an operation with the rest bound to its value: `Bind(Op(op, in), k)` */
   private[zero] final case class OpK[R <: Row, J, T, E[_], X, I, B](op: E[X], in: In[E, R], k: X => Cont0[I, Cont0[J, J, Res[R, J, T]], B])
     extends Cont0[I, Cont0[J, J, Res[R, J, T]], B]
-  /** a `shift` to the nearest delimiter: `shift0(k => Return(Ctl(f, k)))` */
-  private[zero] final case class Ctl[R <: Row, J, A, I, O](f: (A => Cont0[Cont0[J, J, Res[R, J, O]], Cont0[J, J, Res[R, J, O]], I]) => Cont0[Cont0[J, J, Res[R, J, O]], Cont0[J, J, Res[R, J, O]], O])
+  /** a `shift` to the nearest delimiter: `shift0(k => Return(Ctl(f, k)))`; `same` if it keeps the answer — what a
+   * handler's clauses need of the rest resumed under the handler again */
+  private[zero] final case class Ctl[R <: Row, J, A, I, O](f: (A => Cont0[Cont0[J, J, Res[R, J, O]], Cont0[J, J, Res[R, J, O]], I]) => Cont0[Cont0[J, J, Res[R, J, O]], Cont0[J, J, Res[R, J, O]], O],
+      same: (I =:= O) | Null)
     extends Cont0[Cont0[J, J, Res[R, J, I]], Cont0[J, J, Res[R, J, O]], A]
   /** a `shift0` to the nearest reset: `shift0(k => f(a => passAll(k(a))).map(Done))` — `f` in the reset's place,
    * outside it, its `k` the rest under the reset again */
@@ -48,8 +50,9 @@ object Cont0:
   private[zero] final case class Handle[E[_], R <: Row, J, T, A, Ans](body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], A],
       h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans]
       with ByHandler[E, R, J, T, A, Ans, Ans]:
-    def handler: Handler[?, E, ?, ?] = h
+    def clauses: Handler[[Y] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Y], E, ?, Ans] = h
     def ret(a: A): Ans = h.ret(a)
+    def rets: A => Ans = h.ret
   /** `m`, a program outside the nearest delimiter, run there, its value back here: `shift0(k => Bind(m, k))` — what
    * a `shift`'s `k` is from inside the reset it is under again */
   private[zero] final case class Lift[RB <: Row, L, O, X](m: Cont0[L, L, X]) extends Cont0[Cont0[L, L, Res[RB, L, O]], Cont0[L, L, Res[RB, L, O]], X]
@@ -130,18 +133,22 @@ private[zero] sealed trait ByReset[R <: Row, J, T, S, V] extends Delim[R, Cont0[
 
 /** a handler's of `E`: its body over `E +: R`, its value to the answer by `ret` */
 private[zero] sealed trait ByHandler[E[_], R <: Row, J, T, A, I0, V] extends Delim[E +: R, Cont0[J, J, Res[R, J, T]], I0, V, A]:
-  def handler: Handler[?, E, ?, ?]
+  /** its clauses, at the delimiter's answer */
+  def clauses: Handler[[Y] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Y], E, ?, V]
   def ret(a: A): I0
+  /** `ret` as a function — the one there is, passed on as it is, not wrapped once more each shift */
+  def rets: A => I0
 
 /** a reset's, made by the machine: for a `shift`'s body under the reset again, and for its rest resumed */
 private[zero] final case class Rst[R <: Row, J, T, S, V]() extends ByReset[R, J, T, S, V]
 
-/** an answering handler's, made by the machine: for a `shift`'s body under the handler again, its value the answer
- * as it is, and for its rest resumed, the body's value to the handler's answer by `r` */
-private[zero] final case class Hd[E[_], R <: Row, J, T, A, I0, V](h: Answering[?, E, ?, ?], r: A => I0)
+/** a handler's, made by the machine: for a `shift`'s body under the handler again, its value the answer as it is,
+ * and for its rest resumed, the body's value to the handler's answer by `r` */
+private[zero] final case class Hd[E[_], R <: Row, J, T, A, I0, V](h: Handler[[Y] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Y], E, ?, V], r: A => I0)
     extends ByHandler[E, R, J, T, A, I0, V]:
-  def handler: Handler[?, E, ?, ?] = h
+  def clauses: Handler[[Y] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Y], E, ?, V] = h
   def ret(a: A): I0 = r(a)
+  def rets: A => I0 = r
 
 /** what a value goes through, innermost first; as a function, the rest */
 private[zero] enum Frames[A, I, T, B] extends (A => Cont0[I, T, B]):

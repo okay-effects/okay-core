@@ -16,8 +16,21 @@ def reset[S](using c: Ctx)[O](body: c.Reset[S] ?=> Eff[c.R, c.Inner, S, O, S]): 
 /** `shift[A, O](k => body)` up to the nearest delimiter — a reset, a handler, the top: `A` the hole's value, `O` the
  * answer the delimiter is moved to; the hole's answer is the context's. `k` the rest up to the delimiter, under it
  * again — a handler's `ret` and clauses with it; the body runs under the delimiter, at `O`, its value the answer */
-def shift[A, O](using c: Ctx)(f: c.Answer[O] ?=> (A => Eff[c.R, c.J, O, O, c.T]) => Eff[c.R, c.J, O, O, O]): Eff[c.R, c.J, c.T, O, A] =
-  control(f(using At()))
+def shift[A, O](using c: Ctx)(f: c.Answer[O] ?=> (A => Eff[c.R, c.J, O, O, c.T]) => Eff[c.R, c.J, O, O, O])
+    (using same: Same[c.type, c.T, O]): Eff[c.R, c.J, c.T, O, A] =
+  control(f(using At()), sameProof(same))
+
+/** WHERE A SHIFT MAY MOVE THE ANSWER from `T` to `O`, in the context `C`: kept, anywhere — the proof of it; moved,
+ * in a reset only. Up to a handler `k` is the rest under the handler again, its clauses at the handler's answer:
+ * the rest must keep it */
+opaque type Same[-C <: Ctx, T, O] = (T =:= O) | Null
+private def sameKept[T]: Same[Ctx, T, T] = <:<.refl
+private def sameMoved[C <: Ctx, T, O]: Same[C, T, O] = null
+private[zero] def sameProof[C <: Ctx, T, O](s: Same[C, T, O]): (T =:= O) | Null = s
+object Same extends MovedInReset:
+  given kept[T]: Same[Ctx, T, T] = sameKept
+private[zero] trait MovedInReset:
+  given moved[R <: Row, J, T0, S, T, O]: Same[InReset[R, J, T0, S], T, O] = sameMoved
 
 /** `shift0[A, O](k => body)` up to the nearest `reset`: as `shift`, but the body runs OUTSIDE the reset, in its place
  * — in the context outside, given it — so a shift0 in it reaches the next reset out. `k` the rest under the reset
