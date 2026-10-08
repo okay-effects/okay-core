@@ -48,3 +48,14 @@ class TestShiftAtHandler extends munit.FunSuite:
       def loop(n: Int)(using c: Ctx { type T = Int }, r: Reader % Int :? c.R): c.P[Int] =
         if n == 0 then ask[Int] else shift[Int, Int](k => k(1)).flatMap(x => loop(n - 1).map(_ + x))
       run(env(g, 1, 1)(loop(10000)))
+
+  test("100 000 shifts under a reset, each k resumed nested in its body, in constant stack"):
+    def loop(n: Int)(using c: Ctx { type T = Int }): c.P[Int] =
+      if n == 0 then pure(0) else shift[Int, Int](k => k(1).map(_ + 1)).flatMap(x => loop(n - 1).map(_ + x))
+    assertEquals(run[Int](reset[Int](loop(100000))), 200000)
+
+  both("100 000 shifts under a handler, each k resumed nested in its body, in constant stack"):
+    g =>
+      def loop(n: Int)(using c: Ctx { type T = Int }, r: Reader % Int :? c.R): c.P[Int] =
+        if n == 0 then ask[Int] else shift[Int, Int](k => k(1).map(_ + 1)).flatMap(x => loop(n - 1).map(_ + x))
+      run(env(g, 1, 1)(loop(100000)))
