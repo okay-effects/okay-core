@@ -5,14 +5,22 @@ continuations with answer-type modification (Danvy–Filinski shift/reset,
 Asai–Kameyama answer types). No macros, no casts, no runtime class tests:
 an operation carries a path to its effect in the row, and a handler follows it.
 
+Final tagless: programs and the effects in `okay.std` are written against two
+type classes over an indexed monad `M[R, I, O, A]` — `Effects` (operations and
+handlers) and `Control` (shift and reset) — and the context a program is
+written in *is* the instance: `(using c: Effects)` gives `c.M`, the row `c.R`
+and the answer `c.S`. `Cont` is the instance that runs them; the tests run the
+same `Control` programs on a second one, plain CPS functions, too.
+
 ## Layout
 
 ### `okay.core` — the core
 
 | File | What is in it |
 |---|---|
-| `Cont.scala` | `Row`, `+:`, `Pure`, `In` (a path in a row), `Cont[R, I, O, A]` (the monad: `Return`, `Inject`, `Suspend`, `Bind`, `Shift`, `Map`, `Delay`, `Reset`, `Push`), `Frames` (the loop's stack), `Free[R, A]` |
-| `Effects.scala` | `Effects` (a program's context: its row `c.R`, its answer `c.S`), `run`, `reset`, `shift`, `handle`, `Handler`, `Answering` (tail-resumptive handlers, answered in place), `perform`, `%` and `A ! Es` |
+| `Cont.scala` | `Row`, `+:`, `Pure`, `In` (a path in a row) and `E :? R` (the same in a signature), `Cont[R, I, O, A]` (the monad: `Return`, `Inject`, `Suspend`, `Bind`, `Shift`, `Map`, `Delay`, `Reset`, `Push`), `Frames` (the loop's stack), `Free[R, A]` |
+| `Effects.scala` | `IxMonad` (`M`, `pure`, `delay`, `flatMap`, `map`), `Context` (`R`, `S`), `Effects` (`perform`, `handle`, `under`), `Effects.At` (the instance over `Cont`), `run`, `handle`, `Handler`, `Answering` (tail-resumptive handlers, answered in place), `perform`, `%` and `A ! Es` |
+| `Control.scala` | `Control` (`shift`, `reset`), and `Control.shift`, `Control.reset` in context |
 
 ### `okay.std` — the effects, written on the core
 
@@ -37,7 +45,7 @@ effects it needs. Two ways to write one:
 
 ```scala
 // the context as givens
-def counting(i: Int)(using c: Effects, s: State % Int :? c.R): Cont[c.R, c.S, c.S, Int] =
+def counting(i: Int)(using c: Effects, s: State % Int :? c.R): c.M[c.R, c.S, c.S, Int] =
   if i == 0 then get[Int] else get[Int].flatMap(x => put(x + 1)).flatMap(_ => counting(i - 1))
 
 // A ! Es: a program of value A, in any context whose row has every effect of Es
@@ -52,7 +60,7 @@ run(writer[String, Int](reader(5)(both)))     // (List("5"), 5)
 `Reader % Int` is the effect `[X] =>> Reader[Int, X]`. In `A ! Es` the order
 of `Es` is the program's own, the context's row may be any.
 
-`shift` and `reset` in context:
+`shift` and `reset` in context (`import Control.*`), any monad with `Control`:
 
 ```scala
 run(reset[Int](shift[Int, Int](k => k(10).flatMap(k)).map(_ + 1)))         // 12

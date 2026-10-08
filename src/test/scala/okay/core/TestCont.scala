@@ -10,11 +10,11 @@ class TestCont extends munit.FunSuite:
     case Line(s: String) extends Say[Unit]
   type Eff = Ask +: Say +: Pure
 
-  def asking[Q, A](n: Int): Handler[Ask, Say +: Pure, Q, A, A] = new Handler[Ask, Say +: Pure, Q, A, A]:
+  def asking[Q, A](n: Int): Handler[Cont, Ask, Say +: Pure, Q, A, A] = new Handler[Cont, Ask, Say +: Pure, Q, A, A]:
     def ret(a: A): A = a
     def apply[X](op: Ask[X], k: X => Cont[Say +: Pure, Q, Q, A]): Cont[Say +: Pure, Q, Q, A] = op match
       case Ask.Number => k(n)
-  def saying[Q, A]: Handler[Say, Pure, Q, A, (List[String], A)] = new Handler[Say, Pure, Q, A, (List[String], A)]:
+  def saying[Q, A]: Handler[Cont, Say, Pure, Q, A, (List[String], A)] = new Handler[Cont, Say, Pure, Q, A, (List[String], A)]:
     def ret(a: A): (List[String], A) = (Nil, a)
     def apply[X](op: Say[X], k: X => Cont[Pure, Q, Q, (List[String], A)]): Cont[Pure, Q, Q, (List[String], A)] = op match
       case Say.Line(s) => k(()).map((log, a) => (s :: log, a))
@@ -58,7 +58,7 @@ class TestCont extends munit.FunSuite:
       shift[Eff, Int, Int, Int](k => k(1).flatMap(a => inject[Eff, Int, Ask, Int](Ask.Number).flatMap(n => k(n).map(_ + a))))
         .flatMap(x => inject[Eff, Int, Ask, Int](Ask.Number).map(_ * x))
     val asked: Cont[Say +: Pure, Int, Int, Int] = prog.handle(asking(5))
-    val said: Cont[Pure, Int, Int, Int] = asked.handle(new Handler[Say, Pure, Int, Int, Int]:
+    val said: Cont[Pure, Int, Int, Int] = asked.handle(new Handler[Cont, Say, Pure, Int, Int, Int]:
       def ret(a: Int) = a
       def apply[X](op: Say[X], k: X => Cont[Pure, Int, Int, Int]) = op match
         case Say.Line(_) => k(()))
@@ -67,7 +67,7 @@ class TestCont extends munit.FunSuite:
 
   test("a handler resuming twice runs the rest twice: a pure tree, nothing consumed"):
     var runs = 0
-    val twice: Handler[Ask, Pure, List[Int], Int, List[Int]] = new Handler[Ask, Pure, List[Int], Int, List[Int]]:
+    val twice: Handler[Cont, Ask, Pure, List[Int], Int, List[Int]] = new Handler[Cont, Ask, Pure, List[Int], Int, List[Int]]:
       def ret(a: Int) = List(a)
       def apply[X](op: Ask[X], k: X => Cont[Pure, List[Int], List[Int], List[Int]]) = op match
         case Ask.Number => k(1).flatMap(xs => k(2).map(xs ++ _))
@@ -84,7 +84,7 @@ class TestCont extends munit.FunSuite:
   test("100 000 operations under a handler in constant stack"):
     def loop(n: Int, acc: Int): Cont[Ask +: Pure, Int, Int, Int] =
       if n == 0 then Return(acc) else inject[Ask +: Pure, Int, Ask, Int](Ask.Number).flatMap(x => loop(n - 1, acc + x))
-    val one: Handler[Ask, Pure, Int, Int, Int] = new Handler[Ask, Pure, Int, Int, Int]:
+    val one: Handler[Cont, Ask, Pure, Int, Int, Int] = new Handler[Cont, Ask, Pure, Int, Int, Int]:
       def ret(a: Int) = a
       def apply[X](op: Ask[X], k: X => Cont[Pure, Int, Int, Int]) = op match
         case Ask.Number => k(1)
@@ -144,7 +144,7 @@ class TestCont extends munit.FunSuite:
 
   test("a handler resuming twice under 10 000 binds: each path runs the whole rest"):
     type Q = (List[String], List[Int])
-    val h = new Handler[Ask, Say +: Pure, Q, Int, List[Int]]:
+    val h = new Handler[Cont, Ask, Say +: Pure, Q, Int, List[Int]]:
       def ret(a: Int): List[Int] = List(a)
       def apply[X](op: Ask[X], k: X => Cont[Say +: Pure, Q, Q, List[Int]]): Cont[Say +: Pure, Q, Q, List[Int]] = op match
         case Ask.Number => k(1).flatMap(a => k(2).map(b => a ++ b))
@@ -153,7 +153,7 @@ class TestCont extends munit.FunSuite:
     assertEquals(p.handle(h).handle(saying).value, (Nil, List(20001, 20002)))
 
   test("a map after an operation of a handler resuming twice: the map runs on each path"):
-    val twice: Handler[Ask, Pure, List[Int], Int, List[Int]] = new Handler[Ask, Pure, List[Int], Int, List[Int]]:
+    val twice: Handler[Cont, Ask, Pure, List[Int], Int, List[Int]] = new Handler[Cont, Ask, Pure, List[Int], Int, List[Int]]:
       def ret(a: Int) = List(a)
       def apply[X](op: Ask[X], k: X => Cont[Pure, List[Int], List[Int], List[Int]]) = op match
         case Ask.Number => k(1).flatMap(xs => k(2).map(xs ++ _))
@@ -162,7 +162,7 @@ class TestCont extends munit.FunSuite:
     assertEquals(prog.handle(twice).value, List(22, 42))
 
   test("an operation inside a reset, handled outside it by a handler resuming twice: the reset is put back each time"):
-    val twice: Handler[Ask, Pure, List[Int], List[Int], List[Int]] = new Handler[Ask, Pure, List[Int], List[Int], List[Int]]:
+    val twice: Handler[Cont, Ask, Pure, List[Int], List[Int], List[Int]] = new Handler[Cont, Ask, Pure, List[Int], List[Int], List[Int]]:
       def ret(a: List[Int]) = a
       def apply[X](op: Ask[X], k: X => Cont[Pure, List[Int], List[Int], List[Int]]) = op match
         case Ask.Number => k(1).flatMap(xs => k(2).map(xs ++ _))

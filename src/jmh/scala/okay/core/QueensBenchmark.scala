@@ -4,6 +4,7 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import Cont.*
 import Effects.*
+import Control.*
 import okay.std.*
 
 /** N QUEENS by `choose`: a queen per row, its column chosen among the safe ones, every solution — multi-shot,
@@ -22,8 +23,8 @@ class QueensBenchmark:
   def safe(col: Int, placed: List[Int]): Boolean =
     placed.zipWithIndex.forall((c, d) => c != col && math.abs(c - col) != d + 1)
 
-  def place(row: Int, placed: List[Int])(using c: Effects, ch: Choose :? c.R): Cont[c.R, c.S, c.S, List[Int]] =
-    if row == size then pure(placed)
+  def place(row: Int, placed: List[Int])(using c: Effects, ch: Choose :? c.R): c.M[c.R, c.S, c.S, List[Int]] =
+    if row == size then c.pure(placed)
     else among((0 until size).filter(safe(_, placed))).flatMap(col => place(row + 1, col :: placed))
 
   @Benchmark

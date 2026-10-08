@@ -2,3 +2,6 @@
       stateGetPutBang 17.9 ns against stateGetPut 15.7 ns (64c2929). A call
       of a `!` program makes a `Needs` and its `Paths`, an operation a `Req`.
       One object, the paths found once; goal: Bang level with the givens.
+      Since final-tagless-effects-control (2026-10-08) `Needs` forwards every
+      operation to the context it is made of: stateGetPutBang 20.6 µs against
+      stateGetPut 15.5 µs, back to back.

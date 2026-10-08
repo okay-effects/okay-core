@@ -1,6 +1,7 @@
 package okay.core
 
 import Effects.*
+import Control.*
 import okay.std.*
 
 /** the effects in context: the syntax and the answer never named — the handlers build the syntax, outside in */
@@ -13,7 +14,7 @@ class TestEffects extends munit.FunSuite:
     assertEquals(run(writer[String, Int](tell("a").flatMap(_ => tell("b")).map(_ => 1))), (List("a", "b"), 1))
 
   test("reader and writer, the handlers in either order: a program needs only its capabilities"):
-    def prog(using c: Effects, r: Reader % Int :? c.R, w: Writer % String :? c.R): Cont[c.R, c.S, c.S, Int] =
+    def prog(using c: Effects, r: Reader % Int :? c.R, w: Writer % String :? c.R): c.M[c.R, c.S, c.S, Int] =
       ask[Int].flatMap(n => tell(n.toString).map(_ => n + 1))
     assertEquals(run(writer[String, Int](reader[Int](41)(prog))), (List("41"), 42))
     assertEquals(run(reader[(List[String], Int)](41)(writer[String, Int](prog))), (List("41"), 42))
@@ -29,17 +30,17 @@ class TestEffects extends munit.FunSuite:
     assertEquals(r, (20, "1,20"))
 
   test("100 000 operations answered in place, and forwarded through a handler, in constant stack"):
-    def loop(i: Int)(using c: Effects, s: State % Int :? c.R): Cont[c.R, c.S, c.S, Int] =
+    def loop(i: Int)(using c: Effects, s: State % Int :? c.R): c.M[c.R, c.S, c.S, Int] =
       if i == 0 then get[Int] else modify[Int](_ + 1).flatMap(_ => loop(i - 1))
     assertEquals(run(state[Int](0)(loop(100000))), (100000, 100000))
-    def asks(i: Int, acc: Int)(using c: Effects, r: Reader % Int :? c.R): Cont[c.R, c.S, c.S, Int] =
-      if i == 0 then Cont.pure(acc) else ask[Int].flatMap(x => asks(i - 1, acc + x))
+    def asks(i: Int, acc: Int)(using c: Effects, r: Reader % Int :? c.R): c.M[c.R, c.S, c.S, Int] =
+      if i == 0 then c.pure(acc) else ask[Int].flatMap(x => asks(i - 1, acc + x))
     assertEquals(run(reader[(List[String], Int)](1)(collect[String, Int](asks(100000, 0)))), (Nil, 100000))
 
   test("an operation through 16 handlers of other effects, and back, 10 000 times"):
-    def loop(i: Int, acc: Int)(using c: Effects, r: Reader % Int :? c.R): Cont[c.R, c.S, c.S, Int] =
-      if i == 0 then Cont.pure(acc) else ask[Int].flatMap(x => loop(i - 1, acc + x))
-    def nested(d: Int)(using c: Effects, r: Reader % Int :? c.R): Cont[c.R, c.S, c.S, Int] =
+    def loop(i: Int, acc: Int)(using c: Effects, r: Reader % Int :? c.R): c.M[c.R, c.S, c.S, Int] =
+      if i == 0 then c.pure(acc) else ask[Int].flatMap(x => loop(i - 1, acc + x))
+    def nested(d: Int)(using c: Effects, r: Reader % Int :? c.R): c.M[c.R, c.S, c.S, Int] =
       if d == 0 then loop(10000, 0) else reader[Int](0.5)(nested(d - 1))
     assertEquals(run(reader[Int](2)(nested(16))), 20000)
 
@@ -49,7 +50,7 @@ class TestEffects extends munit.FunSuite:
     assertEquals(p.value, (1, 1))
 
   test("two instances of one effect, State[Int] and State[String]: each goes to its own handler, by its path"):
-    def body(using c: Effects, i: State % Int :? c.R, s: State % String :? c.R): Cont[c.R, c.S, c.S, Unit] =
+    def body(using c: Effects, i: State % Int :? c.R, s: State % String :? c.R): c.M[c.R, c.S, c.S, Unit] =
       modify[Int](_ + 1).flatMap(n => modify[String](_ + n)).map(_ => ())
     assertEquals(run(state[(Int, Unit)]("x")(state[Unit](41)(body))), ("x42", (42, ())))
     assertEquals(run(state[(String, Unit)](41)(state[Unit]("x")(body))), (42, ("x42", ())))
@@ -59,7 +60,7 @@ class TestEffects extends munit.FunSuite:
     assertEquals(run(throws[String, Int](Cont.pure(1).map(_ + 1))), Right(2))
 
   test("state and throws: the order of handlers is the semantics — state kept or lost on a failure"):
-    def body(using c: Effects, s: State % Int :? c.R, t: Throws % String :? c.R): Cont[c.R, c.S, c.S, Int] =
+    def body(using c: Effects, s: State % Int :? c.R, t: Throws % String :? c.R): c.M[c.R, c.S, c.S, Int] =
       put(5).flatMap(_ => raise[String, Int]("boom"))
     assertEquals(run(state[Either[String, Int]](0)(throws[String, Int](body))), (5, Left("boom")))
     assertEquals(run(throws[String, (Int, Int)](state[Int](0)(body))), Left("boom"))
@@ -78,8 +79,8 @@ class TestEffects extends munit.FunSuite:
 
   test("8 queens by choose: 92 solutions"):
     def safe(col: Int, placed: List[Int]) = placed.zipWithIndex.forall((c, d) => c != col && math.abs(c - col) != d + 1)
-    def place(row: Int, placed: List[Int])(using c: Effects, ch: Choose :? c.R): Cont[c.R, c.S, c.S, List[Int]] =
-      if row == 8 then Cont.pure(placed) else among((0 until 8).filter(safe(_, placed))).flatMap(col => place(row + 1, col :: placed))
+    def place(row: Int, placed: List[Int])(using c: Effects, ch: Choose :? c.R): c.M[c.R, c.S, c.S, List[Int]] =
+      if row == 8 then c.pure(placed) else among((0 until 8).filter(safe(_, placed))).flatMap(col => place(row + 1, col :: placed))
     val all = run(choose[List[Int]](place(0, Nil)))
     assertEquals(all.length, 92)
     assertEquals(all.head, List(3, 1, 6, 2, 5, 7, 4, 0))
@@ -103,9 +104,9 @@ class TestEffects extends munit.FunSuite:
     assertEquals(run(collect[Int, Seq[Int]](choose[Int](among(Seq(1, 2)).flatMap(x => yield_(x).map(_ => x * 10))))), (List(1, 2), Seq(10, 20)))
 
   test("generate is lazy: an infinite body, three elements pulled, nothing past them runs"):
-    type G = Gen[Int, Pure]
+    type G = Gen[Cont, Int, Pure]
     var produced = 0
-    def from(n: Int)(using c: Effects, e: Emit % Int :? c.R): Cont[c.R, c.S, c.S, Unit] =
+    def from(n: Int)(using c: Effects, e: Emit % Int :? c.R): c.M[c.R, c.S, c.S, Unit] =
       yield_(n).flatMap(_ => { produced += 1; from(n + 1) })
     val gen: Cont[Pure, G, G, G] = generate[Int](using At[Pure, G]())(from(0))
     def take(n: Int, g: Cont[Pure, G, G, G]): List[Int] = if n == 0 then Nil else g.value match
@@ -116,7 +117,7 @@ class TestEffects extends munit.FunSuite:
 
   test("generate over a remaining effect: the rest of the generator still asks, under the handler it is run in"):
     type F = Reader % Int +: Pure
-    type G = Gen[Int, F]
+    type G = Gen[Cont, Int, F]
     def all(g: Cont[F, G, G, G]): List[Int] = run(reader[G](7)(g)) match
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: all(rest)
@@ -125,11 +126,11 @@ class TestEffects extends munit.FunSuite:
     assertEquals(all(gen), List(7, 14))
 
   test("Fibonacci: collected and generated agree, the generator infinite, and 10 000 of them in constant stack"):
-    def fibs(i: Int, a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.R): Cont[c.R, c.S, c.S, Unit] =
-      if i == 0 then Cont.pure(()) else yield_(a).flatMap(_ => fibs(i - 1, b, a + b))
-    def forever(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.R): Cont[c.R, c.S, c.S, Unit] =
+    def fibs(i: Int, a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.R): c.M[c.R, c.S, c.S, Unit] =
+      if i == 0 then c.pure(()) else yield_(a).flatMap(_ => fibs(i - 1, b, a + b))
+    def forever(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.R): c.M[c.R, c.S, c.S, Unit] =
       yield_(a).flatMap(_ => forever(b, a + b))
-    type G = Gen[Long, Pure]
+    type G = Gen[Cont, Long, Pure]
     def take(n: Int, g: Cont[Pure, G, G, G]): List[Long] = if n == 0 then Nil else g.value match
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: take(n - 1, rest)
@@ -140,9 +141,9 @@ class TestEffects extends munit.FunSuite:
 
   test("generate stays lazy over a forwarded effect: an infinite body asking at every step, three pulled"):
     type F = Reader % Int +: Pure
-    type G = Gen[Int, F]
+    type G = Gen[Cont, Int, F]
     var produced = 0
-    def from(n: Int)(using c: Effects, e: Emit % Int :? c.R, r: Reader % Int :? c.R): Cont[c.R, c.S, c.S, Unit] =
+    def from(n: Int)(using c: Effects, e: Emit % Int :? c.R, r: Reader % Int :? c.R): c.M[c.R, c.S, c.S, Unit] =
       ask[Int].flatMap(x => yield_(n * x)).flatMap(_ => { produced += 1; from(n + 1) })
     def take(i: Int, g: Cont[F, G, G, G]): List[Int] = if i == 0 then Nil else run(reader[G](10)(g)) match
       case Gen.Done() => Nil
@@ -152,7 +153,7 @@ class TestEffects extends munit.FunSuite:
 
   test("handlers are dynamic: a generator's rest asks the reader it is run under, not the one it was built under"):
     type F = Reader % Int +: Pure
-    type G = Gen[Int, F]
+    type G = Gen[Cont, Int, F]
     // built under reader(7): its rest is still a program over Reader — its type says it needs one — and the
     // consumer runs it under reader(8). A handler found where the program was BUILT (evidence passing) would say 7
     val gen: Cont[Pure, G, G, G] =

@@ -14,9 +14,9 @@ enum Async[+A]:
   case Await[A](register: (Either[Throwable, A] => Unit) => Unit) extends Async[A]
 
 /** a computation, suspended — run when the run gets to it */
-def async[A](a: => A)(using c: Effects, has: Async :? c.R): Cont[c.R, c.S, c.S, A] = perform[Async, A](Async.Run(() => a))
+def async[A](a: => A)(using c: Effects, has: Async :? c.R): c.M[c.R, c.S, c.S, A] = perform[Async, A](Async.Run(() => a))
 /** the value a callback is called with, once */
-def await[A](register: (Either[Throwable, A] => Unit) => Unit)(using c: Effects, has: Async :? c.R): Cont[c.R, c.S, c.S, A] =
+def await[A](register: (Either[Throwable, A] => Unit) => Unit)(using c: Effects, has: Async :? c.R): c.M[c.R, c.S, c.S, A] =
   perform[Async, A](Async.Await(register))
 
 object Async:
@@ -37,11 +37,11 @@ object Async:
     given Effects.At[Fails, Unit] = Effects.At()
     // the run up to its end or to a wait, a failure raised in it `done`'s, the rest of the run aborted
     def go(c: Free[Fails, Unit]): Unit =
-      c.handle(new Handler[Throws % Throwable, Pure, Unit, Unit, Unit]:
+      c.handle(new Handler[Cont, Throws % Throwable, Pure, Unit, Unit, Unit]:
         def ret(u: Unit): Unit = ()
         def apply[X](op: Throws[Throwable, X], k: X => Free[Pure, Unit]): Free[Pure, Unit] = op match
           case Throws.Raise(e) => done(Left(e)); Cont.pure(())).value
-    val h = new Handler[Async, Fails, Unit, A, Unit]:
+    val h = new Handler[Cont, Async, Fails, Unit, A, Unit]:
       def ret(a: A): Unit = done(Right(a))
       def apply[X](op: Async[X], k: X => Free[Fails, Unit]): Free[Fails, Unit] =
         def resume(r: Either[Throwable, X]): Free[Fails, Unit] = r.fold(raise[Throwable, Unit], k)
@@ -60,8 +60,8 @@ object Async:
   /** `run(body)`: the body's value, this thread waiting for it — at the edge of a program only; its failure raised
    * in the context */
   def run[A](body: Effects.At[Async +: Fails, Unit] ?=> Free[Async +: Fails, A])
-            (using c: Effects, has: Throws % Throwable :? c.R): Cont[c.R, c.S, c.S, A] =
-    Cont.Delay: () =>
+            (using c: Effects, has: Throws % Throwable :? c.R): c.M[c.R, c.S, c.S, A] =
+    c.delay:
       val result = java.util.concurrent.CompletableFuture[Either[Throwable, A]]()
       runAsync(body)(result.complete)
-      result.get().fold(raise[Throwable, A], Cont.pure)
+      result.get().fold(raise[Throwable, A], c.pure)

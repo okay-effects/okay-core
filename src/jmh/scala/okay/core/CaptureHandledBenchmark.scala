@@ -23,7 +23,7 @@ class CaptureHandledBenchmark:
   enum Nop[X]:
     case Op extends Nop[Unit]
 
-  def nop[A](using c: Effects): Handler[Nop, c.R, c.S, A, A] = new Answering[Nop, c.R, c.S, A, A]:
+  def nop[A](using c: Effects): Handler[c.M, Nop, c.R, c.S, A, A] = new Answering[c.M, Nop, c.R, c.S, A, A]:
     def ret(a: A): A = a
     def value[X](op: Nop[X]): X = op match
       case Nop.Op => ()
@@ -34,7 +34,7 @@ class CaptureHandledBenchmark:
   @Benchmark
   def captureHandled(): Int = Effects.run:
     Effects.handle(nop[Int]):
-      var p: Cont[Nop +: Pure, Int, Int, Int] = Effects.shift[Unit, Int](k => calls(k, shots, 0)).map(_ => 1)
+      var p: Cont[Nop +: Pure, Int, Int, Int] = Control.shift[Unit, Int](k => calls(k, shots, 0)).map(_ => 1)
       var i = 0
       while i < depth do
         p = p.map(_ + 1)

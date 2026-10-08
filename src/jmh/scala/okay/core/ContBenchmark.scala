@@ -4,6 +4,7 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import Cont.*
 import Effects.*
+import Control.*
 import okay.std.*
 
 /** an operation with its own answer, forwarded or answered by its handler */
@@ -43,23 +44,23 @@ class ContBenchmark:
   @Benchmark
   def tailcallPure(): Boolean = isEven(n).value
 
-  def isEvenT(n: Int)(using c: Effects, t: Tick :? c.R): Cont[c.R, c.S, c.S, Boolean] =
-    if n == 0 then pure(true) else perform(Tick.Value(n)).flatMap(_ => isOddT(n - 1))
-  def isOddT(n: Int)(using c: Effects, t: Tick :? c.R): Cont[c.R, c.S, c.S, Boolean] =
-    if n == 0 then pure(false) else perform(Tick.Value(n)).flatMap(_ => isEvenT(n - 1))
+  def isEvenT(n: Int)(using c: Effects, t: Tick :? c.R): c.M[c.R, c.S, c.S, Boolean] =
+    if n == 0 then c.pure(true) else perform(Tick.Value(n)).flatMap(_ => isOddT(n - 1))
+  def isOddT(n: Int)(using c: Effects, t: Tick :? c.R): c.M[c.R, c.S, c.S, Boolean] =
+    if n == 0 then c.pure(false) else perform(Tick.Value(n)).flatMap(_ => isEvenT(n - 1))
 
   /** `Tick` answered with its value: answered in place, its clause `k(a)` */
-  def ticking[Q, A](using c: Effects): Handler[Tick, c.R, c.S, A, A] = new Answering[Tick, c.R, c.S, A, A]:
+  def ticking[Q, A](using c: Effects): Handler[c.M, Tick, c.R, c.S, A, A] = new Answering[c.M, Tick, c.R, c.S, A, A]:
     def ret(a: A): A = a
     def value[X](op: Tick[X]): X = op match
       case Tick.Value(a) => a
   /** the same handler with its clause written out, `k(a)`: the general road, a resumption built per operation */
-  def tickingK[Q, A](using c: Effects): Handler[Tick, c.R, c.S, A, A] = new Handler[Tick, c.R, c.S, A, A]:
+  def tickingK[Q, A](using c: Effects): Handler[c.M, Tick, c.R, c.S, A, A] = new Handler[c.M, Tick, c.R, c.S, A, A]:
     def ret(a: A): A = a
-    def apply[X](op: Tick[X], k: X => Cont[c.R, c.S, c.S, A]): Cont[c.R, c.S, c.S, A] = op match
+    def apply[X](op: Tick[X], k: X => c.M[c.R, c.S, c.S, A]): c.M[c.R, c.S, c.S, A] = op match
       case Tick.Value(a) => k(a)
   /** the inner handler, of `Skip`: crossed by every `Tick` */
-  def skipping[A](using c: Effects): Handler[Skip, c.R, c.S, A, A] = new Answering[Skip, c.R, c.S, A, A]:
+  def skipping[A](using c: Effects): Handler[c.M, Skip, c.R, c.S, A, A] = new Answering[c.M, Skip, c.R, c.S, A, A]:
     def ret(a: A): A = a
     def value[X](op: Skip[X]): X = op match
       case Skip.Value(a) => a

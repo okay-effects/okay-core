@@ -4,6 +4,7 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import Cont.*
 import Effects.*
+import Control.*
 import okay.std.*
 
 /**
@@ -39,16 +40,16 @@ class FibBenchmark:
   @Benchmark
   def fibPure(): Long = sums(n, 0, 1, 0).value
 
-  def fibs(i: Int, a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.R): Cont[c.R, c.S, c.S, Unit] =
-    if i == 0 then pure(()) else yield_(a).flatMap(_ => fibs(i - 1, b, a + b))
+  def fibs(i: Int, a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.R): c.M[c.R, c.S, c.S, Unit] =
+    if i == 0 then c.pure(()) else yield_(a).flatMap(_ => fibs(i - 1, b, a + b))
 
   @Benchmark
   def fibCollect(): Long = run(collect[Long, Unit](fibs(n, 0, 1)))._1.sum
 
-  def forever(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.R): Cont[c.R, c.S, c.S, Unit] =
+  def forever(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.R): c.M[c.R, c.S, c.S, Unit] =
     yield_(a).flatMap(_ => forever(b, a + b))
 
-  type G = Gen[Long, Pure]
+  type G = Gen[Cont, Long, Pure]
 
   @Benchmark
   def fibGenerate(): Long =

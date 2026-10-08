@@ -2,14 +2,37 @@ package okay.core
 
 import Cont.*
 
-/** THE EFFECTS a program is written with, its context: the row `R` there, and the answer `S` at this point — what an operation
- * and a `shift` take their types from, by its members: `c.R`, `c.S`. A delimiter gives its body one, `At`: a
- * handler's has the handler's effect in front of what the handler leaves, `E +: c.R`, so the row is built by
- * the handlers, outside in, and never named. The nearest context wins — a nested scope's given is preferred. A
- * marker, no fields */
-sealed trait Effects:
+/** AN INDEXED MONAD, `M[R, I, O, A]`: a program over the row `R` of value `A` which, with a continuation answering
+ * `I`, answers `O` — Atkey's parameterised monad, the answer moved from `O` to `I`. What a context's programs are
+ * values of; `Cont` is one, a test's CPS functions another. Final tagless: a program is written against the
+ * operations, not the tree */
+trait IxMonad:
+  type M[R <: Row, I, O, A]
+  def pure[R <: Row, S, A](a: A): M[R, S, S, A]
+  /** `delay(m)`: the program `m`, built when it is run — a tail call */
+  def delay[R <: Row, I, O, A](m: => M[R, I, O, A]): M[R, I, O, A]
+  extension [R <: Row, I, O, A](m: M[R, I, O, A])
+    def flatMap[I2, B](f: A => M[R, I2, I, B]): M[R, I2, O, B]
+    def map[B](f: A => B): M[R, I, O, B]
+
+/** THE CONTEXT a program is written in: the monad, the row `R` there and the answer `S` at this point — what an
+ * operation and a `shift` take their types from, by its members: `c.M`, `c.R`, `c.S`. The context IS the
+ * instance: a program asks for one, `(using c: Effects)`, and is a value of `c.M`. A delimiter gives its body
+ * one of its own, `under`: a handler's has the handler's effect in front of what the handler leaves, `E +: c.R`,
+ * so the row is built by the handlers, outside in, and never named. The nearest context wins — a nested scope's
+ * given is preferred */
+trait Context extends IxMonad:
   type R <: Row
   type S
+
+/** EFFECTS over the monad: an operation at its path in the row, and a handler folding a body over `E +: T` to one
+ * over `T` */
+trait Effects extends Context:
+  /** the context at the row `R2`, the answer `S2`, the monad this one's */
+  type Under[R2 <: Row, S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.M[X, I, O, A]; type R = R2; type S = S2 }
+  def under[R2 <: Row, S2]: Under[R2, S2]
+  def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X]
+  def handle[E[_], T <: Row, Q, A, Ans](body: M[E +: T, Ans, Ans, A], h: Handler[M, E, T, Q, A, Ans]): M[T, Q, Q, Ans]
 
 /** an effect of two parameters, its first given: `Reader % Int` is the effect `[X] =>> Reader[Int, X]` — the
  * effect in a row, a path, a handler, by name */
@@ -50,76 +73,95 @@ object Paths:
   private def vacuous[E[_], X <: Row, A](in: Req[E, X]): IfPure[X, A] = (in: @unchecked) match
     case Req.First() => ()
 
-/** the context with every effect a program needs, `Es`, in its own row */
+/** the context with every effect a program needs, `Es`, in its own row: the context it is made of, every
+ * operation its, and a path for each */
 sealed trait Needs[Es <: AnyKind] extends Effects:
   val paths: Paths[Es, R]
 object Needs:
-  given all[Es <: AnyKind](using c: Effects, p: Paths[Es, c.R]): (Needs[Es] { type R = c.R; type S = c.S }) =
-    new Needs[Es] { type R = c.R; type S = c.S; val paths = p }
+  given all[Es <: AnyKind](using c: Effects, p: Paths[Es, c.R])
+    : (Needs[Es] { type M[X <: Row, I, O, A] = c.M[X, I, O, A]; type R = c.R; type S = c.S }) =
+    new Needs[Es]:
+      type M[X <: Row, I, O, A] = c.M[X, I, O, A]
+      type R = c.R
+      type S = c.S
+      type Under[R2 <: Row, S2] = c.Under[R2, S2]
+      val paths = p
+      def under[R2 <: Row, S2]: Under[R2, S2] = c.under
+      def pure[X <: Row, S2, A](a: A): M[X, S2, S2, A] = c.pure(a)
+      def delay[X <: Row, I, O, A](m: => M[X, I, O, A]): M[X, I, O, A] = c.delay(m)
+      extension [X <: Row, I, O, A](m: M[X, I, O, A])
+        def flatMap[I2, B](f: A => M[X, I2, I, B]): M[X, I2, O, B] = c.flatMap(m)(f)
+        def map[B](f: A => B): M[X, I, O, B] = c.map(m)(f)
+      def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = c.perform(op, in)
+      def handle[E[_], T <: Row, Q, A, Ans](body: M[E +: T, Ans, Ans, A], h: Handler[M, E, T, Q, A, Ans]): M[T, Q, Q, Ans] =
+        c.handle(body, h)
   given found[E[_], Es <: AnyKind](using n: Needs[Es], in: Req[E, Es]): In[E, n.R] = n.paths(in)
 
 /** `A ! Es`: a program of value `A`, in any context whose row has every effect of `Es` — one, `Int ! Reader % Int`,
  * or several, `Int ! Reader % Int +: Writer % String`, `Pure` at the end or not; their order the program's own,
  * the context's row any. At the context's answer, not `Free`'s `Unit`: under a handler the answer is the handler's
  * — `Either[E, A]` under `throws` — so a `Free` program would run only where nothing is answered */
-infix type ![A, Es <: AnyKind] = (c: Needs[Es]) ?=> Cont[c.R, c.S, c.S, A]
+infix type ![A, Es <: AnyKind] = (c: Needs[Es]) ?=> c.M[c.R, c.S, c.S, A]
 
 object Effects:
-  /** the context at the row `R0`, the answer `S0` */
-  final class At[R0 <: Row, S0] extends Effects:
+  /** THE INSTANCE over `Cont`, the context at the row `R0`, the answer `S0`: effects and control both */
+  final class At[R0 <: Row, S0] extends Effects with Control:
+    type M[R <: Row, I, O, A] = Cont[R, I, O, A]
     type R = R0
     type S = S0
+    type Under[R2 <: Row, S2] = At[R2, S2]
+    def under[R2 <: Row, S2]: At[R2, S2] = At()
+    def pure[X <: Row, S2, A](a: A): Cont[X, S2, S2, A] = Return(a)
+    def delay[X <: Row, I, O, A](m: => Cont[X, I, O, A]): Cont[X, I, O, A] = Delay(() => m)
+    extension [X <: Row, I, O, A](m: Cont[X, I, O, A])
+      def flatMap[I2, B](f: A => Cont[X, I2, I, B]): Cont[X, I2, O, B] = m.flatMap(f)
+      def map[B](f: A => B): Cont[X, I, O, B] = m.map(f)
+    def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): Cont[R2, S2, S2, X] = Inject(op, in)
+    def handle[E[_], T <: Row, Q, A, Ans](body: Cont[E +: T, Ans, Ans, A], h: Handler[Cont, E, T, Q, A, Ans]): Cont[T, Q, Q, Ans] =
+      body.handle(h)
+    def shift[X <: Row, I, O, A](f: (A => Cont[X, O, O, I]) => Cont[X, O, O, O]): Cont[X, I, O, A] = Shift(f)
+    def reset[X <: Row, Q, S2, O, A](body: Cont[X, S2, O, A], ret: A => S2): Cont[X, Q, Q, O] = Reset(body, ret)
 
-  /** `run(body)`: the body at the top, nothing to perform, its answer its value */
+  /** `run(body)`: the body at the top over `Cont`, nothing to perform, its answer its value */
   def run[A](body: At[Pure, A] ?=> Cont[Pure, A, A, A]): A = body(using At()).value
 
-  /** `reset[S](body)`: the body written at the answer `S`, its value; the delimiter answers what the body moved
-   * the answer to, `O` */
-  def reset[S](using c: Effects)[O](body: At[c.R, S] ?=> Cont[c.R, S, O, S]): Cont[c.R, c.S, c.S, O] =
-    body(using At()).reset
-
-  /** `shift[A, O](k => body)`: the hole's value `A` and the answer the delimiter is moved to, `O`; the hole's
-   * answer is the context's. The body is written at `O`, under the delimiter */
-  def shift[A, O](using c: Effects)(f: At[c.R, O] ?=> (A => Cont[c.R, O, O, c.S]) => Cont[c.R, O, O, O]): Cont[c.R, c.S, O, A] =
-    Cont.shift(f(using At()))
-
   /** `handle(h)(body)` in context: the body written in the handler's context, over `E +: c.R`, at its answer */
-  def handle[E[_], A, Ans](using c: Effects)(h: Handler[E, c.R, c.S, A, Ans])
-            (body: At[E +: c.R, Ans] ?=> Cont[E +: c.R, Ans, Ans, A]): Cont[c.R, c.S, c.S, Ans] =
-    body(using At()).handle(h)
+  def handle[E[_], A, Ans](using c: Effects)(h: Handler[c.M, E, c.R, c.S, A, Ans])
+            (body: c.Under[E +: c.R, Ans] ?=> c.M[E +: c.R, Ans, Ans, A]): c.M[c.R, c.S, c.S, Ans] =
+    c.handle(body(using c.under), h)
 
 /** a handler of the effect `E`, over the row `E +: T`, leaving `T`, written at the answer `Q` outside its
  * delimiter: the body's value `A` to the answer `Ans`; each operation with the rest of the body up to the
  * delimiter, `k`, deep — the handler stays in force through a resumption. Not a node: `handle` folds the tree
  * with it; an operation of another effect goes on outside, its path one shorter */
-trait Handler[E[_], T <: Row, Q, A, Ans]:
+trait Handler[M[_ <: Row, _, _, _], E[_], T <: Row, Q, A, Ans]:
   def ret(a: A): Ans
-  def apply[X](op: E[X], k: X => Cont[T, Q, Q, Ans]): Cont[T, Q, Q, Ans]
+  def apply[X](op: E[X], k: X => M[T, Q, Q, Ans]): M[T, Q, Q, Ans]
 
 /** a TAIL-RESUMPTIVE handler: each clause is `k(value(op))`, the value of the operation alone — so the operation is
  * ANSWERED IN PLACE: the fold goes on with the rest of the body at once, in its own loop, no resumption built,
  * nothing handed out (Koka's, Effekt's optimisation; here by the handler's declaration) */
-trait Answering[E[_], T <: Row, Q, A, Ans] extends Handler[E, T, Q, A, Ans]:
+trait Answering[M[_ <: Row, _, _, _], E[_], T <: Row, Q, A, Ans] extends Handler[M, E, T, Q, A, Ans]:
   def value[X](op: E[X]): X
-  final def apply[X](op: E[X], k: X => Cont[T, Q, Q, Ans]): Cont[T, Q, Q, Ans] = k(value(op))
+  final def apply[X](op: E[X], k: X => M[T, Q, Q, Ans]): M[T, Q, Q, Ans] = k(value(op))
 
 extension [E[_], T <: Row, A, Ans](body: Cont[E +: T, Ans, Ans, A])
   /** `body.handle(h)`: the tree folded at its head — a value answered by `ret`, an operation of `E` by its
    * clause with the rest of the body folded the same way, lazily, another effect's forwarded; a capture's body
    * folded in place of the rest, the rest under a delimiter of its own as `k`. The body is read up to its first
    * operation here, the rest when resumed */
-  def handle[Q](h: Handler[E, T, Q, A, Ans]): Cont[T, Q, Q, Ans] = fold0(body, h.ret, h)
+  def handle[Q](h: Handler[Cont, E, T, Q, A, Ans]): Cont[T, Q, Q, Ans] = fold0(body, h.ret, h)
 
 /** the fold while nothing is bound under the body — a tail call's, a resumption's — the common heads taken here
  * with no stack made; `fold` from the first bind or map on, with its stack. One method each, every loop a tail
  * call: a helper (an inline one too, through its accessor) would make the answered operation's fold a call, a
  * frame each */
 @scala.annotation.tailrec
-private def fold0[E[_], T <: Row, Q, S, Ans, A](body: Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[E, T, Q, ?, Ans]): Cont[T, Q, Q, Ans] =
+private def fold0[E[_], T <: Row, Q, S, Ans, A](body: Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[Cont, E, T, Q, ?, Ans]): Cont[T, Q, Q, Ans] =
   body match
     case o: Suspend[e1, r, i, so, x, a] => o.in match
       case In.Here() => h match
-        case an: Answering[E, T, Q, ?, Ans] => fold0(o.k(an.value(o.op)), ret, h)
+        case an: Answering[Cont, E, T, Q, ?, Ans] => fold0(o.k(an.value(o.op)), ret, h)
         case _ => clause(o.op, o.k, ret, h)
       case In.There(out) => out.bind(o.op, Refold(o.k, ret, h))
     case Return(a) => Return(ret(a))
@@ -133,11 +175,11 @@ private def fold0[E[_], T <: Row, Q, S, Ans, A](body: Cont[E +: T, S, Ans, A], r
  * operation, a capture get the stack as the rest */
 @scala.annotation.tailrec
 private def fold[E[_], T <: Row, Q, S, Ans, A, T1, X](c: Cont[E +: T, T1, Ans, X], k: Frames[E +: T, X, S, T1, A], ret: A => S,
-                                                    h: Handler[E, T, Q, ?, Ans]): Cont[T, Q, Q, Ans] =
+                                                    h: Handler[Cont, E, T, Q, ?, Ans]): Cont[T, Q, Q, Ans] =
   c match
     case o: Suspend[e1, r, i, so, x, a] => o.in match
       case In.Here() => h match
-        case an: Answering[E, T, Q, ?, Ans] => fold(o.k(an.value(o.op)), k, ret, h)
+        case an: Answering[Cont, E, T, Q, ?, Ans] => fold(o.k(an.value(o.op)), k, ret, h)
         case _ => k match
           case Frames.End() => clause(o.op, o.k, ret, h)
           case _ => clause(o.op, Frames.Then(o.k, k), ret, h)
@@ -153,7 +195,7 @@ private def fold[E[_], T <: Row, Q, S, Ans, A, T1, X](c: Cont[E +: T, T1, Ans, X
         case Frames.Mapped(g, rest) => fold(Return(g(f(a))), rest, ret, h)
     case i: Inject[e1, r, s, x] => i.in match
       case In.Here() => h match
-        case an: Answering[E, T, Q, ?, Ans] => fold(Return(an.value(i.op)), k, ret, h)
+        case an: Answering[Cont, E, T, Q, ?, Ans] => fold(Return(an.value(i.op)), k, ret, h)
         case _ => clause(i.op, k, ret, h)
       case In.There(out) => out.bind(i.op, Refold(k, ret, h))
     case Bind(m, g) => m match
@@ -168,21 +210,21 @@ private def fold[E[_], T <: Row, Q, S, Ans, A, T1, X](c: Cont[E +: T, T1, Ans, X
     case Reset(b, r) => fold(delimited(b, r), k, ret, h)
 
 /** this handler's operation given to its clause, with the rest as `k`, resumed lazily */
-private def clause[E[_], T <: Row, Q, S, Ans, A, X](op: E[X], k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[E, T, Q, ?, Ans]): Cont[T, Q, Q, Ans] =
+private def clause[E[_], T <: Row, Q, S, Ans, A, X](op: E[X], k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[Cont, E, T, Q, ?, Ans]): Cont[T, Q, Q, Ans] =
   h(op, Resume(k, ret, h))
 
 /** the rest of a body folded again by its handler, once the operation it waits on is answered outside: the
  * continuation a forwarded operation goes out with. One object, where a closure over a closure was two. Applied
  * by whoever answers the operation outside — while folding, or inside a resumption of its own, lazy already */
-private final class Refold[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[E, T, Q, ?, Ans])
+private final class Refold[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[Cont, E, T, Q, ?, Ans])
   extends (X => Cont[T, Q, Q, Ans]):
   def apply(x: X): Cont[T, Q, Q, Ans] = fold0(k(x), ret, h)
 
 /** a clause's `k`: the rest of the body, folded again by the handler, LAZILY — a `Delay`, built when stepped, so a
  * clause that keeps `k` (a generator's next step) runs nothing by making it. One object and its delay */
-private final class Resume[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[E, T, Q, ?, Ans])
+private final class Resume[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[Cont, E, T, Q, ?, Ans])
   extends (X => Cont[T, Q, Q, Ans]):
   def apply(x: X): Cont[T, Q, Q, Ans] = Delay(() => fold0(k(x), ret, h))
 
 /** `perform(op)`: an operation of `E`, in the context — its row has `E`, its answer is the operation's */
-def perform[E[_], X](op: E[X])(using c: Effects, in: In[E, c.R]): Cont[c.R, c.S, c.S, X] = Inject(op, in)
+def perform[E[_], X](op: E[X])(using c: Effects, in: In[E, c.R]): c.M[c.R, c.S, c.S, X] = c.perform(op, in)

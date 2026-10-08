@@ -1,6 +1,7 @@
 package okay.core
 
 import Effects.*
+import Control.*
 import okay.std.*
 import java.util.concurrent.{Executors, TimeUnit}
 
@@ -24,9 +25,13 @@ class TestPStateAsync extends munit.FunSuite:
 
   test("pstate under an effect of the row: an operation between the moves, at the answer there"):
     // in the body the answer moves, so an operation is the answer-polymorphic node, not `ask` at the context's answer
-    def body(using c: Effects, has: Reader % Int :? c.R)(st: PState[c.R, c.S, (String, Int)]) =
-      st.get[Int].flatMap(n => Cont.inject[c.R, st.At[Int], Reader % Int, Int](Reader.Ask()).flatMap(a => st.put[Int]((n + a).toString))).map(_ => 0)
-    val r: (String, Int) = run(reader(5)(pstate(1)(body)))
+    // the context passed by hand, the same to `pstate` and to the body: `PState` is over that very context
+    def body(c: Effects & Control)(using has: Reader % Int :? c.R)(st: PState[c.type, c.R, c.S, (String, Int)]) =
+      given c.type = c
+      st.get[Int].flatMap(n => c.perform[Reader % Int, c.R, st.At[Int], Int](Reader.Ask(), has).flatMap(a => st.put[Int]((n + a).toString))).map(_ => 0)
+    val r: (String, Int) = run(reader(5):
+      val c = summon[At[Reader % Int +: Pure, (String, Int)]]
+      pstate(1)(using c)(body(c)))
     assertEquals(r, ("6", 0))
 
   test("async: computations run in order, their values bound"):
@@ -35,14 +40,14 @@ class TestPStateAsync extends munit.FunSuite:
   test("await: a callback from another thread, the run going on in it"):
     val pool = Executors.newFixedThreadPool(2)
     try
-      def later(x: Int)(using c: Effects, has: Async :? c.R): Cont[c.R, c.S, c.S, Int] =
+      def later(x: Int)(using c: Effects, has: Async :? c.R): c.M[c.R, c.S, c.S, Int] =
         await[Int](cb => pool.execute(() => { Thread.sleep(1); cb(Right(x)) }))
       assertEquals(runIO(later(1).flatMap(a => later(2).map(_ + a)).flatMap(a => later(3).map(_ + a))), Right(6))
     finally pool.shutdown()
 
   test("await: 100 000 callbacks answered at once, in constant stack"):
-    def loop(i: Int, acc: Int)(using c: Effects, has: Async :? c.R): Cont[c.R, c.S, c.S, Int] =
-      if i == 0 then Cont.pure(acc) else await[Int](cb => cb(Right(1))).flatMap(x => loop(i - 1, acc + x))
+    def loop(i: Int, acc: Int)(using c: Effects, has: Async :? c.R): c.M[c.R, c.S, c.S, Int] =
+      if i == 0 then c.pure(acc) else await[Int](cb => cb(Right(1))).flatMap(x => loop(i - 1, acc + x))
     assertEquals(runIO(loop(100000, 0)), Right(100000))
 
   test("async: a failure — a Left at a callback, a throw in a computation — raised, the rest never runs, the rest never runs"):
