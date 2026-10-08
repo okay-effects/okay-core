@@ -44,7 +44,7 @@ class TestEffects extends munit.FunSuite:
     assertEquals(run(reader[Int](2)(nested(16))), 20000)
 
   test("state: the cell is per run — the same program run twice starts from s0 twice"):
-    var p: Option[Eff[Empty, (Int, Int), (Int, Int), (Int, Int), (Int, Int)]] = None
+    var p: Option[Eff[Pure, (Int, Int), (Int, Int), (Int, Int), (Int, Int)]] = None
     run[(Int, Int)] { p = Some(state[Int](0)(modify[Int](_ + 1))); pure((0, 0)) }
     assertEquals(run(p.get), (1, 1))
     assertEquals(run(p.get), (1, 1))
@@ -95,7 +95,7 @@ class TestEffects extends munit.FunSuite:
     assertEquals(run(collect[Int, String](yield_(1).flatMap(_ => yield_(2)).map(_ => "done"))), (List(1, 2), "done"))
 
   test("collect: the buffer is per run — the same program run twice collects from empty twice"):
-    var p: Option[Eff[Empty, (List[Int], Unit), (List[Int], Unit), (List[Int], Unit), (List[Int], Unit)]] = None
+    var p: Option[Eff[Pure, (List[Int], Unit), (List[Int], Unit), (List[Int], Unit), (List[Int], Unit)]] = None
     run[(List[Int], Unit)] { p = Some(collect[Int, Unit](yield_(1).flatMap(_ => yield_(2)))); pure((Nil, ())) }
     assertEquals(run(p.get), (List(1, 2), ()))
     assertEquals(run(p.get), (List(1, 2), ()))
@@ -105,32 +105,32 @@ class TestEffects extends munit.FunSuite:
 
   // the generators: a consumer's own type each — the rest a program of the level the generator runs at
   enum G1:
-    case Next(w: Int, rest: Eff[Empty, G1, G1, G1, G1])
+    case Next(w: Int, rest: Eff[Pure, G1, G1, G1, G1])
     case Done
   enum G2:
-    case Next(w: Int, rest: Eff[Reader % Int +: Empty, Level[Empty, G2, G2], G2, G2, G2])
+    case Next(w: Int, rest: Eff[Reader % Int +: Pure, Level[Pure, G2, G2], G2, G2, G2])
     case Done
   enum G3:
-    case Next(w: Long, rest: Eff[Empty, G3, G3, G3, G3])
+    case Next(w: Long, rest: Eff[Pure, G3, G3, G3, G3])
     case Done
 
   test("generate is lazy: an infinite body, three elements pulled, nothing past them runs"):
     var produced = 0
     def from(n: Int)(using c: Ctx, e: Emit % Int :? c.R): c.P[Unit] = yield_(n).flatMap(_ => { produced += 1; from(n + 1) })
-    var gen: Option[Eff[Empty, G1, G1, G1, G1]] = None
+    var gen: Option[Eff[Pure, G1, G1, G1, G1]] = None
     run[G1] { gen = Some(generate[Int, G1](G1.Next(_, _), G1.Done)(from(0))); pure(G1.Done) }
-    def take(n: Int, g: Eff[Empty, G1, G1, G1, G1]): List[Int] = if n == 0 then Nil else run(g) match
+    def take(n: Int, g: Eff[Pure, G1, G1, G1, G1]): List[Int] = if n == 0 then Nil else run(g) match
       case G1.Done => Nil
       case G1.Next(w, rest) => w :: take(n - 1, rest)
     assertEquals(take(3, gen.get), List(0, 1, 2))
     assertEquals(produced, 2)
 
   test("generate over a remaining effect: the rest of the generator still asks, under the handler it is run in"):
-    type F = Reader % Int +: Empty
-    def all(g: Eff[F, Level[Empty, G2, G2], G2, G2, G2]): List[Int] = run(reader[G2](7)(g)) match
+    type F = Reader % Int +: Pure
+    def all(g: Eff[F, Level[Pure, G2, G2], G2, G2, G2]): List[Int] = run(reader[G2](7)(g)) match
       case G2.Done => Nil
       case G2.Next(w, rest) => w :: all(rest)
-    var gen: Option[Eff[F, Level[Empty, G2, G2], G2, G2, G2]] = None
+    var gen: Option[Eff[F, Level[Pure, G2, G2], G2, G2, G2]] = None
     run[G2](reader[G2](7) { gen = Some(generate[Int, G2](G2.Next(_, _), G2.Done)(ask[Int].flatMap(n => yield_(n)).flatMap(_ => ask[Int].flatMap(n => yield_(n * 2))))); pure(G2.Done) })
     assertEquals(all(gen.get), List(7, 14))
 
@@ -138,25 +138,25 @@ class TestEffects extends munit.FunSuite:
     def fibs(i: Int, a: Long, b: Long)(using c: Ctx, e: Emit % Long :? c.R): c.P[Unit] =
       if i == 0 then pure(()) else yield_(a).flatMap(_ => fibs(i - 1, b, a + b))
     def forever(a: Long, b: Long)(using c: Ctx, e: Emit % Long :? c.R): c.P[Unit] = yield_(a).flatMap(_ => forever(b, a + b))
-    def take(n: Int, g: Eff[Empty, G3, G3, G3, G3]): List[Long] = if n == 0 then Nil else run(g) match
+    def take(n: Int, g: Eff[Pure, G3, G3, G3, G3]): List[Long] = if n == 0 then Nil else run(g) match
       case G3.Done => Nil
       case G3.Next(w, rest) => w :: take(n - 1, rest)
     val first = List(0L, 1, 1, 2, 3, 5, 8, 13, 21, 34)
     assertEquals(run(collect[Long, Unit](fibs(10, 0, 1)))._1, first)
-    var gen: Option[Eff[Empty, G3, G3, G3, G3]] = None
+    var gen: Option[Eff[Pure, G3, G3, G3, G3]] = None
     run[G3] { gen = Some(generate[Long, G3](G3.Next(_, _), G3.Done)(forever(0, 1))); pure(G3.Done) }
     assertEquals(take(10, gen.get), first)
     assertEquals(run(collect[Long, Unit](fibs(10000, 0, 1)))._1.length, 10000)
 
   test("generate stays lazy over a forwarded effect: an infinite body asking at every step, three pulled"):
-    type F = Reader % Int +: Empty
+    type F = Reader % Int +: Pure
     var produced = 0
     def from(n: Int)(using c: Ctx, e: Emit % Int :? c.R, r: Reader % Int :? c.R): c.P[Unit] =
       ask[Int].flatMap(x => yield_(n * x)).flatMap(_ => { produced += 1; from(n + 1) })
-    def take(i: Int, g: Eff[F, Level[Empty, G2, G2], G2, G2, G2]): List[Int] = if i == 0 then Nil else run(reader[G2](10)(g)) match
+    def take(i: Int, g: Eff[F, Level[Pure, G2, G2], G2, G2, G2]): List[Int] = if i == 0 then Nil else run(reader[G2](10)(g)) match
       case G2.Done => Nil
       case G2.Next(w, rest) => w :: take(i - 1, rest)
-    var gen: Option[Eff[F, Level[Empty, G2, G2], G2, G2, G2]] = None
+    var gen: Option[Eff[F, Level[Pure, G2, G2], G2, G2, G2]] = None
     run[G2](reader[G2](10) { gen = Some(generate[Int, G2](G2.Next(_, _), G2.Done)(from(1))); pure(G2.Done) })
     assertEquals(take(3, gen.get), List(10, 20, 30))
     assertEquals(produced, 2)

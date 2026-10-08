@@ -145,7 +145,7 @@ class ZeroFibBenchmark:
   def forever(a: Long, b: Long)(using c: Ctx, e: Emit % Long :? c.R): c.P[Unit] = yield_(a).flatMap(_ => forever(b, a + b))
   @Benchmark
   def fibGenerateZero(): Long =
-    var first: Option[Eff[Empty, FibGen, FibGen, FibGen, FibGen]] = None
+    var first: Option[Eff[Pure, FibGen, FibGen, FibGen, FibGen]] = None
     run[FibGen] { first = Some(generate[Long, FibGen](FibGen.Next(_, _), FibGen.Done)(forever(0, 1))); pure(FibGen.Done) }
     var gen = first.get
     var i = 0
@@ -157,7 +157,7 @@ class ZeroFibBenchmark:
     sum
 
 enum FibGen:
-  case Next(w: Long, rest: Eff[Empty, FibGen, FibGen, FibGen, FibGen])
+  case Next(w: Long, rest: Eff[Pure, FibGen, FibGen, FibGen, FibGen])
   case Done
 
 /** master's CaptureBenchmark and CaptureHandledBenchmark on okay.zero: a shift through `depth` maps, its `k` applied
@@ -192,14 +192,14 @@ class ZeroCaptureBenchmark:
   def captureDepthZero(): Int = run[Int](reset[Int](captured))
 
   @Benchmark
-  def captureHandledZero(): Int = run[Int](handle(new Answering[[X] =>> Eff[Empty, Int, Int, Int, X], Nop, Int, Int]:
+  def captureHandledZero(): Int = run[Int](handle(new Answering[[X] =>> Eff[Pure, Int, Int, Int, X], Nop, Int, Int]:
     def ret(a: Int): Int = a
     def value[X](op: Nop[X]): X = op match
       case Nop.Op => ())(captured))
 
   /** the same under a general handler: a shift up to it read, not run by the machine */
   @Benchmark
-  def captureHandledGeneralZero(): Int = run[Int](handle(new Handler[[X] =>> Eff[Empty, Int, Int, Int, X], Nop, Int, Int]:
+  def captureHandledGeneralZero(): Int = run[Int](handle(new Handler[[X] =>> Eff[Pure, Int, Int, Int, X], Nop, Int, Int]:
     def ret(a: Int): Int = a
-    def apply[X](op: Nop[X], k: X => Eff[Empty, Int, Int, Int, Int]): Eff[Empty, Int, Int, Int, Int] = op match
+    def apply[X](op: Nop[X], k: X => Eff[Pure, Int, Int, Int, Int]): Eff[Pure, Int, Int, Int, Int] = op match
       case Nop.Op => k(()))(captured))

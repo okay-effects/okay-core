@@ -33,12 +33,12 @@ class TestDynamic extends munit.FunSuite:
     assertEquals(run(writer[String, Int](loud(ask[Int].flatMap(a => ask[Int].map(_ + a))))), (List("asked", "asked"), 14))
 
   test("two handlers of one effect: the nearer by default, the further by its path"):
-    def outer(using c: Ctx { type R = Reader % Int +: Reader % Int +: Empty }): c.P[Int] =
+    def outer(using c: Ctx { type R = Reader % Int +: Reader % Int +: Pure }): c.P[Int] =
       perform[Reader % Int, Int](Reader.Ask[Int]())(using c, In.There(In.Here()))
     assertEquals(run(reader[Int](1)(reader[Int](2)(ask[Int].flatMap(a => outer.map(b => a * 10 + b))))), 21)
 
   test("a program left its handler: the handler it runs under answers it"):
-    var e: Option[Eff[Reader % Int +: Empty, Level[Empty, Int, Int], Int, Int, Int]] = None
+    var e: Option[Eff[Reader % Int +: Pure, Level[Pure, Int, Int], Int, Int, Int]] = None
     run(reader[Int](1) { e = Some(ask[Int].map(_ * 10)); pure(0) })
     assertEquals(run(reader[Int](2)(e.get)), 20)
 

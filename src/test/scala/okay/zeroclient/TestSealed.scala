@@ -24,17 +24,17 @@ class TestSealed extends munit.FunSuite:
     assert(compileErrors("""Cont0.step(Cont0.pure[Int, Int](1), ???)""").nonEmpty)
 
   test("no bridge between Eff and Cont0: a program with effects is not a kernel program, nor made of one"):
-    assert(compileErrors("""def raw(p: Eff[Empty, Int, Int, Int, Int]): Cont0[Int, Int, Int] = p""").nonEmpty)
-    assert(compileErrors("""def cooked(p: Cont0[Level[Empty, Int, Int], Level[Empty, Int, Int], Int]): Eff[Empty, Int, Int, Int, Int] = p""").nonEmpty)
+    assert(compileErrors("""def raw(p: Eff[Pure, Int, Int, Int, Int]): Cont0[Int, Int, Int] = p""").nonEmpty)
+    assert(compileErrors("""def cooked(p: Cont0[Level[Pure, Int, Int], Level[Pure, Int, Int], Int]): Eff[Pure, Int, Int, Int, Int] = p""").nonEmpty)
     assert(compileErrors("""run(reader[Int](1)(Cont0.dollar[Int, Int, Int, Int, Int](identity)(ask[Int])))""").nonEmpty)
 
   test("a request cannot be made up or taken apart"):
-    assert(compileErrors("""val r: Res[Empty, Int, Int] = Res.Done(-99)""").nonEmpty)
-    assert(compileErrors("""def peek(r: Res[Empty, Int, Int]): Int = r match { case Res.Done(a: Int) => a; case _ => 0 }""").nonEmpty)
+    assert(compileErrors("""val r: Res[Pure, Int, Int] = Res.Done(-99)""").nonEmpty)
+    assert(compileErrors("""def peek(r: Res[Pure, Int, Int]): Int = r match { case Res.Done(a: Int) => a; case _ => 0 }""").nonEmpty)
 
   test("a context cannot be made up, nor one of its own kind"):
-    assert(compileErrors("""given At[Empty, Int, Int] = new At[Empty, Int, Int]()""").nonEmpty)
-    assert(compileErrors("""given InReset[Empty, Int, Int, Int] = new InReset[Empty, Int, Int, Int]()""").nonEmpty)
+    assert(compileErrors("""given At[Pure, Int, Int] = new At[Pure, Int, Int]()""").nonEmpty)
+    assert(compileErrors("""given InReset[Pure, Int, Int, Int] = new InReset[Pure, Int, Int, Int]()""").nonEmpty)
     assert(compileErrors("""class Mine extends Ctx""").nonEmpty)
 
   test("a shift0 needs a reset: none, or a handler between, is a compile error"):

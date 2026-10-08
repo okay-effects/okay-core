@@ -20,9 +20,9 @@ def await[A](register: (Either[Throwable, A] => Unit) => Unit)(using c: Ctx, has
 
 object Async:
   /** what is under `Async` at the top: the failure, `Throws % Throwable` */
-  type Fails = Throws % Throwable +: Empty
+  type Fails = Throws % Throwable +: Pure
   /** the top's level, its answer `Unit`; the context under the failure's handler there; under `Async` there */
-  type Top = Level[Empty, Unit, Unit]
+  type Top = Level[Pure, Unit, Unit]
   type InFails = Level[Fails, Top, Unit]
   /** the context a body run by `runAsync` is written in */
   type Body = At[Async +: Fails, InFails, Unit]
@@ -37,9 +37,9 @@ object Async:
   def runAsync[A](body: Body ?=> Eff[Async +: Fails, InFails, Unit, Unit, A])(done: Either[Throwable, A] => Unit): Unit =
     // the run up to its end or to a wait, a failure raised in it `done`'s, the rest of the run aborted
     def go(p: Eff[Fails, Top, Unit, Unit, Unit]): Unit =
-      okay.zero.run[Unit](handle(new Handler[[X] =>> Eff[Empty, Unit, Unit, Unit, X], Throws % Throwable, Unit, Unit]:
+      okay.zero.run[Unit](handle(new Handler[[X] =>> Eff[Pure, Unit, Unit, Unit, X], Throws % Throwable, Unit, Unit]:
         def ret(u: Unit): Unit = ()
-        def apply[X](op: Throws[Throwable, X], k: X => Eff[Empty, Unit, Unit, Unit, Unit]): Eff[Empty, Unit, Unit, Unit, Unit] = op match
+        def apply[X](op: Throws[Throwable, X], k: X => Eff[Pure, Unit, Unit, Unit, Unit]): Eff[Pure, Unit, Unit, Unit, Unit] = op match
           case Throws.Raise(e) => done(Left(e)); pure(()))(p))
     def handled(using c: At[Fails, Top, Unit]): Eff[Fails, Top, Unit, Unit, Unit] =
       handle(new Handler[c.P, Async, A, Unit]:

@@ -41,5 +41,5 @@ final class Needy[R0 <: Row, J0, T0, Es <: AnyKind] private[zero] (p: Paths[Es, 
   def find[E[_]](r: Req[E, Es]): In[E, R0] = p.find(r)
 
 /** `A ! Es`: a program of value `A`, in any context whose row has every effect of `Es` — one, `Int ! Reader % Int`,
- * or a row of them, `Int ! Reader % Int +: Writer % String +: Empty`; their order the program's own */
+ * or a row of them, `Int ! Reader % Int +: Writer % String +: Pure`; their order the program's own */
 infix type ![A, Es <: AnyKind] = (c: Needs[Es]) ?=> c.P[A]

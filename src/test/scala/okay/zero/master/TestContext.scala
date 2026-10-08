@@ -40,20 +40,20 @@ class TestContext extends munit.FunSuite:
   test("A ! E: an effect not declared is not in reach"):
     assert(compileErrors("""def both: Int ! Reader % Int = ask[Int].flatMap(a => tell("x").map(_ => a))""").contains("No given instance"))
 
-  def both: Int ! Reader % Int +: Writer % String +: Empty = ask[Int].flatMap(a => tell(a.toString).map(_ => a + 1))
-  def both2: Int ! Reader % Int +: Writer % String +: Empty = both.flatMap(a => both.map(_ + a))
+  def both: Int ! Reader % Int +: Writer % String +: Pure = ask[Int].flatMap(a => tell(a.toString).map(_ => a + 1))
+  def both2: Int ! Reader % Int +: Writer % String +: Pure = both.flatMap(a => both.map(_ + a))
 
   test("A !! Es: a program over several effects, under their handlers in any order, among others"):
     assertEquals(run(writer[String, Int](reader(5)(both2))), (List("5", "5"), 12))
     assertEquals(run(reader(5)(writer[String, Int](both2))), (List("5", "5"), 12))
     assertEquals(run(state[(List[String], Int)](0)(reader(5)(writer[String, Int](both2))))._2, (List("5", "5"), 12))
-    def mixed: Int ! Reader % Int +: Writer % String +: Empty = twice.flatMap(a => both.map(_ + a))
+    def mixed: Int ! Reader % Int +: Writer % String +: Pure = twice.flatMap(a => both.map(_ + a))
     assertEquals(run(writer[String, Int](reader(5)(mixed))), (List("5"), 18))
 
-  test("A ! E1 +: E2 +: Empty: the effects needed a row, in any order, the context's row any"):
-    def plus: Int ! Writer % String +: Reader % Int +: Empty = ask[Int].flatMap(a => tell(a.toString).map(_ => a + 1))
-    def plus3: Int ! State % Int +: Writer % String +: Reader % Int +: Empty = plus.flatMap(a => get[Int].map(_ + a))
-    def same: Int ! Reader % Int +: Writer % String +: Empty = plus
+  test("A ! E1 +: E2 +: Pure: the effects needed a row, in any order, the context's row any"):
+    def plus: Int ! Writer % String +: Reader % Int +: Pure = ask[Int].flatMap(a => tell(a.toString).map(_ => a + 1))
+    def plus3: Int ! State % Int +: Writer % String +: Reader % Int +: Pure = plus.flatMap(a => get[Int].map(_ + a))
+    def same: Int ! Reader % Int +: Writer % String +: Pure = plus
     assertEquals(run(reader(5)(writer[String, Int](plus))), (List("5"), 6))
     assertEquals(run(writer[String, Int](reader(5)(same))), (List("5"), 6))
     assertEquals(run(state[(List[String], Int)](10)(writer[String, Int](reader(5)(plus3))))._2, (List("5"), 16))
@@ -65,5 +65,5 @@ class TestContext extends munit.FunSuite:
           .flatMap(x => tell(x.toString).map(_ => x * 10))
     assertEquals(r, (List("1", "2"), 30))
 
-  test("A ! Es: a row of effects ends in Empty — a row of effects alone is not a row"):
+  test("A ! Es: a row of effects ends in Pure — a row of effects alone is not a row"):
     assert(compileErrors("""def both: Int ! Reader % Int +: Writer % String = ask[Int]""").contains("Row"))

@@ -61,16 +61,16 @@ def pure[R <: Row, J, T, A](a: A): Eff[R, J, T, T, A] = Return(a)
 /** `delay(p)`: the program `p`, built when the loop gets to it — a tail call */
 def delay[R <: Row, J, I, O, A](p: => Eff[R, J, I, O, A]): Eff[R, J, I, O, A] = Delay(() => p)
 
-/** `run(body)`: the body at the top, under a delimiter of its own — the top's: nothing to ask over `Empty`, a `shift`
+/** `run(body)`: the body at the top, under a delimiter of its own — the top's: nothing to ask over `Pure`, a `shift`
  * up to it the body's — its answer its value */
-def run[A](body: At[Empty, A, A] ?=> Eff[Empty, A, A, A, A]): A =
+def run[A](body: At[Pure, A, A] ?=> Eff[Pure, A, A, A, A]): A =
   // to the head first: its value — no shift up to the top, the common case — or a capture up to the top, the top's
   step(body(using At()), Frames.End()) match
     case Head.Done(a) => a
-    case c: Head.Cut[i, i1, o1, x1, o, x, a] => top(c.f(x => Dollar(resumed(x, c.k), (a: A) => Return(Res.Done[Empty, A, A](a))))).value
+    case c: Head.Cut[i, i1, o1, x1, o, x, a] => top(c.f(x => Dollar(resumed(x, c.k), (a: A) => Return(Res.Done[Pure, A, A](a))))).value
 
-private def top[A](out: Cont0[A, A, Res[Empty, A, A]]): Cont0[A, A, A] =
-  Bind(out, (res: Res[Empty, A, A]) => res match
+private def top[A](out: Cont0[A, A, Res[Pure, A, A]]): Cont0[A, A, A] =
+  Bind(out, (res: Res[Pure, A, A]) => res match
     case Res.Done(a) => Return[A, A](a)
     case c: Res.Ctl[r, j, v, a, i] => top(again(c)))
 
