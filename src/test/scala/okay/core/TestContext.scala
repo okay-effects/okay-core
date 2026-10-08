@@ -57,3 +57,10 @@ class TestContext extends munit.FunSuite:
     assertEquals(run(reader(5)(writer[String, Int](plus))), (List("5"), 6))
     assertEquals(run(writer[String, Int](reader(5)(pure))), (List("5"), 6))
     assertEquals(run(state[(List[String], Int)](10)(writer[String, Int](reader(5)(plus3))))._2, (List("5"), 16))
+
+  test("a shift under a handler, no reset between: k is the rest up to the handler, its ret included; two shots"):
+    val r = run:
+      writer[String, Int]:
+        shift[Int, (List[String], Int)](k => k(1).flatMap((l1, a1) => k(2).map((l2, a2) => (l1 ++ l2, a1 + a2))))
+          .flatMap(x => tell(x.toString).map(_ => x * 10))
+    assertEquals(r, (List("1", "2"), 30))
