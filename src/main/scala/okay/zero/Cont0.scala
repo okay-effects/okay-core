@@ -40,6 +40,10 @@ object Cont0:
   /** a `shift` to the nearest delimiter: `shift0(k => Return(Ctl(f, k)))` */
   private[zero] final case class Ctl[R <: Row, J, A, I, O](f: (A => Cont0[Cont0[J, J, Res[R, J, O]], Cont0[J, J, Res[R, J, O]], I]) => Cont0[Cont0[J, J, Res[R, J, O]], Cont0[J, J, Res[R, J, O]], O])
     extends Cont0[Cont0[J, J, Res[R, J, I]], Cont0[J, J, Res[R, J, O]], A]
+  /** a `shift0` to the nearest reset: `shift0(k => f(a => passAll(k(a))).map(Done))` — `f` in the reset's place,
+   * outside it, its `k` the rest under the reset again */
+  private[zero] final case class Ctl0[R <: Row, J, T, A, S, O](f: (A => Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], S]) => Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O])
+    extends Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], S]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], O]], A]
   /** a handler of `E`: `Done∘h.ret $ body`, its answers read by `h` — the delimiter its loop answers to, itself */
   private[zero] final case class Handle[E[_], R <: Row, J, T, A, Ans](body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], A],
       h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans]
@@ -94,6 +98,7 @@ object Cont0:
     case h: Handle[e, r, j, t, a, ans] => step(enterHandle(h, Ev.Unknown, 0), k)
     case s: Reset[r, j, t, sv, o] => step(enterReset(s, Ev.Unknown, 0), k)
     case r: Resume[rb, l, i0, v, a, x, t1, y] => step(enterUnknown(r), k)
+    case c: Ctl0[r, j, t, a, s, o] => step(shift0Program(c), k)
     case Shift0(f) => Head.Cut(f, k)
     case Dollar(body, ret) => step(delimit(body, ret), k)
 

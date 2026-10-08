@@ -26,4 +26,4 @@ def shift0[A, O]: Shift0To[A, O] = Shift0To()
 final class Shift0To[A, O] private[zero] ():
   def apply[R <: Row, J, T, S](using r: InReset[R, J, T, S])(f: At[R, J, T] ?=> (A => Eff[R, J, T, T, S]) => Eff[R, J, T, T, O])
       : Eff[R, Level[R, J, T], S, O, A] =
-    capture[R, J, T, A, S, O](k => f(using At())(a => passAll(k(a))).map(o => Res.Done(o)))
+    shift0Node[R, J, T, A, S, O](f(using At()))

@@ -90,11 +90,17 @@ private[zero] def handleNode[E[_], R <: Row, J, T, A, Ans](h: Handler[[X] =>> Ef
 /** a reset: its body, every operation passed on */
 private[zero] def resetNode[R <: Row, J, T, S, O](body: Eff[R, Level[R, J, T], S, O, S]): Eff[R, J, T, T, O] = Reset(body)
 
-/** a capture up to the nearest delimiter, its outside over `R` at `T`: `k` the rest under it again, yielding its
- * answers; the body in the delimiter's place — shift0's */
-private[zero] def capture[R <: Row, J, T, A, I, O](f: (A => Eff[R, J, T, T, Res[R, Level[R, J, T], I]]) => Eff[R, J, T, T, Res[R, Level[R, J, T], O]])
-    : Eff[R, Level[R, J, T], I, O, A] =
-  Shift0[Level[R, J, T], Level[R, J, T], Res[R, Level[R, J, T], I], Level[R, Level[R, J, T], O], A](f)
+/** a `shift0` to the nearest reset, its outside over `R` at `T`: the body in the reset's place, `k` the rest under
+ * the reset again */
+private[zero] def shift0Node[R <: Row, J, T, A, S, O](f: (A => Eff[R, J, T, T, S]) => Eff[R, J, T, T, O]): Eff[R, Level[R, J, T], S, O, A] =
+  Ctl0[R, J, T, A, S, O](f)
+
+/** a `shift0`'s node as the kernel's shift0, where nothing runs it as a reset's: `k` the rest yielding its answers,
+ * its operations passed on outside, the body's value the answer */
+private[zero] def shift0Program[R <: Row, J, T, A, S, O](c: Ctl0[R, J, T, A, S, O])
+    : Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], S]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], O]], A] =
+  Shift0[Level[R, J, T], Level[R, J, T], Res[R, Level[R, J, T], S], Level[R, Level[R, J, T], O], A](
+    k => c.f(a => passAll(k(a))).map(o => Res.Done(o)))
 
 // THE MACHINE: a handler's and a reset's body run in a loop of their own, to where it leaves the delimiter — its
 // answer by `ret`; an operation answered in place, its handler's by the handlers in force; else at the delimiter, its
@@ -174,6 +180,10 @@ private inline val Nested = 64
   // shift0 and reset0, the reset answering nothing. Up to an answering handler the same, the body under the handler
   // again: an operation in k answered there in place, as the body's handler would. Up to another handler, the reading
   // below: an operation in k the body's handler's, its clause with the rest of the body
+  // a shift0 up to a reset: its body in the reset's place, the program outside — k the rest under the reset again
+  case c: Ctl0[r, j, t, a, s, o] => d match
+    case _: ByReset[r3, j3, t3, s3, v3] => c.f(x => Resume(x, unit, k, Rst[r3, j3, t3, I0, s](), ev))
+    case _ => bail(c, k, d)
   case c: Ctl[r, j, a, i, o] => d match
     case _: ByReset[r2, j2, t2, s2, v2] => shiftAtReset[r2, j2, t2, I0, V, a, i](c, k, ev, n)
     case h: ByHandler[e, r2, j2, t2, a2, i02, v2] => h.handler match
