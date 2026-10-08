@@ -15,9 +15,18 @@ class TestSealed extends munit.FunSuite:
     assert(compileErrors("""run[Int](shift[Int, Int](k => k(1)))""").isEmpty)
     assert(compileErrors("""run(reader[Int](1)(shift[Int, Int](k => k(1))))""").isEmpty)
 
-  test("the kernel is not reached"):
-    assert(compileErrors("""val k = okay.zero.Cont0.shift0""").nonEmpty)
-    assert(compileErrors("""def raw(p: Eff[Empty, Int, Int, Int, Int]): okay.zero.Cont0[Int, Int, Int] = ???""").nonEmpty)
+  test("the kernel is open as a monad of its own: raw shift0 and $, the levels in the types"):
+    assert(compileErrors("""
+      type P = Cont0[Int, Int, Int]
+      val p: P = Cont0.shift0[Int, Int, Int, P, Int](k => k(10).flatMap(k)).map(_ + 1).reset0
+      assert(p.value == 12)""").isEmpty)
+    // its loop's machinery is not
+    assert(compileErrors("""Cont0.step(Cont0.pure[Int, Int](1), ???)""").nonEmpty)
+
+  test("no bridge between Eff and Cont0: a program with effects is not a kernel program, nor made of one"):
+    assert(compileErrors("""def raw(p: Eff[Empty, Int, Int, Int, Int]): Cont0[Int, Int, Int] = p""").nonEmpty)
+    assert(compileErrors("""def cooked(p: Cont0[Level[Empty, Int, Int], Level[Empty, Int, Int], Int]): Eff[Empty, Int, Int, Int, Int] = p""").nonEmpty)
+    assert(compileErrors("""run(reader[Int](1)(Cont0.dollar[Int, Int, Int, Int, Int](identity)(ask[Int])))""").nonEmpty)
 
   test("a request cannot be made up or taken apart"):
     assert(compileErrors("""val r: Res[Empty, Int, Int] = Res.Done(-99)""").nonEmpty)

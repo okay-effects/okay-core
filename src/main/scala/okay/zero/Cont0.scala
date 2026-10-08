@@ -12,11 +12,12 @@ import scala.annotation.tailrec
  *  - `shift0(k => e)`: `k` the rest up to the nearest delimiter and the delimiter — `λx. ret $ K[x]`; `e` runs in
  *    the delimiter's place, outside it.
  *
- * Four nodes; `step` runs one to its head with a stack of frames, in constant stack. THE KERNEL, hidden: effects
- * and control are built on it in this package, and nothing outside reaches it — a raw delimiter would catch the
- * requests on their way to the handlers.
+ * Four nodes; `step` runs one to its head with a stack of frames, in constant stack. THE KERNEL, open as a monad of
+ * its own — raw shift0 and `$`, the levels named in the types. Effects and control are built on it in this package
+ * behind `Eff`, an opaque type: no `Eff` is a `Cont0`, none is made of one, so no raw delimiter reaches a request
+ * on its way to a handler. The loop's machinery, `Frames`, `Head`, `step`, stays this package's.
  */
-private[zero] enum Cont0[I, O, A]:
+enum Cont0[I, O, A]:
   case Return[S, A](a: A) extends Cont0[S, S, A]
   case Bind[I, T, O, A, B](m: Cont0[T, O, A], f: A => Cont0[I, T, B]) extends Cont0[I, O, B]
   case Shift0[I1, O1, X1, O, A](f: (A => Cont0[I1, O1, X1]) => O) extends Cont0[Cont0[I1, O1, X1], O, A]
@@ -43,7 +44,7 @@ private[zero] enum Head[I, O, A]:
   case Done[S, A](a: A) extends Head[S, S, A]
   case Cut[I, I1, O1, X1, O, X, A](f: (X => Cont0[I1, O1, X1]) => O, k: Frames[X, I, Cont0[I1, O1, X1], A]) extends Head[I, O, A]
 
-private[zero] object Cont0:
+object Cont0:
   def pure[S, A](a: A): Cont0[S, S, A] = Return(a)
   def shift0[I1, O1, X1, O, A](f: (A => Cont0[I1, O1, X1]) => O): Cont0[Cont0[I1, O1, X1], O, A] = Shift0(f)
   def dollar[I, I2, O2, B, A](ret: A => I)(body: Cont0[I, Cont0[I2, O2, B], A]): Cont0[I2, O2, B] = Dollar(body, ret)
@@ -53,7 +54,7 @@ private[zero] object Cont0:
     def reset0: Cont0[I2, O2, B] = Dollar(body, Return(_))
 
   /** the program to its head: binds followed, a delimiter entered */
-  @tailrec def step[I, T, O, X, A](c: Cont0[T, O, X], k: Frames[X, I, T, A]): Head[I, O, A] = c match
+  @tailrec private[zero] def step[I, T, O, X, A](c: Cont0[T, O, X], k: Frames[X, I, T, A]): Head[I, O, A] = c match
     case Return(a) => k match
       case Frames.End() => Head.Done(a)
       case Frames.Then(f, next) => step(f(a), next)
