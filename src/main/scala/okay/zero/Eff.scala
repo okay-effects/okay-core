@@ -97,18 +97,19 @@ private[zero] def capture[R <: Row, J, T, A, I, O](f: (A => Eff[R, J, T, T, Res[
 // own by the clause, another's passed on outside; a resumption, a handler, a reset entered. What it does not take —
 // a `shift`, a raw capture — goes to the delimiters' reading below, the delimiter's answers read as values
 
-/** a delimiter the machine runs: a handler of `E` (its body over `E +: R`, the outside over `R` at `T`, at the answer
- * `Ans` — `ret` the handler's, or none for a shift's body), or a reset (its body over `R`, written at `S`) */
-private[zero] enum Delim[RB <: Row, L, I0, V, A]:
-  case Hand[E[_], R <: Row, J, T, A, Ans](h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, ?, Ans], ret: A => Ans)
-    extends Delim[E +: R, Cont0[J, J, Res[R, J, T]], Ans, Ans, A]
-  case Rst[R <: Row, J, T, S, V]() extends Delim[R, Cont0[J, J, Res[R, J, T]], S, V, S]
-
 /** THE HANDLERS IN FORCE around a loop as it runs, innermost first, one per effect of its row — or not known, past a
  * delimiter the machine did not enter: an operation then goes the way it always may, to the delimiters */
-private[zero] enum Ev[R <: Row]:
-  case Unknown[R <: Row]() extends Ev[R]
+private[zero] enum Ev[+R <: Row]:
+  case Unknown extends Ev[Nothing]
   case Entry[E[_], T <: Row](h: Handler[?, E, ?, ?], outer: Ev[T]) extends Ev[E +: T]
+
+/** the handlers in force inside a handler `h` entered with `ev` outside: `h` in front — or, if it answers nothing
+ * in place and nothing is known outside, nothing known still: a lookup through it finds the same */
+private def within[E[_], R <: Row](h: Handler[?, E, ?, ?], ev: Ev[R]): Ev[E +: R] = ev match
+  case Ev.Unknown => h match
+    case _: Answering[?, E, ?, ?] => Ev.Entry(h, ev)
+    case _ => Ev.Unknown
+  case _ => Ev.Entry(h, ev)
 
 /** the handler at the path, if it answers in place — `shift0 k. k(v)` is `v` */
 @tailrec private def inPlace[E[_], R <: Row](in: In[E, R], ev: Ev[R]): Answering[?, E, ?, ?] | Null = ev match
@@ -133,59 +134,85 @@ private[zero] enum Ev[R <: Row]:
   // the handler at the operation's path answering in place, its value at once; not known so, to the delimiter
   case o: OpK[r, j, t, e, x, i, b] => inPlace[e, RB](o.in, ev) match
     case null => k match
-      case Frames.End() => route[RB, L, I0, V, A, e, x](o.op, o.in, o.k, d)
-      case _ => route[RB, L, I0, V, A, e, x](o.op, o.in, Frames.Then(o.k, k), d)
+      case Frames.End() => route[RB, L, I0, V, A, e, x](o.op, o.in, o.k, d, ev)
+      case _ => route[RB, L, I0, V, A, e, x](o.op, o.in, Frames.Then(o.k, k), d, ev)
     case v => deliver[RB, L, I0, V, A, T, X](o.k(v.value(o.op)), k, d, ev)
   case o: Op[r, j, t, e, x] => inPlace[e, RB](o.in, ev) match
-    case null => route[RB, L, I0, V, A, e, x](o.op, o.in, k, d)
+    case null => route[RB, L, I0, V, A, e, x](o.op, o.in, k, d, ev)
     case v => deliver[RB, L, I0, V, A, T, X](Return(v.value(o.op)), k, d, ev)
   case m: Map[i, o, a, b] => deliver[RB, L, I0, V, A, T, a](m.m, Frames.Mapped(m.f, k), d, ev)
   case dl: Delay[i, o, a] => deliver[RB, L, I0, V, A, T, X](dl.c(), k, d, ev)
-  case r: Resume[rb, l, i0, v, a, x] => deliver[RB, L, I0, V, A, T, X](enter[rb, l, i0, v, a, x](r, inner[rb, RB, L, V, i0, v, a](r.d, ev)), k, d, ev)
+  case r: Resume[rb, l, i0, v, a, x] => deliver[RB, L, I0, V, A, T, X](enter[rb, l, i0, v, a, x](r, inner[rb, RB, L, V, i0, v, a](r.d, ev, r.ev)), k, d, ev)
   case h: Handle[e, r, j, t, a, ans] => deliver[RB, L, I0, V, A, T, X](enterHandle[e, r, j, t, a, ans](h, ev), k, d, ev)
   case s: Reset[r, j, t, sv, o] => deliver[RB, L, I0, V, A, T, X](enterReset[r, j, t, sv, o](s, ev), k, d, ev)
   case _ => bail(c, k, d)
 
+/** the loop while nothing is bound under the body — a resumption's, a handler's at its entry, a tail call's — the
+ * common heads taken with no stack made; `deliver` from the first bind on */
+@tailrec private def deliver0[RB <: Row, L, I0, V, A](c: Cont0[Cont0[L, L, Res[RB, L, I0]], Cont0[L, L, Res[RB, L, V]], A],
+    d: Delim[RB, L, I0, V, A], ev: Ev[RB]): Cont0[L, L, V] = c match
+  case b: Bind[i, t, o, a, bb] => b.m match
+    case r: Return[s, aa] => deliver0[RB, L, I0, V, A](b.f(r.a), d, ev)
+    case _ => deliver[RB, L, I0, V, A, t, a](b.m, Frames.Then(b.f, Frames.End()), d, ev)
+  case r: Return[s, a] => Return[L, V](ret(d, r.a))
+  case o: OpK[r, j, t, e, x, i, b] => inPlace[e, RB](o.in, ev) match
+    case null => route[RB, L, I0, V, A, e, x](o.op, o.in, o.k, d, ev)
+    case v => deliver0[RB, L, I0, V, A](o.k(v.value(o.op)), d, ev)
+  // an operation the body's last: answered in place, its value the body's; else its rest the value itself — a lambda
+  // closing over nothing, one for all
+  case o: Op[r, j, t, e, x] => inPlace[e, RB](o.in, ev) match
+    case null => route[RB, L, I0, V, A, e, x](o.op, o.in, (x: x) => Return[Cont0[L, L, Res[RB, L, I0]], A](x), d, ev)
+    case v => Return[L, V](ret(d, v.value(o.op)))
+  case dl: Delay[i, o, a] => deliver0[RB, L, I0, V, A](dl.c(), d, ev)
+  case r: Resume[rb, l, i0, v, a, x] => deliver0[RB, L, I0, V, A](enter[rb, l, i0, v, a, x](r, inner[rb, RB, L, V, i0, v, a](r.d, ev, r.ev)), d, ev)
+  case h: Handle[e, r, j, t, a, ans] => deliver0[RB, L, I0, V, A](enterHandle[e, r, j, t, a, ans](h, ev), d, ev)
+  case s: Reset[r, j, t, sv, o] => deliver0[RB, L, I0, V, A](enterReset[r, j, t, sv, o](s, ev), d, ev)
+  case _ => deliver[RB, L, I0, V, A, Cont0[L, L, Res[RB, L, I0]], A](c, Frames.End(), d, ev)
+
 /** the body's value to the delimiter's answer */
 private def ret[RB <: Row, L, I0, V, A](d: Delim[RB, L, I0, V, A], a: A): I0 = d match
-  case h: Delim.Hand[e, r, j, t, a, ans] => h.ret(a)
-  case _: Delim.Rst[r, j, t, s, v] => a
+  case h: Handle[e, r, j, t, a, ans] => h.h.ret(a)
+  case _: Reset[r, j, t, s, o] => a
 
 /** an operation not answered in place, at the delimiter: a handler's own — its clause, `k` the rest under it again;
  * another's — on outside, one handler shorter, or as it is past a reset */
 private def route[RB <: Row, L, I0, V, A, E[_], X](op: E[X], in: In[E, RB], k: X => Cont0[Cont0[L, L, Res[RB, L, I0]], Cont0[L, L, Res[RB, L, V]], A],
-    d: Delim[RB, L, I0, V, A]): Cont0[L, L, V] = d match
-  case h: Delim.Hand[e, r, j, t, a, ans] => in match
-    case In.Here() => h.h(op, Resumed(k, d))
-    case In.There(o) => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], ans](op, o, Resumed(k, d))
-  case _: Delim.Rst[r, j, t, s, v] => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], v](op, in, Resumed(k, d))
+    d: Delim[RB, L, I0, V, A], ev: Ev[RB]): Cont0[L, L, V] = d match
+  case h: Handle[e, r, j, t, a, ans] => in match
+    case In.Here() => h.h(op, Resumed(k, d, ev))
+    case In.There(o) => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], ans](op, o, Resumed(k, d, ev))
+  case _: Reset[r, j, t, s, o] => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], o](op, in, Resumed(k, d, ev))
 
 /** a captured rest as `k`: applied, a `Resume` — lazily, so a clause that keeps it runs nothing by making it */
-private final class Resumed[RB <: Row, L, I0, V, A, X](k: X => Cont0[Cont0[L, L, Res[RB, L, I0]], Cont0[L, L, Res[RB, L, V]], A], d: Delim[RB, L, I0, V, A])
-    extends (X => Cont0[L, L, V]):
-  def apply(x: X): Cont0[L, L, V] = Resume(x, k, d)
+private final class Resumed[RB <: Row, L, I0, V, A, X](k: X => Cont0[Cont0[L, L, Res[RB, L, I0]], Cont0[L, L, Res[RB, L, V]], A],
+    d: Delim[RB, L, I0, V, A], ev: Ev[RB]) extends (X => Cont0[L, L, V]):
+  def apply(x: X): Cont0[L, L, V] = Resume(x, k, d, ev)
 
-/** the handlers in force inside the delimiter `d`, those outside it `ev`: a handler's in front, a reset's the same */
-private def inner[RB <: Row, RO <: Row, LO, VO, I0, V, A](d: Delim[RB, Cont0[LO, LO, Res[RO, LO, VO]], I0, V, A], ev: Ev[RO]): Ev[RB] = d match
-  case h: Delim.Hand[e, r, j, t, a, ans] => Ev.Entry(h.h, ev)
-  case _: Delim.Rst[r, j, t, s, v] => ev
+/** the handlers in force inside the delimiter `d`, those outside it `ev`: a handler's in front, a reset's the same —
+ * those of when the rest was captured, `was`, if the ones outside are those it had */
+private def inner[RB <: Row, RO <: Row, LO, VO, I0, V, A](d: Delim[RB, Cont0[LO, LO, Res[RO, LO, VO]], I0, V, A], ev: Ev[RO], was: Ev[RB]): Ev[RB] =
+  d match
+    case h: Handle[e, r, j, t, a, ans] => was match
+      case w: Ev.Entry[e2, t2] if w.outer eq ev => was
+      case _ => within(h.h, ev)
+    case _: Reset[r, j, t, s, o] => ev
 
 /** a resumption: its rest under its delimiter again, in a loop of its own */
 private[zero] def enter[RB <: Row, L, I0, V, A, X](r: Resume[RB, L, I0, V, A, X], ev: Ev[RB]): Cont0[L, L, V] =
-  deliver(r.k(r.x), Frames.End(), r.d, ev)
+  deliver0(r.k(r.x), r.d, ev)
 
-/** a handler entered: its body in a loop of its own, the handler in front of those in force */
+/** a handler entered: its body in a loop of its own, the node its delimiter, the handler in front of those in force */
 private[zero] def enterHandle[E[_], R <: Row, J, T, A, Ans](h: Handle[E, R, J, T, A, Ans], ev: Ev[R]): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans] =
-  deliver(h.body, Frames.End(), Delim.Hand[E, R, J, T, A, Ans](h.h, h.h.ret), Ev.Entry(h.h, ev))
+  deliver0(h.body, h, within(h.h, ev))
 
-/** a reset entered: its body in a loop of its own */
+/** a reset entered: its body in a loop of its own, the node its delimiter */
 private[zero] def enterReset[R <: Row, J, T, S, O](s: Reset[R, J, T, S, O], ev: Ev[R]): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O] =
-  deliver(s.body, Frames.End(), Delim.Rst[R, J, T, S, O](), ev)
+  deliver0(s.body, s, ev)
 
 /** a resumption entered with nothing known of the handlers around it — by the kernel's loop */
 private[zero] def enterUnknown[RB <: Row, L, I0, V, A, X](r: Resume[RB, L, I0, V, A, X]): Cont0[L, L, V] = r.d match
-  case h: Delim.Hand[e, rr, j, t, a, ans] => enter(r, Ev.Entry(h.h, Ev.Unknown[rr]()))
-  case _: Delim.Rst[rr, j, t, s, v] => enter(r, Ev.Unknown())
+  case h: Handle[e, rr, j, t, a, ans] => enter(r, inner[RB, rr, j, t, I0, V, A](r.d, Ev.Unknown, r.ev))
+  case _: Reset[rr, j, t, s, o] => enter(r, Ev.Unknown)
 
 /** what the loop does not take, a `shift` or a raw capture: the rest under the delimiter as a `$` of the kernel, its
  * answers read as values — the delimiter's reading, the same semantics */
@@ -193,8 +220,8 @@ private def bail[RB <: Row, L, I0, V, A, T, X](c: Cont0[T, Cont0[L, L, Res[RB, L
     d: Delim[RB, L, I0, V, A]): Cont0[L, L, V] =
   val out: Cont0[L, L, Res[RB, L, V]] = Dollar(Bind(c, k), (a: A) => Return(Res.Done[RB, L, I0](ret(d, a))))
   d match
-    case h: Delim.Hand[e, r, j, t, a, ans] => readHand[e, r, j, t, V](out, h.h)
-    case _: Delim.Rst[r, j, t, s, v] => passAll[r, j, t, V](out)
+    case h: Handle[e, r, j, t, a, ans] => readHand[e, r, j, t, V](out, h.h)
+    case _: Reset[r, j, t, s, o] => passAll[r, j, t, V](out)
 
 // THE DELIMITERS' READING of their answers as values — for what the machine does not take, and for shift0
 

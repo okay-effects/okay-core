@@ -44,16 +44,18 @@ object Cont0:
   /** a `shift` to the nearest delimiter: `shift0(k => Return(Ctl(f, k)))` */
   private[zero] final case class Ctl[R <: Row, J, A, I, O](f: (A => Cont0[Cont0[J, J, Res[R, J, O]], Cont0[J, J, Res[R, J, O]], I]) => Cont0[Cont0[J, J, Res[R, J, O]], Cont0[J, J, Res[R, J, O]], O])
     extends Cont0[Cont0[J, J, Res[R, J, I]], Cont0[J, J, Res[R, J, O]], A]
-  /** a handler of `E`: `Done∘h.ret $ body`, its answers read by `h` */
+  /** a handler of `E`: `Done∘h.ret $ body`, its answers read by `h` — the delimiter its loop answers to, itself */
   private[zero] final case class Handle[E[_], R <: Row, J, T, A, Ans](body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], A],
       h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans]
+      with Delim[E +: R, Cont0[J, J, Res[R, J, T]], Ans, Ans, A]
   /** a reset: `Done $ body`, every operation in it passed on */
   private[zero] final case class Reset[R <: Row, J, T, S, O](body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], S]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], O]], S])
     extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O]
+    with Delim[R, Cont0[J, J, Res[R, J, T]], S, O, S]
   /** a captured rest `k` applied to `x`: the rest under its delimiter `d` again, the handlers in force those where the
-   * node runs */
+   * node runs — `ev`, those of when it was captured, kept if the ones outside are the same */
   private[zero] final case class Resume[RB <: Row, L, I0, V, A, X](x: X, k: X => Cont0[Cont0[L, L, Res[RB, L, I0]], Cont0[L, L, Res[RB, L, V]], A],
-      d: Delim[RB, L, I0, V, A]) extends Cont0[L, L, V]
+      d: Delim[RB, L, I0, V, A], ev: Ev[RB]) extends Cont0[L, L, V]
 
   /** `c.flatMap(f)`: an operation bound one node, `OpK` */
   private[zero] def bind[I, O, A, I2, B](c: Cont0[I, O, A], f: A => Cont0[I2, I, B]): Cont0[I2, O, B] = c match
@@ -81,8 +83,8 @@ object Cont0:
     case o: Op[r, j, t, e, x] => Head.Cut[I, j, j, Res[r, j, t], Cont0[j, j, Res[r, j, t]], x, A](kk => Return(Res.Req(o.op, o.in, kk)), k)
     case o: OpK[r, j, t, e, x, i, b] => Head.Cut[I, j, j, Res[r, j, t], Cont0[j, j, Res[r, j, t]], x, A](kk => Return(Res.Req(o.op, o.in, kk)), Frames.Then(o.k, k))
     case c: Ctl[r, j, a, i, o] => Head.Cut[I, j, j, Res[r, j, i], Cont0[j, j, Res[r, j, o]], a, A](kk => Return(Res.Ctl(c.f, kk)), k)
-    case h: Handle[e, r, j, t, a, ans] => step(enterHandle(h, Ev.Unknown()), k)
-    case s: Reset[r, j, t, sv, o] => step(enterReset(s, Ev.Unknown()), k)
+    case h: Handle[e, r, j, t, a, ans] => step(enterHandle(h, Ev.Unknown), k)
+    case s: Reset[r, j, t, sv, o] => step(enterReset(s, Ev.Unknown), k)
     case r: Resume[rb, l, i0, v, a, x] => step(enterUnknown(r), k)
     case Shift0(f) => Head.Cut(f, k)
     case Dollar(body, ret) => step(delimit(body, ret), k)
@@ -105,6 +107,10 @@ object Cont0:
     def value: A = step(c, Frames.End()) match
       case Head.Done(a) => a
       case Head.Cut(f, k) => f(x => Dollar(resumed(x, k), identity))
+
+/** A DELIMITER the machine runs, its own node: a handler of `E` (its body over `E +: R`, the outside over `R` at `T`,
+ * at the answer `Ans`), or a reset (its body over `R`, written at `S`) */
+private[zero] sealed trait Delim[RB <: Row, L, I0, V, A]
 
 /** what a value goes through, innermost first; as a function, the rest */
 private[zero] enum Frames[A, I, T, B] extends (A => Cont0[I, T, B]):
