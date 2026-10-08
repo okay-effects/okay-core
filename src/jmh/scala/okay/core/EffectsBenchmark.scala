@@ -39,6 +39,12 @@ class EffectsBenchmark:
   @Benchmark
   def stateGetPutBang(): Int = run(state[Int](0)(countingBang(n)))._1
 
+  /** `Int ! State % Int` whose path is found once, the loop `counting` with it: what finding it per operation costs */
+  def countingHoisted(i: Int): Int ! State % Int = counting(i)
+
+  @Benchmark
+  def stateGetPutHoisted(): Int = run(state[Int](0)(countingHoisted(n)))._1
+
   def telling(i: Int)(using c: Effects, w: Writer % Int :? c.R): c.M[c.R, c.S, c.S, Unit] =
     if i == 0 then c.pure(()) else tell(i).flatMap(_ => telling(i - 1))
 

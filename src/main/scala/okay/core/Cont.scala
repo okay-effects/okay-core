@@ -44,7 +44,7 @@ sealed trait InLow:
  * for speed — an operation with its rest, a map, a tail call, a resumed stack, each without a bind. `step` reads
  * the nine, to the head, with a stack of frames.
  */
-enum Cont[R <: Row, I, O, A] extends Ix[Cont, R, I, O, A]:
+enum Cont[R <: Row, I, O, A]:
   case Return[R <: Row, S, A](a: A) extends Cont[R, S, S, A]
   /** an operation of `E`, at its path in the row: a leaf, to whoever folds the tree */
   case Inject[E[_], R <: Row, S, X](op: E[X], in: In[E, R]) extends Cont[R, S, S, X]

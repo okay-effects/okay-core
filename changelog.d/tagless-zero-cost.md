@@ -17,13 +17,15 @@
   (`using c`), and a recursive program cannot be expanded by `inline`.
 - So `IxMonad`, `Context`, `Effects` are abstract classes; `Control` stays a
   trait, so that an instance can have both (`Delimited extends Effects with
-  Control`, which `At` is — named, since `Effects & Control` made the
-  compiler fail, an assertion in `LazyRef`, Scala 3.9.0).
-- And a program's bind is its own: `type M[…] <: Ix[M, …]`, an abstract
-  class with `flatMap` and `map`, which `Cont` extends — the instance has
-  `pure`, `delay`, `perform`, `handle`, not the bind (`m.flatMap(f)` one call
-  to the program's class). The CPS reference wraps its function in a class.
-  Cont.flatMap 61 → 32 bytecode bytes (`Cont.bound`), inlined at depth.
+  Control`, which `At` is; with the F-bound below, `Effects & Control` made
+  the compiler fail, an assertion in `LazyRef`, Scala 3.9.0).
+- Tried on the way and taken out after (needs-one-object): a program's bind
+  its own, `type M[…] <: Ix[M, …]` — it moved nothing (tagless 66 µs with it,
+  under traits), and its F-bound made the compiler fail again as soon as a
+  class mixed `At` with `Needs`. The bind is the instance's extension again,
+  a call to an abstract class's method now, as fast. Kept: Cont.flatMap 61 →
+  32 bytecode bytes (`Cont.bound`), inlined at depth; the CPS reference's
+  function in a class.
 - Measured, full run kept (bench.d/2026-10-08T14-56-53_0d35d1b+.csv, a quiet
   machine, errors ≤ 2%): against 49aa8d1, from before the classes, no
   benchmark slower, allocation equal in all; tailcallHandled 55.7 µs,

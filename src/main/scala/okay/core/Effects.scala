@@ -7,18 +7,13 @@ import Cont.*
  * values of; `Cont` is one, a test's CPS functions another. Final tagless: a program is written against the
  * operations, not the tree */
 abstract class IxMonad:
-  type M[R <: Row, I, O, A] <: Ix[M, R, I, O, A]
+  type M[R <: Row, I, O, A]
   def pure[R <: Row, S, A](a: A): M[R, S, S, A]
   /** `delay(m)`: the program `m`, built when it is run — a tail call */
   def delay[R <: Row, I, O, A](m: => M[R, I, O, A]): M[R, I, O, A]
-
-/** A PROGRAM of the monad `M`: its bind and its map are its own, a program's methods — not the instance's. A bind
- * is the commonest call there is; on the program it is one call to the program's class, the instance not in it
- * (as an extension of the instance it was three, through the instance and the bridges erasure makes, and the JIT
- * gave up inlining them in a tight loop: ~1.2 ns an operation, DispatchBenchmark) */
-abstract class Ix[M[X <: Row, I, O, A] <: Ix[M, X, I, O, A], R <: Row, I, O, A]:
-  def flatMap[I2, B](f: A => M[R, I2, I, B]): M[R, I2, O, B]
-  def map[B](f: A => B): M[R, I, O, B]
+  extension [R <: Row, I, O, A](m: M[R, I, O, A])
+    def flatMap[I2, B](f: A => M[R, I2, I, B]): M[R, I2, O, B]
+    def map[B](f: A => B): M[R, I, O, B]
 
 /** THE CONTEXT a program is written in: the monad, the row `R` there and the answer `S` at this point — what an
  * operation and a `shift` take their types from, by its members: `c.M`, `c.R`, `c.S`. The context IS the
@@ -38,6 +33,9 @@ abstract class Effects extends Context:
   def under[R2 <: Row, S2]: Under[R2, S2]
   def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X]
   def handle[E[_], T <: Row, Q, A, Ans](body: M[E +: T, Ans, Ans, A], h: Handler[M, E, T, Q, A, Ans]): M[T, Q, Q, Ans]
+  /** this context with the paths of the effects a program needs: the context of an `A ! Es` */
+  type Needing[Es <: AnyKind] <: Needs[Es] { type M[X <: Row, I, O, A] = Effects.this.M[X, I, O, A]; type R = Effects.this.R; type S = Effects.this.S }
+  def needing[Es <: AnyKind](p: Paths[Es, R]): Needing[Es]
 
 /** an effect of two parameters, its first given: `Reader % Int` is the effect `[X] =>> Reader[Int, X]` — the
  * effect in a row, a path, a handler, by name */
@@ -67,30 +65,39 @@ object Req:
   given only[E[_]]: Req[E, E] = Only()
   given path[E[_], Es <: Row](using in: In[E, Es]): Req[E, Es] = Path(in)
 
-/** the context with every effect a program needs, `Es` — one effect, or a row of them — each found in its own row:
- * the context it is made of, every operation its */
-sealed trait Needs[Es <: AnyKind] extends Effects:
+/** THE PATHS of the effects a program needs, `Es` — one effect, or a row of them — in the row `R` */
+sealed abstract class Paths[Es <: AnyKind, R <: Row]:
+  def find[E[_]](r: Req[E, Es]): In[E, R]
+  /** an `At` at the row `R` with these paths kept in it — the context of an `A ! Es` over `Cont` */
+  def at[S0]: Effects.At[R, S0] & Needs[Es]
+object Paths:
+  /** one effect, `E0`, at its path */
+  final class One[E0[_], R <: Row](val head: In[E0, R]) extends Paths[E0, R]:
+    // `Only`: a `Path` is into a row, `E0` is an effect — of another kind, which the checker does not tell apart
+    def find[E[_]](r: Req[E, E0]): In[E, R] = (r: @unchecked) match
+      case Req.Only() => head
+    def at[S0]: Effects.At[R, S0] & Needs[E0] = Effects.NeedyOne(head)
+  /** a row of them, `Pure` at the end, each at its path */
+  final class Of[Es <: Row, R <: Row](val sub: Sub[Es, R]) extends Paths[Es, R]:
+    // `Path`: `Only` is for one effect, `Es` is a row — of another kind, as above
+    def find[E[_]](r: Req[E, Es]): In[E, R] = (r: @unchecked) match
+      case Req.Path(in) => sub(in)
+    def at[S0]: Effects.At[R, S0] & Needs[Es] = Effects.NeedyRow(sub)
+  given one[E0[_], R <: Row](using head: In[E0, R]): Paths[E0, R] = One(head)
+  given row[Es <: Row, R <: Row](using sub: Sub[Es, R]): Paths[Es, R] = Of(sub)
+
+/** THE CONTEXT WITH THE EFFECTS A PROGRAM NEEDS, `Es`, found in its row: a context of the instance's own making,
+ * `c.needing(paths)` — for `Cont`, an `At` itself, so an operation is the context's own call, nothing forwarded */
+trait Needs[Es <: AnyKind] extends Effects:
   def find[E[_]](r: Req[E, Es]): In[E, R]
 object Needs:
-  /** one effect, `E0`, at its path */
-  given one[E0[_]](using c: Effects, head: In[E0, c.R])
-    : (Needs[E0] { type M[X <: Row, I, O, A] = c.M[X, I, O, A]; type R = c.R; type S = c.S }) =
-    new Forward[E0, c.type](c):
-      // `Only`: a `Path` is into a row, `E0` is an effect — of another kind, which the checker does not tell apart
-      def find[E[_]](r: Req[E, E0]): In[E, R] = (r: @unchecked) match
-        case Req.Only() => head
-  /** a row of them, `Pure` at the end, each at its path */
-  given row[Es <: Row](using c: Effects, sub: Sub[Es, c.R])
-    : (Needs[Es] { type M[X <: Row, I, O, A] = c.M[X, I, O, A]; type R = c.R; type S = c.S }) =
-    new Forward[Es, c.type](c):
-      // `Path`: `Only` is for one effect, `Es` is a row — of another kind, as above
-      def find[E[_]](r: Req[E, Es]): In[E, R] = (r: @unchecked) match
-        case Req.Path(in) => sub(in)
+  given all[Es <: AnyKind](using c: Effects, p: Paths[Es, c.R])
+    : (Needs[Es] { type M[X <: Row, I, O, A] = c.M[X, I, O, A]; type R = c.R; type S = c.S }) = c.needing(p)
   /** an effect needed: its path in the context's row */
   given found[E[_], Es <: AnyKind](using n: Needs[Es], r: Req[E, Es]): In[E, n.R] = n.find(r)
 
-  /** every operation the context's `c` */
-  private abstract class Forward[Es <: AnyKind, C <: Effects & Singleton](val c: C) extends Needs[Es]:
+  /** a `Needs` for an instance that has no way of its own: every operation the context's `c`, forwarded */
+  abstract class Forward[Es <: AnyKind, C <: Effects & Singleton](val c: C) extends Needs[Es]:
     type M[X <: Row, I, O, A] = c.M[X, I, O, A]
     type R = c.R
     type S = c.S
@@ -98,9 +105,14 @@ object Needs:
     def under[R2 <: Row, S2]: Under[R2, S2] = c.under
     def pure[X <: Row, S2, A](a: A): M[X, S2, S2, A] = c.pure(a)
     def delay[X <: Row, I, O, A](m: => M[X, I, O, A]): M[X, I, O, A] = c.delay(m)
+    extension [X <: Row, I, O, A](m: M[X, I, O, A])
+      def flatMap[I2, B](f: A => M[X, I2, I, B]): M[X, I2, O, B] = c.flatMap(m)(f)
+      def map[B](f: A => B): M[X, I, O, B] = c.map(m)(f)
     def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = c.perform(op, in)
     def handle[E[_], T <: Row, Q, A, Ans](body: M[E +: T, Ans, Ans, A], h: Handler[M, E, T, Q, A, Ans]): M[T, Q, Q, Ans] =
       c.handle(body, h)
+    type Needing[Es2 <: AnyKind] = c.Needing[Es2]
+    def needing[Es2 <: AnyKind](p: Paths[Es2, R]): Needing[Es2] = c.needing(p)
 
 /** `A ! Es`: a program of value `A`, in any context whose row has every effect of `Es` — one, `Int ! Reader % Int`,
  * or a row of them, `Int ! Reader % Int +: Writer % String +: Pure`; their order the program's own, the context's
@@ -110,7 +122,7 @@ infix type ![A, Es <: AnyKind] = (c: Needs[Es]) ?=> c.M[c.R, c.S, c.S, A]
 
 object Effects:
   /** THE INSTANCE over `Cont`, the context at the row `R0`, the answer `S0`: effects and control both */
-  final class At[R0 <: Row, S0] extends Delimited:
+  class At[R0 <: Row, S0] extends Delimited:
     type M[R <: Row, I, O, A] = Cont[R, I, O, A]
     type R = R0
     type S = S0
@@ -118,11 +130,29 @@ object Effects:
     def under[R2 <: Row, S2]: At[R2, S2] = At()
     def pure[X <: Row, S2, A](a: A): Cont[X, S2, S2, A] = Return(a)
     def delay[X <: Row, I, O, A](m: => Cont[X, I, O, A]): Cont[X, I, O, A] = Delay(() => m)
+    extension [X <: Row, I, O, A](m: Cont[X, I, O, A])
+      def flatMap[I2, B](f: A => Cont[X, I2, I, B]): Cont[X, I2, O, B] = m.flatMap(f)
+      def map[B](f: A => B): Cont[X, I, O, B] = m.map(f)
     def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): Cont[R2, S2, S2, X] = Inject(op, in)
     def handle[E[_], T <: Row, Q, A, Ans](body: Cont[E +: T, Ans, Ans, A], h: Handler[Cont, E, T, Q, A, Ans]): Cont[T, Q, Q, Ans] =
       body.handle(h)
+    // an `At` itself: `perform` and the rest the one implementation there is, called straight
+    type Needing[Es <: AnyKind] = At[R0, S0] & Needs[Es]
+    // the path kept in the context itself, no `Paths` between: one load an operation, not two
+    def needing[Es <: AnyKind](p: Paths[Es, R0]): At[R0, S0] & Needs[Es] = p.at
     def shift[X <: Row, I, O, A](f: (A => Cont[X, O, O, I]) => Cont[X, O, O, O]): Cont[X, I, O, A] = Shift(f)
     def reset[X <: Row, Q, S2, O, A](body: Cont[X, S2, O, A], ret: A => S2): Cont[X, Q, Q, O] = Reset(body, ret)
+
+  /** an `At` with the path of the one effect a program needs */
+  final class NeedyOne[R0 <: Row, S0, E0[_]](head: In[E0, R0]) extends At[R0, S0] with Needs[E0]:
+    // `Only`, as in `Paths.One`
+    def find[E[_]](r: Req[E, E0]): In[E, R0] = (r: @unchecked) match
+      case Req.Only() => head
+  /** an `At` with the paths of the row of effects a program needs */
+  final class NeedyRow[R0 <: Row, S0, Es <: Row](sub: Sub[Es, R0]) extends At[R0, S0] with Needs[Es]:
+    // `Path`, as in `Paths.Of`
+    def find[E[_]](r: Req[E, Es]): In[E, R0] = (r: @unchecked) match
+      case Req.Path(in) => sub(in)
 
   /** `run(body)`: the body at the top over `Cont`, nothing to perform, its answer its value */
   def run[A](body: At[Pure, A] ?=> Cont[Pure, A, A, A]): A = body(using At()).value
