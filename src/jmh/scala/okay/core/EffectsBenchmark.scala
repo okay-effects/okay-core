@@ -25,7 +25,7 @@ class EffectsBenchmark:
   @Param(Array("1000"))
   var n: Int = 0
 
-  def counting(i: Int)(using c: Effects, s: Has[State % Int, c.R]): Cont[c.R, c.S, c.S, Int] =
+  def counting(i: Int)(using c: Effects, s: In[State % Int, c.R]): Cont[c.R, c.S, c.S, Int] =
     if i == 0 then get[Int] else get[Int].flatMap(x => put(x + 1)).flatMap(_ => counting(i - 1))
 
   @Benchmark
@@ -38,7 +38,7 @@ class EffectsBenchmark:
   @Benchmark
   def stateGetPutBang(): Int = run(state[Int](0)(countingBang(n)))._1
 
-  def telling(i: Int)(using c: Effects, w: Has[Writer % Int, c.R]): Cont[c.R, c.S, c.S, Unit] =
+  def telling(i: Int)(using c: Effects, w: In[Writer % Int, c.R]): Cont[c.R, c.S, c.S, Unit] =
     if i == 0 then pure(()) else tell(i).flatMap(_ => telling(i - 1))
 
   @Benchmark

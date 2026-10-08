@@ -11,9 +11,6 @@ sealed trait Effects:
   type R <: Row
   type S
 
-/** `E` is in the row of the context `R`: what an operation of `E` needs of it */
-type Has[E[_], R <: Row] = In[E, R]
-
 /** an effect of two parameters, its first given: `Reader % Int` is the effect `[X] =>> Reader[Int, X]` — the
  * effect in a row, a path, a handler, by name */
 infix type %[F[_, +_], S] = [X] =>> F[S, X]
@@ -78,17 +75,13 @@ object Effects:
 
   /** `reset[S](body)`: the body written at the answer `S`, its value; the delimiter answers what the body moved
    * the answer to, `O` */
-  def reset[S]: ResetAt[S] = ResetAt[S]()
-  final class ResetAt[S]:
-    def apply[O](using c: Effects)(body: At[c.R, S] ?=> Cont[c.R, S, O, S]): Cont[c.R, c.S, c.S, O] =
-      body(using At()).reset
+  def reset[S](using c: Effects)[O](body: At[c.R, S] ?=> Cont[c.R, S, O, S]): Cont[c.R, c.S, c.S, O] =
+    body(using At()).reset
 
   /** `shift[A, O](k => body)`: the hole's value `A` and the answer the delimiter is moved to, `O`; the hole's
    * answer is the context's. The body is written at `O`, under the delimiter */
-  def shift[A, O]: ShiftAt[A, O] = ShiftAt[A, O]()
-  final class ShiftAt[A, O]:
-    def apply(using c: Effects)(f: At[c.R, O] ?=> (A => Cont[c.R, O, O, c.S]) => Cont[c.R, O, O, O]): Cont[c.R, c.S, O, A] =
-      Cont.shift(f(using At()))
+  def shift[A, O](using c: Effects)(f: At[c.R, O] ?=> (A => Cont[c.R, O, O, c.S]) => Cont[c.R, O, O, O]): Cont[c.R, c.S, O, A] =
+    Cont.shift(f(using At()))
 
   /** `handle(h)(body)` in context: the body written in the handler's context, over `E +: c.R`, at its answer */
   def handle[E[_], A, Ans](using c: Effects)(h: Handler[E, c.R, c.S, A, Ans])

@@ -10,9 +10,6 @@ sealed trait Row
 sealed trait +:[E[_], T <: AnyKind] extends Row
 /** the empty row: a program over it performs nothing */
 sealed trait Pure extends Row
-/** the row grown by an effect, read left to right as the handlers are nested, outside in: `Pure + Ask + Say` is
- * `Say +: Ask +: Pure`, `Say` handled nearest */
-type +[R <: AnyKind, E[_]] = E +: R
 
 /** the effect `E` IN the row `R`: a path to it, the compiler builds it — the first, by priority. An operation
  * carries its path; a handler follows it: at `Here`, the operation is the handler's; at `There`, it goes on

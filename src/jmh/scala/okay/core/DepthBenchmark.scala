@@ -40,11 +40,11 @@ class DepthBenchmark:
     def value[X](op: Near[X]): X = op match
       case Near.Value(a) => a
 
-  def loop(i: Int, acc: Int)(using c: Effects, f: Has[Far, c.R]): Cont[c.R, c.S, c.S, Int] =
+  def loop(i: Int, acc: Int)(using c: Effects, f: In[Far, c.R]): Cont[c.R, c.S, c.S, Int] =
     if i == 0 then pure(acc) else perform(Far.Value(1)).flatMap(x => loop(i - 1, acc + x))
 
   /** the body under `d` handlers of `Near`, each in the context of the one outside */
-  def nested(d: Int)(using c: Effects, f: Has[Far, c.R]): Cont[c.R, c.S, c.S, Int] =
+  def nested(d: Int)(using c: Effects, f: In[Far, c.R]): Cont[c.R, c.S, c.S, Int] =
     if d == 0 then loop(n, 0) else Effects.handle(near)(nested(d - 1))
 
   @Benchmark

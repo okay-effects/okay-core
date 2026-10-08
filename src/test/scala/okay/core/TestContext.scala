@@ -50,10 +50,10 @@ class TestContext extends munit.FunSuite:
     def mixed: Int ! Reader % Int +: Writer % String = twice.flatMap(a => both.map(_ + a))
     assertEquals(run(writer[String, Int](reader(5)(mixed))), (List("5"), 18))
 
-  test("A ! E1 + E2: the effects needed joined by `+`, as a row is grown, `Pure` in front or not"):
-    def plus: Int ! Reader % Int + Writer % String = ask[Int].flatMap(a => tell(a.toString).map(_ => a + 1))
-    def plus3: Int ! Reader % Int + Writer % String + State % Int = plus.flatMap(a => get[Int].map(_ + a))
-    def pure: Int ! Pure + Reader % Int + Writer % String = plus
+  test("A ! E1 +: E2: three effects, `Pure` at the end or not"):
+    def plus: Int ! Writer % String +: Reader % Int = ask[Int].flatMap(a => tell(a.toString).map(_ => a + 1))
+    def plus3: Int ! State % Int +: Writer % String +: Reader % Int = plus.flatMap(a => get[Int].map(_ + a))
+    def pure: Int ! Writer % String +: Reader % Int +: Pure = plus
     assertEquals(run(reader(5)(writer[String, Int](plus))), (List("5"), 6))
     assertEquals(run(writer[String, Int](reader(5)(pure))), (List("5"), 6))
     assertEquals(run(state[(List[String], Int)](10)(writer[String, Int](reader(5)(plus3))))._2, (List("5"), 16))

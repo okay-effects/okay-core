@@ -9,19 +9,17 @@ enum State[S, +A]:
   case Get[S]() extends State[S, S]
   case Put[S](s: S) extends State[S, Unit]
 
-def get[S](using c: Effects, has: Has[State % S, c.R]): Cont[c.R, c.S, c.S, S] = perform[State % S, S](State.Get[S]())
-def put[S](s: S)(using c: Effects, has: Has[State % S, c.R]): Cont[c.R, c.S, c.S, Unit] = perform[State % S, Unit](State.Put(s))
+def get[S](using c: Effects, has: In[State % S, c.R]): Cont[c.R, c.S, c.S, S] = perform[State % S, S](State.Get[S]())
+def put[S](s: S)(using c: Effects, has: In[State % S, c.R]): Cont[c.R, c.S, c.S, Unit] = perform[State % S, Unit](State.Put(s))
 /** the state changed by `f`; the new state */
-def modify[S](f: S => S)(using c: Effects, has: Has[State % S, c.R]): Cont[c.R, c.S, c.S, S] =
+def modify[S](f: S => S)(using c: Effects, has: In[State % S, c.R]): Cont[c.R, c.S, c.S, S] =
   get[S].flatMap(s => { val n = f(s); put[S](n).map(_ => n) })
 /** `state[A](s0)(body)`: the last state and the value */
-def state[A]: StateAt[A] = StateAt[A]()
-final class StateAt[A]:
-  def apply[S](s0: S)(using c: Effects)(body: Effects.At[State % S +: c.R, (S, A)] ?=> Cont[State % S +: c.R, (S, A), (S, A), A]): Cont[c.R, c.S, c.S, (S, A)] =
-    Cont.pure[c.R, c.S, Unit](()).flatMap: _ =>
-      Effects.handle(new Answering[State % S, c.R, c.S, A, (S, A)]:
-        private var s: S = s0
-        def ret(a: A): (S, A) = (s, a)
-        def value[X](op: State[S, X]): X = op match
-          case State.Get() => s
-          case State.Put(n) => s = n)(body)
+def state[A](using c: Effects)[S](s0: S)(body: Effects.At[State % S +: c.R, (S, A)] ?=> Cont[State % S +: c.R, (S, A), (S, A), A]): Cont[c.R, c.S, c.S, (S, A)] =
+  Cont.pure[c.R, c.S, Unit](()).flatMap: _ =>
+    Effects.handle(new Answering[State % S, c.R, c.S, A, (S, A)]:
+      private var s: S = s0
+      def ret(a: A): (S, A) = (s, a)
+      def value[X](op: State[S, X]): X = op match
+        case State.Get() => s
+        case State.Put(n) => s = n)(body)

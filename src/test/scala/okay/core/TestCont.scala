@@ -176,11 +176,5 @@ class TestCont extends munit.FunSuite:
   test("value needs every operation handled: a program over a row is not a program at the top"):
     assert(compileErrors("""inject[Ask +: Pure, Int, Ask, Int](Ask.Number).value""").nonEmpty)
 
-  test("`+` grows a row on the right: Pure + Ask + Say is Say +: Ask +: Pure, the same type"):
-    summon[(Pure + Ask + Say) =:= (Say +: Ask +: Pure)]
-    val prog: Cont[Pure + Say + Ask, Int, Int, Int] =
-      inject[Pure + Say + Ask, Int, Ask, Int](Ask.Number).flatMap(n => inject[Pure + Say + Ask, Int, Say, Unit](Say.Line(n.toString)).map(_ => n + 1))
-    assertEquals(prog.handle(asking(41)).handle(saying).value, (List("41"), 42))
-
   test("an effect not in the row cannot be injected"):
     assert(compileErrors("""inject[Ask +: Pure, Int, Say, Unit](Say.Line("x"))""").nonEmpty)

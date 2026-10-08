@@ -37,7 +37,7 @@ effects it needs. Two ways to write one:
 
 ```scala
 // the context as givens
-def counting(i: Int)(using c: Effects, s: Has[State % Int, c.R]): Cont[c.R, c.S, c.S, Int] =
+def counting(i: Int)(using c: Effects, s: In[State % Int, c.R]): Cont[c.R, c.S, c.S, Int] =
   if i == 0 then get[Int] else get[Int].flatMap(x => put(x + 1)).flatMap(_ => counting(i - 1))
 
 // A ! Es: a program of value A, in any context whose row has every effect of Es
