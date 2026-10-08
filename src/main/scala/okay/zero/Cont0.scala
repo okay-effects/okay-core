@@ -49,10 +49,12 @@ object Cont0:
   /** a handler of `E`: `Done∘h.ret $ body`, its answers read by `h` — the delimiter its loop answers to, itself */
   private[zero] final case class Handle[E[_], R <: Row, J, T, A, Ans](body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], A],
       h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans]
-      with ByHandler[E, R, J, T, A, Ans, Ans]:
+      with ByHandler[E, R, J, T, A, Ans, Ans] with (A => Ans):
     def clauses: Handler[[Y] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Y], E, ?, Ans] = h
     def ret(a: A): Ans = h.ret(a)
-    def rets: A => Ans = h.ret
+    /** the node its own `ret`, a function: no closure made for it, a shift each */
+    def apply(a: A): Ans = h.ret(a)
+    def rets: A => Ans = this
   /** `m`, a program outside the nearest delimiter, run there, its value back here: `shift0(k => Bind(m, k))` — what
    * a `shift`'s `k` is from inside the reset it is under again */
   private[zero] final case class Lift[RB <: Row, L, O, X](m: Cont0[L, L, X]) extends Cont0[Cont0[L, L, Res[RB, L, O]], Cont0[L, L, Res[RB, L, O]], X]
