@@ -171,8 +171,13 @@ private def fold[E[_], T <: Row, Q, S, Ans, A, T1, X](c: Cont[E +: T, T1, Ans, X
     case Push(m, ks) => k match
       case Frames.End() => fold(m, ks, ret, h)
       case _ => fold(m, Frames.Then(ks, k), ret, h)
-    case Shift(f) => fold(f(under(k, ret)), Frames.End(), identity, h)
-    case Reset(b, r) => fold(delimited(b, r), k, ret, h)
+    case Shift(f) => fold(f(captured(k, ret)), Frames.End(), identity, h)
+    case Reset(b) => fold(delimited(b), k, ret, h)
+
+/** a capture's rest in a handler's body as `k`: applied, the stack resumed, its value to the answer by `ret`,
+ * under a delimiter of its own */
+private def captured[R <: Row, Q, S, T, X, A](k: Frames[R, X, S, T, A], ret: A => S): X => Cont[R, Q, Q, T] =
+  x => Reset(Map(Push(Return(x), k), ret))
 
 /** this handler's operation given to its clause, with the rest as `k`, resumed lazily */
 private def clause[E[_], T <: Row, Q, S, Ans, A, X](op: E[X], k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[E, T, Q, ?, Ans]): Cont[T, Q, Q, Ans] =

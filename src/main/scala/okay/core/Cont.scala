@@ -60,9 +60,9 @@ enum Cont[R <: Row, I, O, A]:
   case Map[R <: Row, I, O, A, B](m: Cont[R, I, O, A], f: A => B) extends Cont[R, I, O, B]
   /** a program built when the loop gets to it: a tail call one node, where `pure(()).flatMap(_ => c)` is two */
   case Delay[R <: Row, I, O, A](c: () => Cont[R, I, O, A]) extends Cont[R, I, O, A]
-  /** the delimiter: the body's value to its initial answer `S` by `ret`, its final answer `O` the delimiter's
-   * value outside, at the answer `Q` there. An operation inside goes out as it is, the rest re-delimited */
-  case Reset[R <: Row, Q, S, O, A](body: Cont[R, S, O, A], ret: A => S) extends Cont[R, Q, Q, O]
+  /** the delimiter: the body's value is its initial answer `S`, its final answer `O` the delimiter's value
+   * outside, at the answer `Q` there. An operation inside goes out as it is, the rest re-delimited */
+  case Reset[R <: Row, Q, S, O](body: Cont[R, S, O, S]) extends Cont[R, Q, Q, O]
   /** `m` with the rest as a stack already: what applying a captured `k` makes — `Bind(m, k)`, where the loop can
    * take `k` as its stack as it is, not as a function to push. Only `Frames` make it */
   case Push[R <: Row, I, T, O, A, B](m: Cont[R, T, O, A], k: Frames[R, A, I, T, B]) extends Cont[R, I, O, B]
@@ -115,7 +115,7 @@ object Cont:
   inline def delay[R <: Row, I, O, A](inline c: Cont[R, I, O, A]): Cont[R, I, O, A] = Delay(() => c)
   extension [R <: Row, S, O](body: Cont[R, S, O, S])
     /** `body.reset`: the body's value is its initial answer, the delimiter's value its final one */
-    def reset[Q]: Cont[R, Q, Q, O] = Reset(body, identity)
+    def reset[Q]: Cont[R, Q, Q, O] = Reset(body)
 
   extension [R <: Row, I, O, A](c: Cont[R, I, O, A])
     /** to the head: binds reassociated and followed, a delimiter entered, in constant stack */
@@ -148,7 +148,7 @@ object Cont:
       case Frames.End() => in.op(op, g)
       case _ => in.op(op, Frames.Then(g, k))
     case Shift(f) => Head.Cut(f, k)
-    case Reset(body, ret) => loop(delimited(body, ret), k)
+    case Reset(body) => loop(delimited(body), k)
     case Delay(t) => loop(t(), k)
     case Map(m, f) => loop(m, Frames.Mapped(f, k))
     case Push(m, ks) => k match
@@ -158,31 +158,31 @@ object Cont:
       case Return(a) => loop(g(a), k)
       case _ => loop(m, Frames.Then(g, k))
 
-  /** the delimiter's body to its head: a value is answered by `ret`; an operation goes out, with the rest of the
-   * body under the delimiter again; a capture's body goes under the delimiter in place of the rest, with the
-   * rest under a delimiter of its own, `ret` included, as `k` */
-  private[core] def delimited[R <: Row, Q, S, O, A](body: Cont[R, S, O, A], ret: A => S): Cont[R, Q, Q, O] =
+  /** the delimiter's body to its head: a value is the answer; an operation goes out, with the rest of the body
+   * under the delimiter again; a capture's body goes under the delimiter in place of the rest, with the rest under
+   * a delimiter of its own as `k` */
+  private[core] def delimited[R <: Row, Q, S, O](body: Cont[R, S, O, S]): Cont[R, Q, Q, O] =
     body.step match
-      case Head.Done(a) => Return(ret(a))
-      case Head.Op(op, in, k) => in.bind(op, Redelimit(k, ret))
-      case Head.Cut(f, k) => f(under(k, ret)) match
+      case Head.Done(a) => Return(a)
+      case Head.Op(op, in, k) => in.bind(op, Redelimit(k))
+      case Head.Cut(f, k) => f(under(k)) match
         // a body under a delimiter already — `k(x)` in tail position, most often — is not put under a second: the
         // two would nest, each the next capture's `step` inside the last's, a stack frame a capture
-        case Reset(b, r) => Reset(b, r)
-        case b => Reset(b, identity)
+        case Reset(b) => Reset(b)
+        case b => Reset(b)
 
-  /** a captured rest as `k`: applied, the stack it holds resumed, under a delimiter of its own with `ret` */
-  private[core] def under[R <: Row, Q, S, T, X, A](k: Frames[R, X, S, T, A], ret: A => S): X => Cont[R, Q, Q, T] =
-    x => Reset(Push(Return(x), k), ret)
+  /** a captured rest as `k`: applied, the stack it holds resumed, under a delimiter of its own */
+  private[core] def under[R <: Row, Q, S, T, X](k: Frames[R, X, S, T, S]): X => Cont[R, Q, Q, T] =
+    x => Reset(Push(Return(x), k))
 
   /** the rest of a delimiter's body, once the operation it waits on is answered outside: under the delimiter
    * again. One object, where a closure over a closure was two */
-  private final class Redelimit[R <: Row, Q, S, O, A, X](k: X => Cont[R, S, O, A], ret: A => S) extends (X => Cont[R, Q, Q, O]):
-    def apply(x: X): Cont[R, Q, Q, O] = Reset(k(x), ret)
+  private final class Redelimit[R <: Row, Q, S, O, X](k: X => Cont[R, S, O, S]) extends (X => Cont[R, Q, Q, O]):
+    def apply(x: X): Cont[R, Q, Q, O] = Reset(k(x))
 
   extension [A](c: Cont[Pure, A, A, A])
     /** a program at the top, nothing to perform, its answer its value: the value — the top is a delimiter; a
      * program that moves the answer goes under a `reset` first */
     def value: A = c.step match
       case Head.Done(a) => a
-      case Head.Cut(f, k) => f(under(k, identity)).value
+      case Head.Cut(f, k) => f(under(k)).value
