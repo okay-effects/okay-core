@@ -7,7 +7,10 @@ import okay.std.*
  * (Danvy–Filinski) — no tree, no loop, not stack safe. Programs written against `Control` run on it and on `Cont`,
  * and must agree */
 object Cps:
-  type F[R <: Row, I, O, A] = (A => I) => O
+  /** `(A => I) => O`, as a class: a program's bind and map are its own */
+  final class F[R <: Row, I, O, A](val run: (A => I) => O) extends Ix[F, R, I, O, A]:
+    def flatMap[I2, B](f: A => F[R, I2, I, B]): F[R, I2, O, B] = F(k => run(a => f(a).run(k)))
+    def map[B](f: A => B): F[R, I, O, B] = F(k => run(a => k(f(a))))
 
   final class At[R0 <: Row, S0] extends Control:
     type M[R <: Row, I, O, A] = F[R, I, O, A]
@@ -15,19 +18,16 @@ object Cps:
     type S = S0
     type Under[R2 <: Row, S2] = At[R2, S2]
     def under[R2 <: Row, S2]: At[R2, S2] = At()
-    def pure[X <: Row, S2, A](a: A): F[X, S2, S2, A] = k => k(a)
-    def delay[X <: Row, I, O, A](m: => F[X, I, O, A]): F[X, I, O, A] = k => m(k)
-    extension [X <: Row, I, O, A](m: F[X, I, O, A])
-      def flatMap[I2, B](f: A => F[X, I2, I, B]): F[X, I2, O, B] = k => m(a => f(a)(k))
-      def map[B](f: A => B): F[X, I, O, B] = k => m(a => k(f(a)))
+    def pure[X <: Row, S2, A](a: A): F[X, S2, S2, A] = F(k => k(a))
+    def delay[X <: Row, I, O, A](m: => F[X, I, O, A]): F[X, I, O, A] = F(k => m.run(k))
     /** `shift f = λk. f (λa. λk'. k' (k a)) id` */
     def shift[X <: Row, I, O, A](f: (A => F[X, O, O, I]) => F[X, O, O, O]): F[X, I, O, A] =
-      k => f(a => k2 => k2(k(a)))(identity)
+      F(k => f(a => F(k2 => k2(k(a)))).run(identity))
     /** `reset e = λk. k (e ret)` */
-    def reset[X <: Row, Q, S2, O, A](body: F[X, S2, O, A], ret: A => S2): F[X, Q, Q, O] = k => k(body(ret))
+    def reset[X <: Row, Q, S2, O, A](body: F[X, S2, O, A], ret: A => S2): F[X, Q, Q, O] = F(k => k(body.run(ret)))
 
   /** the body at the top: its answer its value */
-  def run[A](body: At[Pure, A] ?=> F[Pure, A, A, A]): A = body(using At())(identity)
+  def run[A](body: At[Pure, A] ?=> F[Pure, A, A, A]): A = body(using At()).run(identity)
 
 /** the same programs, written against `Control`, on `Cont` and on the CPS functions */
 class TestControlCps extends munit.FunSuite:

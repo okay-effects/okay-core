@@ -6,14 +6,19 @@ import Cont.*
  * `I`, answers `O` — Atkey's parameterised monad, the answer moved from `O` to `I`. What a context's programs are
  * values of; `Cont` is one, a test's CPS functions another. Final tagless: a program is written against the
  * operations, not the tree */
-trait IxMonad:
-  type M[R <: Row, I, O, A]
+abstract class IxMonad:
+  type M[R <: Row, I, O, A] <: Ix[M, R, I, O, A]
   def pure[R <: Row, S, A](a: A): M[R, S, S, A]
   /** `delay(m)`: the program `m`, built when it is run — a tail call */
   def delay[R <: Row, I, O, A](m: => M[R, I, O, A]): M[R, I, O, A]
-  extension [R <: Row, I, O, A](m: M[R, I, O, A])
-    def flatMap[I2, B](f: A => M[R, I2, I, B]): M[R, I2, O, B]
-    def map[B](f: A => B): M[R, I, O, B]
+
+/** A PROGRAM of the monad `M`: its bind and its map are its own, a program's methods — not the instance's. A bind
+ * is the commonest call there is; on the program it is one call to the program's class, the instance not in it
+ * (as an extension of the instance it was three, through the instance and the bridges erasure makes, and the JIT
+ * gave up inlining them in a tight loop: ~1.2 ns an operation, DispatchBenchmark) */
+abstract class Ix[M[X <: Row, I, O, A] <: Ix[M, X, I, O, A], R <: Row, I, O, A]:
+  def flatMap[I2, B](f: A => M[R, I2, I, B]): M[R, I2, O, B]
+  def map[B](f: A => B): M[R, I, O, B]
 
 /** THE CONTEXT a program is written in: the monad, the row `R` there and the answer `S` at this point — what an
  * operation and a `shift` take their types from, by its members: `c.M`, `c.R`, `c.S`. The context IS the
@@ -21,13 +26,13 @@ trait IxMonad:
  * one of its own, `under`: a handler's has the handler's effect in front of what the handler leaves, `E +: c.R`,
  * so the row is built by the handlers, outside in, and never named. The nearest context wins — a nested scope's
  * given is preferred */
-trait Context extends IxMonad:
+abstract class Context extends IxMonad:
   type R <: Row
   type S
 
 /** EFFECTS over the monad: an operation at its path in the row, and a handler folding a body over `E +: T` to one
  * over `T` */
-trait Effects extends Context:
+abstract class Effects extends Context:
   /** the context at the row `R2`, the answer `S2`, the monad this one's */
   type Under[R2 <: Row, S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.M[X, I, O, A]; type R = R2; type S = S2 }
   def under[R2 <: Row, S2]: Under[R2, S2]
@@ -93,9 +98,6 @@ object Needs:
     def under[R2 <: Row, S2]: Under[R2, S2] = c.under
     def pure[X <: Row, S2, A](a: A): M[X, S2, S2, A] = c.pure(a)
     def delay[X <: Row, I, O, A](m: => M[X, I, O, A]): M[X, I, O, A] = c.delay(m)
-    extension [X <: Row, I, O, A](m: M[X, I, O, A])
-      def flatMap[I2, B](f: A => M[X, I2, I, B]): M[X, I2, O, B] = c.flatMap(m)(f)
-      def map[B](f: A => B): M[X, I, O, B] = c.map(m)(f)
     def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = c.perform(op, in)
     def handle[E[_], T <: Row, Q, A, Ans](body: M[E +: T, Ans, Ans, A], h: Handler[M, E, T, Q, A, Ans]): M[T, Q, Q, Ans] =
       c.handle(body, h)
@@ -108,7 +110,7 @@ infix type ![A, Es <: AnyKind] = (c: Needs[Es]) ?=> c.M[c.R, c.S, c.S, A]
 
 object Effects:
   /** THE INSTANCE over `Cont`, the context at the row `R0`, the answer `S0`: effects and control both */
-  final class At[R0 <: Row, S0] extends Effects with Control:
+  final class At[R0 <: Row, S0] extends Delimited:
     type M[R <: Row, I, O, A] = Cont[R, I, O, A]
     type R = R0
     type S = S0
@@ -116,9 +118,6 @@ object Effects:
     def under[R2 <: Row, S2]: At[R2, S2] = At()
     def pure[X <: Row, S2, A](a: A): Cont[X, S2, S2, A] = Return(a)
     def delay[X <: Row, I, O, A](m: => Cont[X, I, O, A]): Cont[X, I, O, A] = Delay(() => m)
-    extension [X <: Row, I, O, A](m: Cont[X, I, O, A])
-      def flatMap[I2, B](f: A => Cont[X, I2, I, B]): Cont[X, I2, O, B] = m.flatMap(f)
-      def map[B](f: A => B): Cont[X, I, O, B] = m.map(f)
     def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): Cont[R2, S2, S2, X] = Inject(op, in)
     def handle[E[_], T <: Row, Q, A, Ans](body: Cont[E +: T, Ans, Ans, A], h: Handler[Cont, E, T, Q, A, Ans]): Cont[T, Q, Q, Ans] =
       body.handle(h)

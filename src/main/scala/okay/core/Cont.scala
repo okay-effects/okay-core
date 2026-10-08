@@ -44,7 +44,7 @@ sealed trait InLow:
  * for speed — an operation with its rest, a map, a tail call, a resumed stack, each without a bind. `step` reads
  * the nine, to the head, with a stack of frames.
  */
-enum Cont[R <: Row, I, O, A]:
+enum Cont[R <: Row, I, O, A] extends Ix[Cont, R, I, O, A]:
   case Return[R <: Row, S, A](a: A) extends Cont[R, S, S, A]
   /** an operation of `E`, at its path in the row: a leaf, to whoever folds the tree */
   case Inject[E[_], R <: Row, S, X](op: E[X], in: In[E, R]) extends Cont[R, S, S, X]
@@ -69,7 +69,7 @@ enum Cont[R <: Row, I, O, A]:
   case Push[R <: Row, I, T, O, A, B](m: Cont[R, T, O, A], k: Frames[R, A, I, T, B]) extends Cont[R, I, O, B]
 
   def flatMap[I2, B](f: A => Cont[R, I2, I, B]): Cont[R, I2, O, B] = this match
-    case Inject(op, in) => Suspend(op, in, f)
+    case i: Inject[e, r, s, x] => Cont.bound(i, f)
     case _ => Bind(this, f)
   def map[B](f: A => B): Cont[R, I, O, B] = Map(this, f)
 
@@ -108,6 +108,9 @@ enum Head[R <: Row, I, O, A]:
   case Cut[R <: Row, I, T, O, X, A](f: (X => Cont[R, O, O, T]) => Cont[R, O, O, O], k: Frames[R, X, I, T, A]) extends Head[R, I, O, A]
 
 object Cont:
+  /** an operation with the rest bound to its value, one node — out of `flatMap`, to keep that small */
+  private def bound[E[_], R <: Row, S, X, I2, B](i: Inject[E, R, S, X], f: X => Cont[R, I2, S, B]): Cont[R, I2, S, B] =
+    Suspend(i.op, i.in, f)
   def pure[R <: Row, S, A](a: A): Cont[R, S, S, A] = Return(a)
   def inject[R <: Row, S, E[_], X](op: E[X])(using in: In[E, R]): Cont[R, S, S, X] = Inject(op, in)
   def shift[R <: Row, I, O, A](f: (A => Cont[R, O, O, I]) => Cont[R, O, O, O]): Cont[R, I, O, A] = Shift(f)

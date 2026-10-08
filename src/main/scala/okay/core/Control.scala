@@ -13,6 +13,10 @@ trait Control extends Context:
    * value outside, at any answer `Q` there */
   def reset[X <: Row, Q, S2, O, A](body: M[X, S2, O, A], ret: A => S2): M[X, Q, Q, O]
 
+/** a context with effects and control both — named: the intersection `Effects & Control` of two classes with their
+ * own bound on `M` makes the compiler fail (Scala 3.9.0, an assertion in `LazyRef`) */
+trait Delimited extends Effects with Control
+
 object Control:
   /** `reset[S](body)`: the body written at the answer `S`, its value; the delimiter answers what the body moved
    * the answer to, `O` */
