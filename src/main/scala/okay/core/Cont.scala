@@ -7,7 +7,7 @@ import scala.annotation.tailrec
  * can, so every walk here is total, no claim, no cast, no runtime test of an operation's class */
 sealed trait Row
 /** the effect `E` in front of the row `T` */
-sealed trait +:[E[_], T <: AnyKind] extends Row
+sealed trait +:[E[_], T <: Row] extends Row
 /** the empty row: a program over it performs nothing */
 sealed trait Pure extends Row
 

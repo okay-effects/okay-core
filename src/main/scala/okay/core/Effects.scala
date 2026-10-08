@@ -38,68 +38,71 @@ trait Effects extends Context:
  * effect in a row, a path, a handler, by name */
 infix type %[F[_, +_], S] = [X] =>> F[S, X]
 
-/** the effect `E` AMONG THE EFFECTS a program needs, `Es`: one effect, or effects joined by `+:`, `Pure` at the end
- * or not — `Reader % Int`, `Reader % Int +: Writer % String`. A path in `Es`, as `In` is in a row */
+/** THE ROW `Es` IN THE ROW `R`: a path in `R` for each path in `Es` — the effects a program needs, found in the
+ * context's row. Two cases, both total: the last effect, `E0 +: Pure`, where a path can only be `Here` (one past
+ * it would be into `Pure`, and there is none — the compiler sees it); and an effect in front of more */
+sealed trait Sub[Es <: Row, R <: Row]:
+  def apply[E[_]](in: In[E, Es]): In[E, R]
+object Sub:
+  given last[E0[_], R <: Row](using head: In[E0, R]): Sub[E0 +: Pure, R] = new Sub[E0 +: Pure, R]:
+    def apply[E[_]](in: In[E, E0 +: Pure]): In[E, R] = in match
+      case In.Here() => head
+  given cons[E0[_], E1[_], T <: Row, R <: Row](using head: In[E0, R], tail: Sub[E1 +: T, R]): Sub[E0 +: E1 +: T, R] =
+    new Sub[E0 +: E1 +: T, R]:
+      def apply[E[_]](in: In[E, E0 +: E1 +: T]): In[E, R] = in match
+        case In.Here() => head
+        case In.There(out) => tail(out)
+
+/** the effect `E` AMONG THE EFFECTS a program needs, `Es`: the one effect it is, `Only`, or its path in the row of
+ * them, `Path`. Which of the two is for the compiler's search to choose — by the kind of `Es`, an effect or a row */
 enum Req[E[_], Es <: AnyKind]:
   case Only[E[_]]() extends Req[E, E]
-  case First[E[_], T <: AnyKind]() extends Req[E, E +: T]
-  case Next[E[_], E2[_], T <: AnyKind](in: Req[E, T]) extends Req[E, E2 +: T]
-object Req extends ReqLow:
+  case Path[E[_], Es <: Row](in: In[E, Es]) extends Req[E, Es]
+object Req:
   given only[E[_]]: Req[E, E] = Only()
-  given first[E[_], T <: AnyKind]: Req[E, E +: T] = First()
-sealed trait ReqLow:
-  given next[E[_], E2[_], T <: AnyKind](using in: Req[E, T]): Req[E, E2 +: T] = Req.Next(in)
+  given path[E[_], Es <: Row](using in: In[E, Es]): Req[E, Es] = Path(in)
 
-/** a path in the row `R` for each effect a program needs, `Es`, by its path in `Es` */
-sealed trait Paths[Es <: AnyKind, R <: Row]:
-  def apply[E[_]](in: Req[E, Es]): In[E, R]
-object Paths:
-  given one[E0[_], R <: Row](using head: In[E0, R]): Paths[E0, R] = new Paths[E0, R]:
-    // a path into one effect is `Only`: the others are into `+:`, of another kind
-    def apply[E[_]](in: Req[E, E0]): In[E, R] = (in: @unchecked) match
-      case Req.Only() => head
-  given none[R <: Row]: Paths[Pure, R] = new Paths[Pure, R]:
-    def apply[E[_]](in: Req[E, Pure]): In[E, R] = vacuous[E, Pure, In[E, R]](in)
-  given cons[E0[_], T <: AnyKind, R <: Row](using head: In[E0, R], tail: Paths[T, R]): Paths[E0 +: T, R] = new Paths[E0 +: T, R]:
-    def apply[E[_]](in: Req[E, E0 +: T]): In[E, R] = in match
-      case Req.First() => head
-      case Req.Next(out) => tail(out)
-  /** `A` when nothing is needed, else nothing: a path is to an effect needed, so for `Pure` the value it would be
-   * is `A`, and there is no such path */
-  private type IfPure[X, A] = X match
-    case Pure => A
-    case _ => Unit
-  // never applied — there is no path into `Pure`; a path into a row is into `+:`, `First` or `Next` alike
-  private def vacuous[E[_], X <: Row, A](in: Req[E, X]): IfPure[X, A] = (in: @unchecked) match
-    case Req.First() => ()
-
-/** the context with every effect a program needs, `Es`, in its own row: the context it is made of, every
- * operation its, and a path for each */
+/** the context with every effect a program needs, `Es` — one effect, or a row of them — each found in its own row:
+ * the context it is made of, every operation its */
 sealed trait Needs[Es <: AnyKind] extends Effects:
-  val paths: Paths[Es, R]
+  def find[E[_]](r: Req[E, Es]): In[E, R]
 object Needs:
-  given all[Es <: AnyKind](using c: Effects, p: Paths[Es, c.R])
+  /** one effect, `E0`, at its path */
+  given one[E0[_]](using c: Effects, head: In[E0, c.R])
+    : (Needs[E0] { type M[X <: Row, I, O, A] = c.M[X, I, O, A]; type R = c.R; type S = c.S }) =
+    new Forward[E0, c.type](c):
+      // `Only`: a `Path` is into a row, `E0` is an effect — of another kind, which the checker does not tell apart
+      def find[E[_]](r: Req[E, E0]): In[E, R] = (r: @unchecked) match
+        case Req.Only() => head
+  /** a row of them, `Pure` at the end, each at its path */
+  given row[Es <: Row](using c: Effects, sub: Sub[Es, c.R])
     : (Needs[Es] { type M[X <: Row, I, O, A] = c.M[X, I, O, A]; type R = c.R; type S = c.S }) =
-    new Needs[Es]:
-      type M[X <: Row, I, O, A] = c.M[X, I, O, A]
-      type R = c.R
-      type S = c.S
-      type Under[R2 <: Row, S2] = c.Under[R2, S2]
-      val paths = p
-      def under[R2 <: Row, S2]: Under[R2, S2] = c.under
-      def pure[X <: Row, S2, A](a: A): M[X, S2, S2, A] = c.pure(a)
-      def delay[X <: Row, I, O, A](m: => M[X, I, O, A]): M[X, I, O, A] = c.delay(m)
-      extension [X <: Row, I, O, A](m: M[X, I, O, A])
-        def flatMap[I2, B](f: A => M[X, I2, I, B]): M[X, I2, O, B] = c.flatMap(m)(f)
-        def map[B](f: A => B): M[X, I, O, B] = c.map(m)(f)
-      def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = c.perform(op, in)
-      def handle[E[_], T <: Row, Q, A, Ans](body: M[E +: T, Ans, Ans, A], h: Handler[M, E, T, Q, A, Ans]): M[T, Q, Q, Ans] =
-        c.handle(body, h)
-  given found[E[_], Es <: AnyKind](using n: Needs[Es], in: Req[E, Es]): In[E, n.R] = n.paths(in)
+    new Forward[Es, c.type](c):
+      // `Path`: `Only` is for one effect, `Es` is a row — of another kind, as above
+      def find[E[_]](r: Req[E, Es]): In[E, R] = (r: @unchecked) match
+        case Req.Path(in) => sub(in)
+  /** an effect needed: its path in the context's row */
+  given found[E[_], Es <: AnyKind](using n: Needs[Es], r: Req[E, Es]): In[E, n.R] = n.find(r)
+
+  /** every operation the context's `c` */
+  private abstract class Forward[Es <: AnyKind, C <: Effects & Singleton](val c: C) extends Needs[Es]:
+    type M[X <: Row, I, O, A] = c.M[X, I, O, A]
+    type R = c.R
+    type S = c.S
+    type Under[R2 <: Row, S2] = c.Under[R2, S2]
+    def under[R2 <: Row, S2]: Under[R2, S2] = c.under
+    def pure[X <: Row, S2, A](a: A): M[X, S2, S2, A] = c.pure(a)
+    def delay[X <: Row, I, O, A](m: => M[X, I, O, A]): M[X, I, O, A] = c.delay(m)
+    extension [X <: Row, I, O, A](m: M[X, I, O, A])
+      def flatMap[I2, B](f: A => M[X, I2, I, B]): M[X, I2, O, B] = c.flatMap(m)(f)
+      def map[B](f: A => B): M[X, I, O, B] = c.map(m)(f)
+    def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = c.perform(op, in)
+    def handle[E[_], T <: Row, Q, A, Ans](body: M[E +: T, Ans, Ans, A], h: Handler[M, E, T, Q, A, Ans]): M[T, Q, Q, Ans] =
+      c.handle(body, h)
 
 /** `A ! Es`: a program of value `A`, in any context whose row has every effect of `Es` — one, `Int ! Reader % Int`,
- * or several, `Int ! Reader % Int +: Writer % String`, `Pure` at the end or not; their order the program's own,
- * the context's row any. At the context's answer, not `Free`'s `Unit`: under a handler the answer is the handler's
+ * or a row of them, `Int ! Reader % Int +: Writer % String +: Pure`; their order the program's own, the context's
+ * row any. At the context's answer, not `Free`'s `Unit`: under a handler the answer is the handler's
  * — `Either[E, A]` under `throws` — so a `Free` program would run only where nothing is answered */
 infix type ![A, Es <: AnyKind] = (c: Needs[Es]) ?=> c.M[c.R, c.S, c.S, A]
 

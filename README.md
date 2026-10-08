@@ -50,15 +50,16 @@ def counting(i: Int)(using c: Effects, s: State % Int :? c.R): c.M[c.R, c.S, c.S
 
 // A ! Es: a program of value A, in any context whose row has every effect of Es
 def inc: Int ! Reader % Int = ask[Int].map(_ + 1)
-def both: Int ! Reader % Int +: Writer % String = ask[Int].flatMap(a => tell(a.toString).map(_ => a))
+def both: Int ! Reader % Int +: Writer % String +: Pure = ask[Int].flatMap(a => tell(a.toString).map(_ => a))
 
 run(state[Int](0)(counting(10)))              // (10, 10)
 run(reader(5)(inc))                           // 6
 run(writer[String, Int](reader(5)(both)))     // (List("5"), 5)
 ```
 
-`Reader % Int` is the effect `[X] =>> Reader[Int, X]`. In `A ! Es` the order
-of `Es` is the program's own, the context's row may be any.
+`Reader % Int` is the effect `[X] =>> Reader[Int, X]`. In `A ! Es`, `Es` is one
+effect or a row of them ending in `Pure`; its order is the program's own, the
+context's row may be any.
 
 `shift` and `reset` in context (`import Control.*`), any monad with `Control`:
 
