@@ -6,7 +6,8 @@ import okay.std.*
 
 /** `reset` and `shift` in context: the syntax and the hole's answer from the context, only the value and the
  * answer moved to are named */
-class TestContext extends munit.FunSuite:
+abstract class TestContextOn(on: Backend) extends munit.FunSuite:
+  def run[A](body: (c: Delimited { type R = Pure; type S = A }) ?=> c.M[Pure, A, A, A]): A = on.run(body)
 
   test("reset(1 + shift(k => k(k(10)))) is 12"):
     assertEquals(run(reset[Int](shift[Int, Int](k => k(10).flatMap(k)).map(_ + 1))), 12)
@@ -68,3 +69,6 @@ class TestContext extends munit.FunSuite:
 
   test("A ! Es: a row of effects ends in Pure — a row of effects alone is not a row"):
     assert(compileErrors("""def both: Int ! Reader % Int +: Writer % String = ask[Int]""").contains("Row"))
+
+/** on `Cont` */
+class TestContext extends TestContextOn(Backend.cont)

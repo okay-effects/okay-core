@@ -5,7 +5,10 @@ import Control.*
 import okay.std.*
 
 /** the effects in context: the syntax and the answer never named — the handlers build the syntax, outside in */
-class TestEffects extends munit.FunSuite:
+/** the effects in context, on any monad of master's `Delimited` — `on`'s run: the syntax and the answer never named,
+ * the handlers build the syntax, outside in */
+abstract class TestEffectsOn(on: Backend) extends munit.FunSuite:
+  def run[A](body: (c: Delimited { type R = Pure; type S = A }) ?=> c.M[Pure, A, A, A]): A = on.run(body)
 
   test("reader: ask answered in place"):
     assertEquals(run(reader[Int](41)(ask[Int].map(_ + 1))), 42)
@@ -44,11 +47,6 @@ class TestEffects extends munit.FunSuite:
       if d == 0 then loop(10000, 0) else reader[Int](0.5)(nested(d - 1))
     assertEquals(run(reader[Int](2)(nested(16))), 20000)
 
-  test("state: the cell is per run — the same program run twice starts from s0 twice"):
-    val p: Cont[Pure, (Int, Int), (Int, Int), (Int, Int)] = state[Int](using At[Pure, (Int, Int)]())(0)(modify[Int](_ + 1))
-    assertEquals(p.value, (1, 1))
-    assertEquals(p.value, (1, 1))
-
   test("two instances of one effect, State[Int] and State[String]: each goes to its own handler, by its path"):
     def body(using c: Effects, i: State % Int :? c.R, s: State % String :? c.R): c.M[c.R, c.S, c.S, Unit] =
       modify[Int](_ + 1).flatMap(n => modify[String](_ + n)).map(_ => ())
@@ -57,7 +55,7 @@ class TestEffects extends munit.FunSuite:
 
   test("throws: raise aborts the body, Left; no raise, Right"):
     assertEquals(run(throws[String, Int](raise[String, Int]("boom").map(_ + 1))), Left("boom"))
-    assertEquals(run(throws[String, Int](Cont.pure(1).map(_ + 1))), Right(2))
+    assertEquals(run(throws[String, Int](summon[Effects].pure(1).map(_ + 1))), Right(2))
 
   test("state and throws: the order of handlers is the semantics — state kept or lost on a failure"):
     def body(using c: Effects, s: State % Int :? c.R, t: Throws % String :? c.R): c.M[c.R, c.S, c.S, Int] =
@@ -94,14 +92,24 @@ class TestEffects extends munit.FunSuite:
   test("collect: every element yielded, and the value"):
     assertEquals(run(collect[Int, String](yield_(1).flatMap(_ => yield_(2)).map(_ => "done"))), (List(1, 2), "done"))
 
+  test("collect and choose: a resumption shares the buffer — both paths' elements, in the order they ran"):
+    assertEquals(run(collect[Int, Seq[Int]](choose[Int](among(Seq(1, 2)).flatMap(x => yield_(x).map(_ => x * 10))))), (List(1, 2), Seq(10, 20)))
+
+  test("an effect its context does not have cannot be performed"):
+    assert(compileErrors("""run(reader[Unit](1)(tell("x")))""").nonEmpty)
+
+/** on `Cont`, and what is `Cont`'s own: a program kept as a value, run twice; `generate` at the top */
+class TestEffects extends TestEffectsOn(Backend.cont):
+  test("state: the cell is per run — the same program run twice starts from s0 twice"):
+    val p: Cont[Pure, (Int, Int), (Int, Int), (Int, Int)] = state[Int](using At[Pure, (Int, Int)]())(0)(modify[Int](_ + 1))
+    assertEquals(p.value, (1, 1))
+    assertEquals(p.value, (1, 1))
+
   test("collect: the buffer is per run — the same program run twice collects from empty twice"):
     val p: Cont[Pure, (List[Int], Unit), (List[Int], Unit), (List[Int], Unit)] =
       collect[Int, Unit](using At[Pure, (List[Int], Unit)]())(yield_(1).flatMap(_ => yield_(2)))
     assertEquals(p.value, (List(1, 2), ()))
     assertEquals(p.value, (List(1, 2), ()))
-
-  test("collect and choose: a resumption shares the buffer — both paths' elements, in the order they ran"):
-    assertEquals(run(collect[Int, Seq[Int]](choose[Int](among(Seq(1, 2)).flatMap(x => yield_(x).map(_ => x * 10))))), (List(1, 2), Seq(10, 20)))
 
   test("generate is lazy: an infinite body, three elements pulled, nothing past them runs"):
     type G = Gen[Cont, Int, Pure]
@@ -118,7 +126,7 @@ class TestEffects extends munit.FunSuite:
   test("generate over a remaining effect: the rest of the generator still asks, under the handler it is run in"):
     type F = Reader % Int +: Pure
     type G = Gen[Cont, Int, F]
-    def all(g: Cont[F, G, G, G]): List[Int] = run(reader[G](7)(g)) match
+    def all(g: Cont[F, G, G, G]): List[Int] = Effects.run(reader[G](7)(g)) match
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: all(rest)
     val gen: Cont[F, G, G, G] =
@@ -135,9 +143,9 @@ class TestEffects extends munit.FunSuite:
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: take(n - 1, rest)
     val first = List(0L, 1, 1, 2, 3, 5, 8, 13, 21, 34)
-    assertEquals(run(collect[Long, Unit](fibs(10, 0, 1)))._1, first)
+    assertEquals(Effects.run(collect[Long, Unit](fibs(10, 0, 1)))._1, first)
     assertEquals(take(10, generate[Long](using At[Pure, G]())(forever(0, 1))), first)
-    assertEquals(run(collect[Long, Unit](fibs(10000, 0, 1)))._1.length, 10000)
+    assertEquals(Effects.run(collect[Long, Unit](fibs(10000, 0, 1)))._1.length, 10000)
 
   test("generate stays lazy over a forwarded effect: an infinite body asking at every step, three pulled"):
     type F = Reader % Int +: Pure
@@ -145,7 +153,7 @@ class TestEffects extends munit.FunSuite:
     var produced = 0
     def from(n: Int)(using c: Effects, e: Emit % Int :? c.R, r: Reader % Int :? c.R): c.M[c.R, c.S, c.S, Unit] =
       ask[Int].flatMap(x => yield_(n * x)).flatMap(_ => { produced += 1; from(n + 1) })
-    def take(i: Int, g: Cont[F, G, G, G]): List[Int] = if i == 0 then Nil else run(reader[G](10)(g)) match
+    def take(i: Int, g: Cont[F, G, G, G]): List[Int] = if i == 0 then Nil else Effects.run(reader[G](10)(g)) match
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: take(i - 1, rest)
     assertEquals(take(3, generate[Int](using At[F, G]())(from(1))), List(10, 20, 30))
@@ -161,10 +169,8 @@ class TestEffects extends munit.FunSuite:
     gen.value match
       case Gen.Next(first, rest) =>
         assertEquals(first, 7)
-        run(reader[G](8)(rest)) match
+        Effects.run(reader[G](8)(rest)) match
           case Gen.Next(second, _) => assertEquals(second, 8)
           case Gen.Done() => fail("a second element")
       case Gen.Done() => fail("a first element")
 
-  test("an effect its context does not have cannot be performed"):
-    assert(compileErrors("""run(reader[Unit](1)(tell("x")))""").nonEmpty)
