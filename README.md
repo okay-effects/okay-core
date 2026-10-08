@@ -141,3 +141,24 @@ ns an operation, a run for the captures):
 
 Behind master: choose (+8%), a shallow shift under a handler, pure tail calls (+4…8%). `shift0`, master has none:
 27 ns a run, `k` once (`ZeroShift0Benchmark`).
+
+## One interface, several monads
+
+Master's `Effects` and `Control` are over any monad of levels: a delimiter's context is a member of the context
+— `Handled[E, S]` under a handler, `Reset[S]` in a reset, `Answer[S]` in a shift's body — and a delimiter's body is
+in `Inner`, the monad one level in (`Cont`'s the same, `M`). So a program written once, `(using c: Effects)`, and
+`okay.std`, run on each instance: `Cont` (`Effects.At`), the CPS reference (`Cps.At`, control only, in the tests)
+and `Cont0` (`okay.zero.Fx`). Master's tests run so on `Cont` and on `Cont0` (`TestEffectsOn`, `TestContextOn`,
+`TestPStateOn` over a `Backend`); `MonadsBenchmark` runs the same programs on both, `backend=cont|zero`:
+
+| ns an operation | cont | zero |
+|---|---|---|
+| pure binds | 3.18 | 3.18 |
+| answered in place / the general clause | 5.43 / 8.77 | 5.42 / 7.62 |
+| across 1 / 16 handlers | 11.77 / 93.99 | 5.66 / 17.34 |
+| state, writer, throws, choose | 14.79, 19.87, 13.87, 28.73 | 14.34, 17.47, 15.53, 32.63 |
+| collect | 11.89 | 10.31 |
+| a shift under a reset, 16 maps, `k` 8 times (a run) | 430 | 317 |
+
+On `Cont0` through the interface a handler is master's, made one of `okay.zero`'s at its install: a handler
+installed and aborted (`throws`) pays for it, 15.5 against `okay.zero`'s own 13.2.
