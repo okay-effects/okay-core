@@ -11,7 +11,7 @@ final class InReset[R0 <: Row, J0, T0, S0] private[zero] () extends At[R0, Level
 /** `reset[S](body)`: the body written at the answer `S`, its value; the reset answers what the body moved the answer
  * to, `O` */
 def reset[S](using c: Ctx)[O](body: c.Reset[S] ?=> Eff[c.R, c.Inner, S, O, S]): c.P[O] =
-  passAll(delimit(body(using InReset()), identity))
+  resetNode(body(using InReset()))
 
 /** `shift[A, O](k => body)` up to the nearest delimiter — a reset, a handler, the top: `A` the hole's value, `O` the
  * answer the delimiter is moved to; the hole's answer is the context's. `k` the rest up to the delimiter, under it
@@ -27,10 +27,3 @@ final class Shift0To[A, O] private[zero] ():
   def apply[R <: Row, J, T, S](using r: InReset[R, J, T, S])(f: At[R, J, T] ?=> (A => Eff[R, J, T, T, S]) => Eff[R, J, T, T, O])
       : Eff[R, Level[R, J, T], S, O, A] =
     capture[R, J, T, A, S, O](k => f(using At())(a => passAll(k(a))).map(o => Res.Done(o)))
-
-/** a reset's reading: every operation asked again outside — its path the same, the row is — the rest under it again */
-private def passAll[R <: Row, J, T, O](out: Eff[R, J, T, T, Res[R, Level[R, J, T], O]]): Eff[R, J, T, T, O] =
-  read(out, new Requests[R, R, J, T, O]:
-    def apply[E[_], X](op: E[X], in: In[E, R], k: X => Eff[R, J, T, T, Res[R, Level[R, J, T], O]],
-                       again: Eff[R, J, T, T, Res[R, Level[R, J, T], O]] => Eff[R, J, T, T, O]): Eff[R, J, T, T, O] =
-      request[E, R, J, T, X](op, in).flatMap(x => again(k(x))))

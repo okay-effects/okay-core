@@ -25,12 +25,7 @@ final class PerformAt[T] private[zero] ():
 
 /** `handle(h)(body)`: `h.ret $ body`, the body in the handler's context, its answers read by the handler */
 def handle[E[_], A, Ans](using c: Ctx)(h: Handler[c.P, E, A, Ans])(body: c.Body[E, Ans, A]): c.P[Ans] =
-  read(delimit(body(using At()), h.ret), new Requests[E +: c.R, c.R, c.J, c.T, Ans]:
-    def apply[E2[_], X](op: E2[X], in: In[E2, E +: c.R], k: X => Eff[c.R, c.J, c.T, c.T, Res[E +: c.R, c.Inner, Ans]],
-                        again: Eff[c.R, c.J, c.T, c.T, Res[E +: c.R, c.Inner, Ans]] => c.P[Ans]): c.P[Ans] =
-      in match
-        case In.Here() => h(op, x => again(k(x)))
-        case In.There(o) => request[E2, c.R, c.J, c.T, X](op, o).flatMap(x => again(k(x))))
+  handleNode(h, body(using At()))
 
 /** THE CONTEXT WITH THE EFFECTS A PROGRAM NEEDS, `Es`, found in its row */
 trait Needs[Es <: AnyKind] extends Ctx:
