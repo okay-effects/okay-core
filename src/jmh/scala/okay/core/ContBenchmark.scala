@@ -68,6 +68,20 @@ class ContBenchmark:
   @Benchmark
   def tailcallHandled(): Boolean = run(Effects.handle(ticking)(isEvenT(n)))
 
+  /** tailcallHandled on the concrete `Cont`, no context: an operation an `Inject`, its bind `Cont.flatMap` — what
+   * the classes cost, against tailcallHandled */
+  def isEvenC(n: Int): Cont[Tick +: Pure, Boolean, Boolean, Boolean] =
+    if n == 0 then pure(true) else inject[Tick +: Pure, Boolean, Tick, Int](Tick.Value(n)).flatMap(_ => isOddC(n - 1))
+  def isOddC(n: Int): Cont[Tick +: Pure, Boolean, Boolean, Boolean] =
+    if n == 0 then pure(false) else inject[Tick +: Pure, Boolean, Tick, Int](Tick.Value(n)).flatMap(_ => isEvenC(n - 1))
+  val tickingC: Handler[Cont, Tick, Pure, Boolean, Boolean, Boolean] = new Answering[Cont, Tick, Pure, Boolean, Boolean, Boolean]:
+    def ret(a: Boolean): Boolean = a
+    def value[X](op: Tick[X]): X = op match
+      case Tick.Value(a) => a
+
+  @Benchmark
+  def tailcallHandledCont(): Boolean = isEvenC(n).handle(tickingC).value
+
   @Benchmark
   def tailcallHandledGeneral(): Boolean = run(Effects.handle(tickingK)(isEvenT(n)))
 
