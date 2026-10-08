@@ -66,10 +66,16 @@ private[zero] object Cont0:
   private def delimit[I, I2, O2, B, A](body: Cont0[I, Cont0[I2, O2, B], A], ret: A => I): Cont0[I2, O2, B] =
     step(body, Frames.End()) match
       case Head.Done(a) => ret(a)
-      case Head.Cut(f, k) => f(x => Dollar(k(x), ret))
+      case Head.Cut(f, k) => f(x => Dollar(resumed(x, k), ret))
+
+  /** `x` into the rest `k` — LAZILY: a bind the loop takes when it gets to it, so applying `k` runs nothing of the
+   * rest (a generator's next step made, not taken); an empty rest, the value itself */
+  private def resumed[I, T, X, A](x: X, k: Frames[X, I, T, A]): Cont0[I, T, A] = k match
+    case Frames.End() => Return(x)
+    case _ => Bind(Return(x), k)
 
   extension [A](c: Cont0[A, A, A])
     /** a program at the top, its value — the top `identity $` */
     def value: A = step(c, Frames.End()) match
       case Head.Done(a) => a
-      case Head.Cut(f, k) => f(x => Dollar(k(x), identity))
+      case Head.Cut(f, k) => f(x => Dollar(resumed(x, k), identity))

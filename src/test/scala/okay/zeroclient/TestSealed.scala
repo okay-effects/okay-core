@@ -8,7 +8,7 @@ import okay.zero.*
 class TestSealed extends munit.FunSuite:
   enum Ask[+A]:
     case Number extends Ask[Int]
-  def asking[R <: Row, J, T, A](using Ctx[R, J])(n: Int)(body: Body[Ask, R, J, T, A]): Eff[R, J, T, T, A] =
+  def asking[R <: Row, J, T, A](using Ctx[R, J])(n: Int)(body: Body[Ask, R, J, T, A, A]): Eff[R, J, T, T, A] =
     handle(new Handler[[X] =>> Eff[R, J, T, T, X], Ask, A, A]:
       def ret(a: A): A = a
       def apply[X](op: Ask[X], k: X => Eff[R, J, T, T, A]): Eff[R, J, T, T, A] = op match
@@ -32,9 +32,11 @@ class TestSealed extends munit.FunSuite:
     assert(compileErrors("""given Ctx[Ask +: Empty, Int] = new Ctx[Ask +: Empty, Int]()""").nonEmpty)
     assert(compileErrors("""given Reset[Empty, Int, Int] = new Reset[Empty, Int, Int]()""").nonEmpty)
 
-  test("a shift needs a reset: none, or a handler between, is a compile error"):
-    assert(compileErrors("""run[Int](shift[Int, Int, Int](k => k(1)))""").nonEmpty)
-    assert(compileErrors("""run[Int](reset(asking(1)(shift[Int, Int, Int](k => k(1)))))""").nonEmpty)
+  test("a shift0 needs a reset: none, or a handler between, is a compile error — a shift any delimiter"):
+    assert(compileErrors("""run[Int](shift0[Int, Int, Int](k => k(1)))""").nonEmpty)
+    assert(compileErrors("""run[Int](reset(asking(1)(shift0[Int, Int, Int](k => k(1)))))""").nonEmpty)
+    assert(compileErrors("""run[Int](shift[Int, Int, Int](k => k(1)))""").isEmpty)
+    assert(compileErrors("""run[Int](asking(1)(shift[Int, Int, Int](k => k(1))))""").isEmpty)
 
   test("an effect with no handler in force: no path to it"):
     enum Say[+A]:

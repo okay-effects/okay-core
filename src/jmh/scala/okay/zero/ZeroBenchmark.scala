@@ -25,12 +25,12 @@ class ZeroBenchmark:
 
   def ticks[R <: Row, J, T](i: Int, acc: Int)(using Ctx[R, J], Tick :? R): Eff[R, J, T, T, Int] =
     if i == 0 then pure(acc) else perform(Tick.Value(1)).flatMap(x => ticks(i - 1, acc + x))
-  def ticking[R <: Row, J, T, A](using Ctx[R, J])(body: Body[Tick, R, J, T, A]): Eff[R, J, T, T, A] =
+  def ticking[R <: Row, J, T, A](using Ctx[R, J])(body: Body[Tick, R, J, T, A, A]): Eff[R, J, T, T, A] =
     handle(new Handler[[X] =>> Eff[R, J, T, T, X], Tick, A, A]:
       def ret(a: A): A = a
       def apply[X](op: Tick[X], k: X => Eff[R, J, T, T, A]): Eff[R, J, T, T, A] = op match
         case Tick.Value(a) => k(a))(body)
-  def skipping[R <: Row, J, T, A](using Ctx[R, J])(body: Body[Skip, R, J, T, A]): Eff[R, J, T, T, A] =
+  def skipping[R <: Row, J, T, A](using Ctx[R, J])(body: Body[Skip, R, J, T, A, A]): Eff[R, J, T, T, A] =
     handle(new Handler[[X] =>> Eff[R, J, T, T, X], Skip, A, A]:
       def ret(a: A): A = a
       def apply[X](op: Skip[X], k: X => Eff[R, J, T, T, A]): Eff[R, J, T, T, A] = op match
@@ -52,7 +52,7 @@ class ZeroQueensBenchmark:
   var size: Int = 0
   enum Among[+A]:
     case Of[A](as: Seq[A]) extends Among[A]
-  def choosing[R <: Row, J, T, A](using Ctx[R, J])(body: Body[Among, R, J, T, A]): Eff[R, J, T, T, Seq[A]] =
+  def choosing[R <: Row, J, T, A](using Ctx[R, J])(body: Body[Among, R, J, T, A, Seq[A]]): Eff[R, J, T, T, Seq[A]] =
     handle(new Handler[[X] =>> Eff[R, J, T, T, X], Among, A, Seq[A]]:
       def ret(a: A): Seq[A] = Vector(a)
       def apply[X](op: Among[X], k: X => Eff[R, J, T, T, Seq[A]]): Eff[R, J, T, T, Seq[A]] = op match

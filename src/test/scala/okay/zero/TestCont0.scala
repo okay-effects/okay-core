@@ -43,3 +43,8 @@ class TestCont0 extends munit.FunSuite:
     var p: Cont0[Lg, Lg, Int] = shift0[Long, Long, Long, Lg, Int](k => calls(k, 3, 0))
     for _ <- 1 to 100000 do p = p.map(_ + 1)
     assertEquals(p.map(_.toLong).reset0.value, (100003L + 100002L + 100001L) * 10)
+
+  test("k applied runs nothing of the rest: a generator's next step made, not taken"):
+    var ran = false
+    val p: P = shift0[Int, Int, Int, P, Int](k => { k(1); pure(if ran then 1 else 0) }).flatMap(x => { ran = true; pure(x) }).reset0
+    assertEquals(p.value, 0)

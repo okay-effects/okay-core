@@ -32,7 +32,7 @@ class TestEffects extends munit.FunSuite:
     assert(!ran)
 
   test("a clause runs outside its handler: an operation in it goes to the handler further out"):
-    def loud[R <: Row, J, T, A](using Ctx[R, J], Say :? R)(body: Body[Ask, R, J, T, A]): Eff[R, J, T, T, A] =
+    def loud[R <: Row, J, T, A](using Ctx[R, J], Say :? R)(body: Body[Ask, R, J, T, A, A]): Eff[R, J, T, T, A] =
       handle(new Handler[[X] =>> Eff[R, J, T, T, X], Ask, A, A]:
         def ret(a: A): A = a
         def apply[X](op: Ask[X], k: X => Eff[R, J, T, T, A]): Eff[R, J, T, T, A] = op match
@@ -81,7 +81,7 @@ class TestEffects extends munit.FunSuite:
   enum Gen:
     case Next(w: Int, rest: Eff[Ask +: Empty, J1, Gen, Gen, Gen])
     case Done
-  def generating(using Ctx[Ask +: Empty, J1])(body: Body[Emit, Ask +: Empty, J1, Gen, Unit]): Eff[Ask +: Empty, J1, Gen, Gen, Gen] =
+  def generating(using Ctx[Ask +: Empty, J1])(body: Body[Emit, Ask +: Empty, J1, Gen, Unit, Gen]): Eff[Ask +: Empty, J1, Gen, Gen, Gen] =
     handle(new Handler[[X] =>> Eff[Ask +: Empty, J1, Gen, Gen, X], Emit, Unit, Gen]:
       def ret(u: Unit): Gen = Gen.Done
       def apply[X](op: Emit[X], k: X => Eff[Ask +: Empty, J1, Gen, Gen, Gen]): Eff[Ask +: Empty, J1, Gen, Gen, Gen] = op match

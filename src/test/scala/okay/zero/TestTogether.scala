@@ -6,6 +6,19 @@ import Std.*
  * shift's delimiter — and each serves the other: a shift's body and its k perform, a handler's body resets */
 class TestTogether extends munit.FunSuite:
 
+  test("a shift's body is under the reset, in its context: it may perform, the reset passing it on"):
+    assertEquals(run[Int](asking(3)(reset(shift[Int, Int, Int](k => number.flatMap(k)).map(_ * 10)))), 30)
+
+  test("an operation under a handler, under a reset: the capture re-delimited, the handler still answers"):
+    assertEquals(run[(List[String], Int)](saying(reset(shift[Int, Int, Int](k => k(1).flatMap(k)).flatMap(x => say(x.toString).map(_ => x + 1))))),
+      (List("1", "2"), 3))
+
+  test("a shift under a handler, no reset between: k the rest up to the handler, its ret and clauses with it; two shots"):
+    type Ans = (List[String], Int)
+    val r = run[Ans](saying(shift[Int, Ans, Ans](k => k(1).flatMap((l1, a1) => k(2).map((l2, a2) => (l1 ++ l2, a1 + a2))))
+      .flatMap(x => say(x.toString).map(_ => x * 10))))
+    assertEquals(r, (List("1", "2"), 30))
+
   test("an operation inside a reset reaches its handler outside: the reset passes it on, the rest resumed in it"):
     assertEquals(run[Int](asking(5)(reset(shift[Int, Int, Int](k => k(1)).flatMap(x => number.map(_ + x))))), 6)
 
