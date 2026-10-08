@@ -73,7 +73,9 @@ object Cont0:
   /** the program to its head: binds followed, a delimiter entered — the machine's nodes by their shift0 programs,
    * a handler, a reset and a resumption by the machine, nothing known of the handlers around */
   @tailrec private[zero] def step[I, T, O, X, A](c: Cont0[T, O, X], k: Frames[X, I, T, A]): Head[I, O, A] = c match
-    case Bind(m, f) => step(m, Frames.Then(f, k))
+    case b: Bind[i, t, o, a, bb] => b.m match
+      case r: Return[s, aa] => step(b.f(r.a), k)
+      case _ => step(b.m, Frames.Then(b.f, k))
     case Return(a) => k match
       case Frames.End() => Head.Done(a)
       case Frames.Then(f, next) => step(f(a), next)

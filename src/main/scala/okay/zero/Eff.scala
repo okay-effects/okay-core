@@ -101,22 +101,23 @@ private[zero] def capture[R <: Row, J, T, A, I, O](f: (A => Eff[R, J, T, T, Res[
  * delimiter the machine did not enter: an operation then goes the way it always may, to the delimiters */
 private[zero] enum Ev[+R <: Row]:
   case Unknown extends Ev[Nothing]
-  case Entry[E[_], T <: Row](h: Handler[?, E, ?, ?], outer: Ev[T]) extends Ev[E +: T]
+  /** a handler of `E` in front of the others, `answers` it if it answers in place — found once, when entered */
+  case Entry[E[_], T <: Row](h: Handler[?, E, ?, ?], outer: Ev[T], answers: Answering[?, E, ?, ?] | Null) extends Ev[E +: T]
 
 /** the handlers in force inside a handler `h` entered with `ev` outside: `h` in front — or, if it answers nothing
  * in place and nothing is known outside, nothing known still: a lookup through it finds the same */
 private def within[E[_], R <: Row](h: Handler[?, E, ?, ?], ev: Ev[R]): Ev[E +: R] = ev match
   case Ev.Unknown => h match
-    case _: Answering[?, E, ?, ?] => Ev.Entry(h, ev)
+    case a: Answering[?, E, ?, ?] => Ev.Entry(h, ev, a)
     case _ => Ev.Unknown
-  case _ => Ev.Entry(h, ev)
+  case _ => h match
+    case a: Answering[?, E, ?, ?] => Ev.Entry(h, ev, a)
+    case _ => Ev.Entry(h, ev, null)
 
 /** the handler at the path, if it answers in place — `shift0 k. k(v)` is `v` */
 @tailrec private def inPlace[E[_], R <: Row](in: In[E, R], ev: Ev[R]): Answering[?, E, ?, ?] | Null = ev match
   case e: Ev.Entry[e, t] => in match
-    case In.Here() => e.h match
-      case a: Answering[?, E, ?, ?] => a
-      case _ => null
+    case In.Here() => e.answers
     case In.There(out) => inPlace(out, e.outer)
   case _ => null
 
