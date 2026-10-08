@@ -206,26 +206,10 @@ private def shiftAtHandler[E[_], R <: Row, J, T, I0, V, A, X, Hole](h: Answering
   deliver0[E +: R, Cont0[J, J, Res[R, J, T]], V, V, V](c.f(x => Lift[E +: R, Cont0[J, J, Res[R, J, T]], V, Hole](Resume(x, unit, k, rd, ev))),
     Hd[E, R, J, T, V, V, V](h, v => v), ev, n)
 
-/** the loop while nothing is bound under the body — a resumption's, a handler's at its entry, a tail call's — the
- * common heads taken with no stack made; `deliver` from the first bind on */
-@tailrec private def deliver0[RB <: Row, L, I0, V, A](c: Cont0[Cont0[L, L, Res[RB, L, I0]], Cont0[L, L, Res[RB, L, V]], A],
-    d: Delim[RB, L, I0, V, A], ev: Ev[RB], n: Int): Cont0[L, L, V] = c match
-  case b: Bind[i, t, o, a, bb] => b.m match
-    case r: Return[s, aa] => deliver0[RB, L, I0, V, A](b.f(r.a), d, ev, n)
-    case _ => deliver[RB, L, I0, V, A, t, a](b.m, Frames.Then(b.f, Frames.End()), d, ev, n)
-  case r: Return[s, a] => Return[L, V](ret(d, r.a))
-  case o: OpK[r, j, t, e, x, i, b] => inPlace[e, RB](o.in, ev) match
-    case null => route(o.op, o.in, o.k, Frames.End[Cont0[L, L, Res[RB, L, I0]], A](), d, ev)
-    case v => deliver0[RB, L, I0, V, A](o.k(v.value(o.op)), d, ev, n)
-  // an operation the body's last: answered in place, its value the body's; else its rest the value itself
-  case o: Op[r, j, t, e, x] => inPlace[e, RB](o.in, ev) match
-    case null => route(o.op, o.in, unit[Cont0[L, L, Res[RB, L, I0]], A], Frames.End[Cont0[L, L, Res[RB, L, I0]], A](), d, ev)
-    case v => Return[L, V](ret(d, v.value(o.op)))
-  case dl: Delay[i, o, a] => deliver0[RB, L, I0, V, A](dl.c(), d, ev, n)
-  case r: Resume[rb, l, i0, v, a, x, t1, y] => deliver0[RB, L, I0, V, A](enter(r, inner[rb, RB, L, V, i0, v, a](r.d, ev, r.ev), n), d, ev, n)
-  case h: Handle[e, r, j, t, a, ans] => deliver0[RB, L, I0, V, A](enterHandle[e, r, j, t, a, ans](h, ev, n), d, ev, n)
-  case s: Reset[r, j, t, sv, o] => deliver0[RB, L, I0, V, A](enterReset[r, j, t, sv, o](s, ev, n), d, ev, n)
-  case _ => deliver[RB, L, I0, V, A, Cont0[L, L, Res[RB, L, I0]], A](c, Frames.End(), d, ev, n)
+/** a body's loop from its start, nothing bound under it */
+private def deliver0[RB <: Row, L, I0, V, A](c: Cont0[Cont0[L, L, Res[RB, L, I0]], Cont0[L, L, Res[RB, L, V]], A],
+    d: Delim[RB, L, I0, V, A], ev: Ev[RB], n: Int): Cont0[L, L, V] =
+  deliver[RB, L, I0, V, A, Cont0[L, L, Res[RB, L, I0]], A](c, Frames.End(), d, ev, n)
 
 /** the body's value to the delimiter's answer */
 private def ret[RB <: Row, L, I0, V, A](d: Delim[RB, L, I0, V, A], a: A): I0 = d match
