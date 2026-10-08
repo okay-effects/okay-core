@@ -1,28 +1,46 @@
 package okay.core
 
 /** DELIMITED CONTROL over the monad: `shift` and `reset`, answers moved — Danvy–Filinski's, typed as Asai–Kameyama's.
- * The raw operations take every type; `Control.shift` and `Control.reset` are them in context */
+ * The raw operations at the context's row; `Control.shift` and `Control.reset` are them in context */
 trait Control extends Context:
-  /** the context at the row `R2`, the answer `S2`, the monad this one's */
-  type Under[R2 <: Row, S2] <: Control { type M[X <: Row, I, O, A] = Control.this.M[X, I, O, A]; type R = R2; type S = S2 }
-  def under[R2 <: Row, S2]: Under[R2, S2]
+  /** the context in a reset here, its body written at `S2`: the monad `Inner` */
+  type Reset[S2] <: Control { type M[X <: Row, I, O, A] = Control.this.Inner[X, I, O, A]; type R = Control.this.R; type S = S2 }
+  /** this context at the answer `S2`, the monad the same: a shift's body, where the delimiter was */
+  type Answer[S2] <: Control { type M[X <: Row, I, O, A] = Control.this.M[X, I, O, A]; type R = Control.this.R; type S = S2 }
+  def answer[S2]: Answer[S2]
   /** `shift(k => body)`: `k` the context up to the nearest delimiter, under a delimiter of its own, delivering the
-   * answer at the hole, `I`; the body runs under the delimiter at its final answer `O`, its value that answer */
-  def shift[X <: Row, I, O, A](f: (A => M[X, O, O, I]) => M[X, O, O, O]): M[X, I, O, A]
-  /** the delimiter: the body's value to its initial answer `S2` by `ret`, its final answer `O` the delimiter's
-   * value outside, at any answer `Q` there */
-  def reset[X <: Row, Q, S2, O, A](body: M[X, S2, O, A], ret: A => S2): M[X, Q, Q, O]
+   * answer at the hole, `I`; the body runs under the delimiter at its final answer `O`, its value that answer.
+   * `same`, if the shift keeps the answer: what a monad whose `k` holds a handler's clauses needs */
+  def shift[I, O, A](f: (A => M[R, O, O, I]) => M[R, O, O, O], same: (I =:= O) | Null): M[R, I, O, A]
+  /** the delimiter: the body, in its context, written at `S2`, its value the answer; its final answer `O` the
+   * delimiter's value here */
+  def reset[S2, O](body: Reset[S2] ?=> Inner[R, S2, O, S2]): M[R, S, S, O]
 
-/** a context with effects and control both: what `Effects.At`, the instance over `Cont`, is */
-trait Delimited extends Effects with Control
+/** a context with effects and control both: what `Effects.At`, the instance over `Cont`, is — its delimiters'
+ * contexts so too */
+trait Delimited extends Effects with Control:
+  type Handled[E[_], S2] <: Delimited { type M[X <: Row, I, O, A] = Delimited.this.Inner[X, I, O, A]; type R = E +: Delimited.this.R; type S = S2 }
+  type Reset[S2] <: Delimited { type M[X <: Row, I, O, A] = Delimited.this.Inner[X, I, O, A]; type R = Delimited.this.R; type S = S2 }
+  type Answer[S2] <: Delimited { type M[X <: Row, I, O, A] = Delimited.this.M[X, I, O, A]; type R = Delimited.this.R; type S = S2 }
+
+/** whether a shift keeps the answer, `T` to `O`: the proof, if the types say so; else nothing known */
+opaque type Keeps[T, O] = (T =:= O) | Null
+object Keeps extends KeepsLow:
+  given kept[T]: Keeps[T, T] = keptProof
+  extension [T, O](k: Keeps[T, O]) def proof: (T =:= O) | Null = k
+private def keptProof[T]: Keeps[T, T] = <:<.refl
+private def unknownProof[T, O]: Keeps[T, O] = null
+trait KeepsLow:
+  given unknown[T, O]: Keeps[T, O] = unknownProof
 
 object Control:
   /** `reset[S](body)`: the body written at the answer `S`, its value; the delimiter answers what the body moved
    * the answer to, `O` */
-  def reset[S](using c: Control)[O](body: c.Under[c.R, S] ?=> c.M[c.R, S, O, S]): c.M[c.R, c.S, c.S, O] =
-    c.reset(body(using c.under), identity)
+  def reset[S](using c: Control)[O](body: c.Reset[S] ?=> c.Inner[c.R, S, O, S]): c.M[c.R, c.S, c.S, O] =
+    c.reset(body)
 
   /** `shift[A, O](k => body)`: the hole's value `A` and the answer the delimiter is moved to, `O`; the hole's
    * answer is the context's. The body is written at `O`, under the delimiter */
-  def shift[A, O](using c: Control)(f: c.Under[c.R, O] ?=> (A => c.M[c.R, O, O, c.S]) => c.M[c.R, O, O, O]): c.M[c.R, c.S, O, A] =
-    c.shift(f(using c.under))
+  def shift[A, O](using c: Control)(f: c.Answer[O] ?=> (A => c.M[c.R, O, O, c.S]) => c.M[c.R, O, O, O])
+      (using k: Keeps[c.S, O]): c.M[c.R, c.S, O, A] =
+    c.shift(f(using c.answer), k.proof)

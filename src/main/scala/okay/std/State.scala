@@ -15,7 +15,7 @@ def put[S](s: S)(using c: Effects, has: State % S :? c.R): c.M[c.R, c.S, c.S, Un
 def modify[S](f: S => S)(using c: Effects, has: State % S :? c.R): c.M[c.R, c.S, c.S, S] =
   get[S].flatMap(s => { val n = f(s); put[S](n).map(_ => n) })
 /** `state[A](s0)(body)`: the last state and the value */
-def state[A](using c: Effects)[S](s0: S)(body: c.Under[State % S +: c.R, (S, A)] ?=> c.M[State % S +: c.R, (S, A), (S, A), A]): c.M[c.R, c.S, c.S, (S, A)] =
+def state[A](using c: Effects)[S](s0: S)(body: c.Handled[State % S, (S, A)] ?=> c.Inner[State % S +: c.R, (S, A), (S, A), A]): c.M[c.R, c.S, c.S, (S, A)] =
   c.delay:
     Effects.handle(new Answering[c.M, State % S, c.R, c.S, A, (S, A)]:
       private var s: S = s0

@@ -18,21 +18,24 @@ abstract class IxMonad:
 /** THE CONTEXT a program is written in: the monad, the row `R` there and the answer `S` at this point — what an
  * operation and a `shift` take their types from, by its members: `c.M`, `c.R`, `c.S`. The context IS the
  * instance: a program asks for one, `(using c: Effects)`, and is a value of `c.M`. A delimiter gives its body
- * one of its own, `under`: a handler's has the handler's effect in front of what the handler leaves, `E +: c.R`,
- * so the row is built by the handlers, outside in, and never named. The nearest context wins — a nested scope's
- * given is preferred */
+ * one of its own: a handler's has the handler's effect in front of what the handler leaves, `E +: c.R`, so the row
+ * is built by the handlers, outside in, and never named. The nearest context wins — a nested scope's given is
+ * preferred. Its monad is `Inner`, the monad ONE LEVEL IN: `Cont`'s the same, `M`; a monad whose answers are
+ * programs of the level outside (`okay.zero`'s) one level deeper */
 abstract class Context extends IxMonad:
   type R <: Row
   type S
+  /** the monad of the bodies of the delimiters here: a handler's, a reset's */
+  type Inner[X <: Row, I, O, A]
 
 /** EFFECTS over the monad: an operation at its path in the row, and a handler folding a body over `E +: T` to one
  * over `T` */
 abstract class Effects extends Context:
-  /** the context at the row `R2`, the answer `S2`, the monad this one's */
-  type Under[R2 <: Row, S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.M[X, I, O, A]; type R = R2; type S = S2 }
-  def under[R2 <: Row, S2]: Under[R2, S2]
+  /** the context under a handler of `E` here, at its answer `S2`: the row `E +: R`, the monad `Inner` */
+  type Handled[E[_], S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.Inner[X, I, O, A]; type R = E +: Effects.this.R; type S = S2 }
   def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X]
-  def handle[E[_], T <: Row, Q, A, Ans](body: M[E +: T, Ans, Ans, A], h: Handler[M, E, T, Q, A, Ans]): M[T, Q, Q, Ans]
+  /** a handler of `E` here: the body in its context, over `E +: R` at the answer `Ans`; its answers read by `h` */
+  def handle[E[_], A, Ans](h: Handler[M, E, R, S, A, Ans])(body: Handled[E, Ans] ?=> Inner[E +: R, Ans, Ans, A]): M[R, S, S, Ans]
   /** this context with the paths of the effects a program needs: the context of an `A ! Es` */
   type Needing[Es <: AnyKind] <: Needs[Es] { type M[X <: Row, I, O, A] = Effects.this.M[X, I, O, A]; type R = Effects.this.R; type S = Effects.this.S }
   def needing[Es <: AnyKind](p: Paths[Es, R]): Needing[Es]
@@ -101,16 +104,16 @@ object Needs:
     type M[X <: Row, I, O, A] = c.M[X, I, O, A]
     type R = c.R
     type S = c.S
-    type Under[R2 <: Row, S2] = c.Under[R2, S2]
-    def under[R2 <: Row, S2]: Under[R2, S2] = c.under
+    type Inner[X <: Row, I, O, A] = c.Inner[X, I, O, A]
+    type Handled[E[_], S2] = c.Handled[E, S2]
     def pure[X <: Row, S2, A](a: A): M[X, S2, S2, A] = c.pure(a)
     def delay[X <: Row, I, O, A](m: => M[X, I, O, A]): M[X, I, O, A] = c.delay(m)
     extension [X <: Row, I, O, A](m: M[X, I, O, A])
       def flatMap[I2, B](f: A => M[X, I2, I, B]): M[X, I2, O, B] = c.flatMap(m)(f)
       def map[B](f: A => B): M[X, I, O, B] = c.map(m)(f)
     def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = c.perform(op, in)
-    def handle[E[_], T <: Row, Q, A, Ans](body: M[E +: T, Ans, Ans, A], h: Handler[M, E, T, Q, A, Ans]): M[T, Q, Q, Ans] =
-      c.handle(body, h)
+    def handle[E[_], A, Ans](h: Handler[M, E, R, S, A, Ans])(body: Handled[E, Ans] ?=> Inner[E +: R, Ans, Ans, A]): M[R, S, S, Ans] =
+      c.handle(h)(body)
     type Needing[Es2 <: AnyKind] = c.Needing[Es2]
     def needing[Es2 <: AnyKind](p: Paths[Es2, R]): Needing[Es2] = c.needing(p)
 
@@ -126,22 +129,25 @@ object Effects:
     type M[R <: Row, I, O, A] = Cont[R, I, O, A]
     type R = R0
     type S = S0
-    type Under[R2 <: Row, S2] = At[R2, S2]
-    def under[R2 <: Row, S2]: At[R2, S2] = At()
+    type Inner[X <: Row, I, O, A] = Cont[X, I, O, A]
+    type Handled[E[_], S2] = At[E +: R0, S2]
+    type Reset[S2] = At[R0, S2]
+    type Answer[S2] = At[R0, S2]
     def pure[X <: Row, S2, A](a: A): Cont[X, S2, S2, A] = Return(a)
     def delay[X <: Row, I, O, A](m: => Cont[X, I, O, A]): Cont[X, I, O, A] = Delay(() => m)
     extension [X <: Row, I, O, A](m: Cont[X, I, O, A])
       def flatMap[I2, B](f: A => Cont[X, I2, I, B]): Cont[X, I2, O, B] = m.flatMap(f)
       def map[B](f: A => B): Cont[X, I, O, B] = m.map(f)
     def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): Cont[R2, S2, S2, X] = Inject(op, in)
-    def handle[E[_], T <: Row, Q, A, Ans](body: Cont[E +: T, Ans, Ans, A], h: Handler[Cont, E, T, Q, A, Ans]): Cont[T, Q, Q, Ans] =
-      body.handle(h)
+    def handle[E[_], A, Ans](h: Handler[Cont, E, R0, S0, A, Ans])(body: At[E +: R0, Ans] ?=> Cont[E +: R0, Ans, Ans, A]): Cont[R0, S0, S0, Ans] =
+      body(using At()).handle(h)
     // an `At` itself: `perform` and the rest the one implementation there is, called straight
     type Needing[Es <: AnyKind] = At[R0, S0] & Needs[Es]
     // the path kept in the context itself, no `Paths` between: one load an operation, not two
     def needing[Es <: AnyKind](p: Paths[Es, R0]): At[R0, S0] & Needs[Es] = p.at
-    def shift[X <: Row, I, O, A](f: (A => Cont[X, O, O, I]) => Cont[X, O, O, O]): Cont[X, I, O, A] = Shift(f)
-    def reset[X <: Row, Q, S2, O, A](body: Cont[X, S2, O, A], ret: A => S2): Cont[X, Q, Q, O] = Reset(body, ret)
+    def answer[S2]: At[R0, S2] = At()
+    def shift[I, O, A](f: (A => Cont[R0, O, O, I]) => Cont[R0, O, O, O], same: (I =:= O) | Null): Cont[R0, I, O, A] = Shift(f)
+    def reset[S2, O](body: At[R0, S2] ?=> Cont[R0, S2, O, S2]): Cont[R0, S0, S0, O] = Reset(body(using At()), identity)
 
   /** an `At` with the path of the one effect a program needs */
   final class NeedyOne[R0 <: Row, S0, E0[_]](head: In[E0, R0]) extends At[R0, S0] with Needs[E0]:
@@ -159,8 +165,8 @@ object Effects:
 
   /** `handle(h)(body)` in context: the body written in the handler's context, over `E +: c.R`, at its answer */
   def handle[E[_], A, Ans](using c: Effects)(h: Handler[c.M, E, c.R, c.S, A, Ans])
-            (body: c.Under[E +: c.R, Ans] ?=> c.M[E +: c.R, Ans, Ans, A]): c.M[c.R, c.S, c.S, Ans] =
-    c.handle(body(using c.under), h)
+            (body: c.Handled[E, Ans] ?=> c.Inner[E +: c.R, Ans, Ans, A]): c.M[c.R, c.S, c.S, Ans] =
+    c.handle(h)(body)
 
 /** a handler of the effect `E`, over the row `E +: T`, leaving `T`, written at the answer `Q` outside its
  * delimiter: the body's value `A` to the answer `Ans`; each operation with the rest of the body up to the

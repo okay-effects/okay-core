@@ -26,9 +26,8 @@ class TestPStateAsync extends munit.FunSuite:
   test("pstate under an effect of the row: an operation between the moves, at the answer there"):
     // in the body the answer moves, so an operation is the answer-polymorphic node, not `ask` at the context's answer
     // the context passed by hand, the same to `pstate` and to the body: `PState` is over that very context
-    def body(c: Delimited)(using has: Reader % Int :? c.R)(st: PState[c.type, c.R, c.S, (String, Int)]) =
-      given c.type = c
-      st.get[Int].flatMap(n => c.perform[Reader % Int, c.R, st.At[Int], Int](Reader.Ask(), has).flatMap(a => st.put[Int]((n + a).toString))).map(_ => 0)
+    def body(c: Delimited)(using has: Reader % Int :? c.R)(using r: c.Reset[St[c.M, c.R, c.S, String, (String, Int)]])(st: PState[c.type, (String, Int)]) =
+      st.get[Int].flatMap(n => r.perform[Reader % Int, c.R, st.At[Int], Int](Reader.Ask(), has).flatMap(a => st.put[Int]((n + a).toString))).map(_ => 0)
     val r: (String, Int) = run(reader(5):
       val c = summon[At[Reader % Int +: Pure, (String, Int)]]
       pstate(1)(using c)(body(c)))

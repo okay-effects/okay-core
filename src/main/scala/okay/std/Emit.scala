@@ -13,7 +13,7 @@ def yield_[W](w: W)(using c: Effects, has: Emit % W :? c.R): c.M[c.R, c.S, c.S, 
  * RUN — made when the program is stepped, as `state`'s cell — and each `yield` resumes the body at once: nothing
  * waits for the body to end (a clause `k(()).map(w :: _)` left one frame an element, unwound at the end). A
  * resumption shares the buffer: a body resumed twice collects both paths' elements, in the order they ran */
-def collect[W, A](using c: Effects)(body: c.Under[Emit % W +: c.R, (List[W], A)] ?=> c.M[Emit % W +: c.R, (List[W], A), (List[W], A), A])
+def collect[W, A](using c: Effects)(body: c.Handled[Emit % W, (List[W], A)] ?=> c.Inner[Emit % W +: c.R, (List[W], A), (List[W], A), A])
     : c.M[c.R, c.S, c.S, (List[W], A)] =
   type Ans = (List[W], A)
   c.delay:
@@ -31,12 +31,11 @@ enum Gen[M[_ <: Row, _, _, _], W, R <: Row]:
 /** `generate[W](body)`: the body as a lazy generator — nothing runs until the consumer pulls. The generator is a
  * program at its own answer, `Gen`, so it is written in a context at that answer; at the top, `run` pulls its
  * next element */
-def generate[W](using c: Effects)(body: c.Under[Emit % W +: c.R, Gen[c.M, W, c.R]] ?=> c.M[Emit % W +: c.R, Gen[c.M, W, c.R], Gen[c.M, W, c.R], Unit])
+def generate[W](using c: Effects)(body: c.Handled[Emit % W, Gen[c.M, W, c.R]] ?=> c.Inner[Emit % W +: c.R, Gen[c.M, W, c.R], Gen[c.M, W, c.R], Unit])
          (using c.S =:= Gen[c.M, W, c.R]): c.M[c.R, c.S, c.S, Gen[c.M, W, c.R]] =
   type G = Gen[c.M, W, c.R]
-  val h = new Handler[c.M, Emit % W, c.R, G, Unit, G]:
+  val same = summon[c.S =:= G]
+  c.handle(new Handler[c.M, Emit % W, c.R, c.S, Unit, G]:
     def ret(a: Unit): G = Gen.Done()
-    def apply[X](op: Emit[W, X], k: X => c.M[c.R, G, G, G]): c.M[c.R, G, G, G] = op match
-      case Emit.Yield(w) => c.pure(Gen.Next(w, k(())))
-  val p: c.M[c.R, G, G, G] = c.handle(body(using c.under), h)
-  summon[c.S =:= G].substituteContra[[Q] =>> c.M[c.R, Q, Q, G]](p)
+    def apply[X](op: Emit[W, X], k: X => c.M[c.R, c.S, c.S, G]): c.M[c.R, c.S, c.S, G] = op match
+      case Emit.Yield(w) => c.pure(Gen.Next(w, same.substituteCo[[Q] =>> c.M[c.R, Q, Q, G]](k(())))))(body)

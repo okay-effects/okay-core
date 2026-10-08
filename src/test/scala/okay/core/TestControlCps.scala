@@ -14,18 +14,20 @@ object Cps:
     type M[R <: Row, I, O, A] = F[R, I, O, A]
     type R = R0
     type S = S0
-    type Under[R2 <: Row, S2] = At[R2, S2]
-    def under[R2 <: Row, S2]: At[R2, S2] = At()
+    type Inner[X <: Row, I, O, A] = F[X, I, O, A]
+    type Reset[S2] = At[R0, S2]
+    type Answer[S2] = At[R0, S2]
+    def answer[S2]: At[R0, S2] = At()
     def pure[X <: Row, S2, A](a: A): F[X, S2, S2, A] = F(k => k(a))
     def delay[X <: Row, I, O, A](m: => F[X, I, O, A]): F[X, I, O, A] = F(k => m.run(k))
     extension [X <: Row, I, O, A](m: F[X, I, O, A])
       def flatMap[I2, B](f: A => F[X, I2, I, B]): F[X, I2, O, B] = F(k => m.run(a => f(a).run(k)))
       def map[B](f: A => B): F[X, I, O, B] = F(k => m.run(a => k(f(a))))
     /** `shift f = λk. f (λa. λk'. k' (k a)) id` */
-    def shift[X <: Row, I, O, A](f: (A => F[X, O, O, I]) => F[X, O, O, O]): F[X, I, O, A] =
+    def shift[I, O, A](f: (A => F[R0, O, O, I]) => F[R0, O, O, O], same: (I =:= O) | Null): F[R0, I, O, A] =
       F(k => f(a => F(k2 => k2(k(a)))).run(identity))
     /** `reset e = λk. k (e ret)` */
-    def reset[X <: Row, Q, S2, O, A](body: F[X, S2, O, A], ret: A => S2): F[X, Q, Q, O] = F(k => k(body.run(ret)))
+    def reset[S2, O](body: At[R0, S2] ?=> F[R0, S2, O, S2]): F[R0, S0, S0, O] = F(k => k(body(using At()).run(identity)))
 
   /** the body at the top: its answer its value */
   def run[A](body: At[Pure, A] ?=> F[Pure, A, A, A]): A = body(using At()).run(identity)

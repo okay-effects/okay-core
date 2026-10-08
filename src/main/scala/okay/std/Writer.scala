@@ -8,7 +8,7 @@ enum Writer[W, +A]:
 
 def tell[W](w: W)(using c: Effects, has: Writer % W :? c.R): c.M[c.R, c.S, c.S, Unit] = perform[Writer % W, Unit](Writer.Tell(w))
 /** `writer[W, A](body)`: the log and the value */
-def writer[W, A](using c: Effects)(body: c.Under[Writer % W +: c.R, (List[W], A)] ?=> c.M[Writer % W +: c.R, (List[W], A), (List[W], A), A])
+def writer[W, A](using c: Effects)(body: c.Handled[Writer % W, (List[W], A)] ?=> c.Inner[Writer % W +: c.R, (List[W], A), (List[W], A), A])
     : c.M[c.R, c.S, c.S, (List[W], A)] =
   type Ans = (List[W], A)
   Effects.handle(new Handler[c.M, Writer % W, c.R, c.S, A, Ans]:

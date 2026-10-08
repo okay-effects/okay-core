@@ -12,7 +12,7 @@ enum Throws[E, +A]:
 def raise[E, A](e: E)(using c: Effects, has: Throws % E :? c.R): c.M[c.R, c.S, c.S, A] =
   perform[Throws % E, A](Throws.Raise(e))
 /** `throws[E, A](body)`: the value as `Right`, or the first `raise` as `Left` */
-def throws[E, A](using c: Effects)(body: c.Under[Throws % E +: c.R, Either[E, A]] ?=> c.M[Throws % E +: c.R, Either[E, A], Either[E, A], A])
+def throws[E, A](using c: Effects)(body: c.Handled[Throws % E, Either[E, A]] ?=> c.Inner[Throws % E +: c.R, Either[E, A], Either[E, A], A])
     : c.M[c.R, c.S, c.S, Either[E, A]] =
   type Ans = Either[E, A]
   Effects.handle(new Handler[c.M, Throws % E, c.R, c.S, A, Ans]:
