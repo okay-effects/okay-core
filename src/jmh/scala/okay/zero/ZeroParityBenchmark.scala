@@ -196,3 +196,10 @@ class ZeroCaptureBenchmark:
     def ret(a: Int): Int = a
     def value[X](op: Nop[X]): X = op match
       case Nop.Op => ())(captured))
+
+  /** the same under a general handler: a shift up to it read, not run by the machine */
+  @Benchmark
+  def captureHandledGeneralZero(): Int = run[Int](handle(new Handler[[X] =>> Eff[Empty, Int, Int, Int, X], Nop, Int, Int]:
+    def ret(a: Int): Int = a
+    def apply[X](op: Nop[X], k: X => Eff[Empty, Int, Int, Int, Int]): Eff[Empty, Int, Int, Int, Int] = op match
+      case Nop.Op => k(()))(captured))
