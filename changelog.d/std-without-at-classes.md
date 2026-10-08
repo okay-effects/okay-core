@@ -13,3 +13,7 @@
 - Measured (full `bench -prof gc` against 64c2929): allocation unchanged
   everywhere. Queens' +126% in the full run was its neighbours: alone, 517 µs
   and 5 246 332 B, the baseline's bytes exactly, and 522 µs before the change.
+- `E :? R`, an alias of `In[E, R]` for signatures (`(using in: Reader % E :?
+  c.R)`): a `:`-operator, so `%` and `+:` bind tighter, `Ask :? Ask +: Pure`
+  with no parentheses (`?:` would bind tighter than both). okay.std, the
+  tests, the benchmarks and README written with it; the core keeps `In`.

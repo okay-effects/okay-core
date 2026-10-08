@@ -22,7 +22,7 @@ class QueensBenchmark:
   def safe(col: Int, placed: List[Int]): Boolean =
     placed.zipWithIndex.forall((c, d) => c != col && math.abs(c - col) != d + 1)
 
-  def place(row: Int, placed: List[Int])(using c: Effects, ch: In[Choose, c.R]): Cont[c.R, c.S, c.S, List[Int]] =
+  def place(row: Int, placed: List[Int])(using c: Effects, ch: Choose :? c.R): Cont[c.R, c.S, c.S, List[Int]] =
     if row == size then pure(placed)
     else among((0 until size).filter(safe(_, placed))).flatMap(col => place(row + 1, col :: placed))
 

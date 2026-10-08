@@ -43,9 +43,9 @@ class ContBenchmark:
   @Benchmark
   def tailcallPure(): Boolean = isEven(n).value
 
-  def isEvenT(n: Int)(using c: Effects, t: In[Tick, c.R]): Cont[c.R, c.S, c.S, Boolean] =
+  def isEvenT(n: Int)(using c: Effects, t: Tick :? c.R): Cont[c.R, c.S, c.S, Boolean] =
     if n == 0 then pure(true) else perform(Tick.Value(n)).flatMap(_ => isOddT(n - 1))
-  def isOddT(n: Int)(using c: Effects, t: In[Tick, c.R]): Cont[c.R, c.S, c.S, Boolean] =
+  def isOddT(n: Int)(using c: Effects, t: Tick :? c.R): Cont[c.R, c.S, c.S, Boolean] =
     if n == 0 then pure(false) else perform(Tick.Value(n)).flatMap(_ => isEvenT(n - 1))
 
   /** `Tick` answered with its value: answered in place, its clause `k(a)` */

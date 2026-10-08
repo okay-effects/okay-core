@@ -8,7 +8,7 @@ import okay.core.*
 enum Emit[W, +A]:
   case Yield[W](w: W) extends Emit[W, Unit]
 
-def yield_[W](w: W)(using c: Effects, has: In[Emit % W, c.R]): Cont[c.R, c.S, c.S, Unit] = perform[Emit % W, Unit](Emit.Yield(w))
+def yield_[W](w: W)(using c: Effects, has: Emit % W :? c.R): Cont[c.R, c.S, c.S, Unit] = perform[Emit % W, Unit](Emit.Yield(w))
 /** `collect[W, A](body)`: every element yielded, in order, and the value. The elements go to a buffer, one per
  * RUN — made when the program is stepped, as `state`'s cell — and each `yield` resumes the body at once: nothing
  * waits for the body to end (a clause `k(()).map(w :: _)` left one frame an element, unwound at the end). A

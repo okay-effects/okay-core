@@ -24,7 +24,7 @@ class TestPStateAsync extends munit.FunSuite:
 
   test("pstate under an effect of the row: an operation between the moves, at the answer there"):
     // in the body the answer moves, so an operation is the answer-polymorphic node, not `ask` at the context's answer
-    def body(using c: Effects, has: In[Reader % Int, c.R])(st: PState[c.R, c.S, (String, Int)]) =
+    def body(using c: Effects, has: Reader % Int :? c.R)(st: PState[c.R, c.S, (String, Int)]) =
       st.get[Int].flatMap(n => Cont.inject[c.R, st.At[Int], Reader % Int, Int](Reader.Ask()).flatMap(a => st.put[Int]((n + a).toString))).map(_ => 0)
     val r: (String, Int) = run(reader(5)(pstate(1)(body)))
     assertEquals(r, ("6", 0))
@@ -35,13 +35,13 @@ class TestPStateAsync extends munit.FunSuite:
   test("await: a callback from another thread, the run going on in it"):
     val pool = Executors.newFixedThreadPool(2)
     try
-      def later(x: Int)(using c: Effects, has: In[Async, c.R]): Cont[c.R, c.S, c.S, Int] =
+      def later(x: Int)(using c: Effects, has: Async :? c.R): Cont[c.R, c.S, c.S, Int] =
         await[Int](cb => pool.execute(() => { Thread.sleep(1); cb(Right(x)) }))
       assertEquals(runIO(later(1).flatMap(a => later(2).map(_ + a)).flatMap(a => later(3).map(_ + a))), Right(6))
     finally pool.shutdown()
 
   test("await: 100 000 callbacks answered at once, in constant stack"):
-    def loop(i: Int, acc: Int)(using c: Effects, has: In[Async, c.R]): Cont[c.R, c.S, c.S, Int] =
+    def loop(i: Int, acc: Int)(using c: Effects, has: Async :? c.R): Cont[c.R, c.S, c.S, Int] =
       if i == 0 then Cont.pure(acc) else await[Int](cb => cb(Right(1))).flatMap(x => loop(i - 1, acc + x))
     assertEquals(runIO(loop(100000, 0)), Right(100000))
 

@@ -25,6 +25,10 @@ enum In[E[_], R <: Row]:
   /** the operation out at this path, bound to `k`: an operation crossing a delimiter goes on outside so, `k` the
    * rest put back under the delimiter it crossed */
   def bind[Q, X, Z](op: E[X], k: X => Cont[R, Q, Q, Z]): Cont[R, Q, Q, Z] = Cont.Suspend(op, this, k)
+/** `E :? R`, the effect `E` in the row `R`: `In` as it is written in a signature, `(using in: Reader % E :? c.R)` —
+ * a `:`-operator, so `%` and `+:` bind tighter: `Ask :? Ask +: Pure` */
+infix type :?[E[_], R <: Row] = In[E, R]
+
 object In extends InLow:
   given here[E[_], T <: Row]: In[E, E +: T] = Here()
 sealed trait InLow:

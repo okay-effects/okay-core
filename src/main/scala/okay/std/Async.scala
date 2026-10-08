@@ -14,9 +14,9 @@ enum Async[+A]:
   case Await[A](register: (Either[Throwable, A] => Unit) => Unit) extends Async[A]
 
 /** a computation, suspended — run when the run gets to it */
-def async[A](a: => A)(using c: Effects, has: In[Async, c.R]): Cont[c.R, c.S, c.S, A] = perform[Async, A](Async.Run(() => a))
+def async[A](a: => A)(using c: Effects, has: Async :? c.R): Cont[c.R, c.S, c.S, A] = perform[Async, A](Async.Run(() => a))
 /** the value a callback is called with, once */
-def await[A](register: (Either[Throwable, A] => Unit) => Unit)(using c: Effects, has: In[Async, c.R]): Cont[c.R, c.S, c.S, A] =
+def await[A](register: (Either[Throwable, A] => Unit) => Unit)(using c: Effects, has: Async :? c.R): Cont[c.R, c.S, c.S, A] =
   perform[Async, A](Async.Await(register))
 
 object Async:
@@ -60,7 +60,7 @@ object Async:
   /** `run(body)`: the body's value, this thread waiting for it — at the edge of a program only; its failure raised
    * in the context */
   def run[A](body: Effects.At[Async +: Fails, Unit] ?=> Free[Async +: Fails, A])
-            (using c: Effects, has: In[Throws % Throwable, c.R]): Cont[c.R, c.S, c.S, A] =
+            (using c: Effects, has: Throws % Throwable :? c.R): Cont[c.R, c.S, c.S, A] =
     Cont.Delay: () =>
       val result = java.util.concurrent.CompletableFuture[Either[Throwable, A]]()
       runAsync(body)(result.complete)

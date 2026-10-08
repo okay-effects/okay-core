@@ -6,7 +6,7 @@ import okay.core.*
 enum Writer[W, +A]:
   case Tell[W](w: W) extends Writer[W, Unit]
 
-def tell[W](w: W)(using c: Effects, has: In[Writer % W, c.R]): Cont[c.R, c.S, c.S, Unit] = perform[Writer % W, Unit](Writer.Tell(w))
+def tell[W](w: W)(using c: Effects, has: Writer % W :? c.R): Cont[c.R, c.S, c.S, Unit] = perform[Writer % W, Unit](Writer.Tell(w))
 /** `writer[W, A](body)`: the log and the value */
 def writer[W, A](using c: Effects)(body: Effects.At[Writer % W +: c.R, (List[W], A)] ?=> Cont[Writer % W +: c.R, (List[W], A), (List[W], A), A])
     : Cont[c.R, c.S, c.S, (List[W], A)] =
