@@ -1,27 +1,50 @@
 package okay.zero
 
-/** EFFECTS: operations by name in a row, deep handlers, on the delimiters' protocol. An operation is a request to
- * the nearest delimiter; a handler is a delimiter that answers its own and passes the others on outside, one
- * handler shorter — so the handler is the one the program RUNS under, and a reset in between passes it on */
+/** EFFECTS: operations by name in a row, deep handlers, on the delimiters' protocol, in context. An operation is a
+ * request to the nearest delimiter; a handler is a delimiter that answers its own and passes the others on
+ * outside, one handler shorter — so the handler is the one the program RUNS under, and a reset between passes it */
 
 /** a handler of `E` over programs `P` outside it: the body's value to `Ans`, each operation with the rest — deep */
 trait Handler[P[_], E[_], A, Ans]:
   def ret(a: A): Ans
   def apply[X](op: E[X], k: X => P[Ans]): P[Ans]
 
-/** a handler's body: in the handler's context, of value `A`, at the handler's answer `Ans` — as a shift under it,
- * no reset between, sees: `k` the rest with `ret`, the body's value the handler's answer */
-type Body[E[_], R <: Row, J, T, A, Ans] = Ctx[E +: R, Level[R, J, T]] ?=> Eff[E +: R, Level[R, J, T], Ans, Ans, A]
+/** a TAIL-RESUMPTIVE handler: each clause `k(value(op))`, the value of the operation alone */
+trait Answering[P[_], E[_], A, Ans] extends Handler[P, E, A, Ans]:
+  def value[X](op: E[X]): X
+  final def apply[X](op: E[X], k: X => P[Ans]): P[Ans] = k(value(op))
 
-/** `perform(op)`: an operation of `E`, in the context — its row has `E` — at any answer */
-def perform[E[_], R <: Row, J, T, X](op: E[X])(using c: Ctx[R, J], in: In[E, R]): Eff[R, J, T, T, X] = request(op, in)
+/** `perform(op)`: an operation of `E`, in the context — its row has `E` */
+def perform[E[_], X](op: E[X])(using c: Ctx, in: In[E, c.R]): c.P[X] = request(op, in)
+
+/** `performAt[T](op)`: an operation at the answer `T`, not the context's — where a shift has moved the answer (a
+ * `PState` run): operations are answer-polymorphic */
+def performAt[T]: PerformAt[T] = PerformAt()
+final class PerformAt[T] private[zero] ():
+  def apply[E[_], X](op: E[X])(using c: Ctx, in: In[E, c.R]): Eff[c.R, c.J, T, T, X] = request(op, in)
 
 /** `handle(h)(body)`: `h.ret $ body`, the body in the handler's context, its answers read by the handler */
-def handle[E[_], R <: Row, J, T, A, Ans](using c: Ctx[R, J])(h: Handler[[X] =>> Eff[R, J, T, T, X], E, A, Ans])
-    (body: Body[E, R, J, T, A, Ans]): Eff[R, J, T, T, Ans] =
-  read(delimit(body(using Ctx()), h.ret), new Requests[E +: R, R, J, T, Ans]:
-    def apply[E2[_], X](op: E2[X], in: In[E2, E +: R], k: X => Eff[R, J, T, T, Res[E +: R, Level[R, J, T], Ans]],
-                        again: Eff[R, J, T, T, Res[E +: R, Level[R, J, T], Ans]] => Eff[R, J, T, T, Ans]): Eff[R, J, T, T, Ans] =
+def handle[E[_], A, Ans](using c: Ctx)(h: Handler[c.P, E, A, Ans])(body: c.Body[E, Ans, A]): c.P[Ans] =
+  read(delimit(body(using At()), h.ret), new Requests[E +: c.R, c.R, c.J, c.T, Ans]:
+    def apply[E2[_], X](op: E2[X], in: In[E2, E +: c.R], k: X => Eff[c.R, c.J, c.T, c.T, Res[E +: c.R, c.Inner, Ans]],
+                        again: Eff[c.R, c.J, c.T, c.T, Res[E +: c.R, c.Inner, Ans]] => c.P[Ans]): c.P[Ans] =
       in match
         case In.Here() => h(op, x => again(k(x)))
-        case In.There(o) => request[E2, R, J, T, X](op, o).flatMap(x => again(k(x))))
+        case In.There(o) => request[E2, c.R, c.J, c.T, X](op, o).flatMap(x => again(k(x))))
+
+/** THE CONTEXT WITH THE EFFECTS A PROGRAM NEEDS, `Es`, found in its row */
+trait Needs[Es <: AnyKind] extends Ctx:
+  def find[E[_]](r: Req[E, Es]): In[E, R]
+object Needs:
+  given all[Es <: AnyKind](using c: Ctx, p: Paths[Es, c.R]): (Needs[Es] { type R = c.R; type J = c.J; type T = c.T }) =
+    Needy[c.R, c.J, c.T, Es](p)
+  /** an effect needed: its path in the context's row */
+  given found[E[_], Es <: AnyKind](using n: Needs[Es], r: Req[E, Es]): In[E, n.R] = n.find(r)
+
+/** a context with the paths of the effects a program needs */
+final class Needy[R0 <: Row, J0, T0, Es <: AnyKind] private[zero] (p: Paths[Es, R0]) extends At[R0, J0, T0] with Needs[Es]:
+  def find[E[_]](r: Req[E, Es]): In[E, R0] = p.find(r)
+
+/** `A ! Es`: a program of value `A`, in any context whose row has every effect of `Es` — one, `Int ! Reader % Int`,
+ * or a row of them, `Int ! Reader % Int +: Writer % String +: Empty`; their order the program's own */
+infix type ![A, Es <: AnyKind] = (c: Needs[Es]) ?=> c.P[A]

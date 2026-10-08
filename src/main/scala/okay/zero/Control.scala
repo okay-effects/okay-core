@@ -1,39 +1,32 @@
 package okay.zero
 
 /** CONTROL: `shift` and `reset`, the answers modified (Danvy–Filinski's, typed as Asai–Kameyama's), and `shift0`, on
- * the delimiters' protocol. A reset is a delimiter that answers no operation: every one is passed on outside, the
- * rest resumed under it — so effects go through it. A `shift` is a request to the nearest delimiter — a reset, a
- * handler, the top — each taking it alike: its body under that delimiter again */
+ * the delimiters' protocol, in context. A reset is a delimiter that answers no operation: every one is passed on
+ * outside, the rest resumed under it — so effects go through it. A `shift` is a request to the nearest delimiter —
+ * a reset, a handler, the top — each taking it alike: its body under that delimiter again */
 
-/** the context inside a `reset` in a context at `R`, `J`, at the answer `T` there: what a `shift0` takes the types
- * of the outside from */
-final class Reset[R <: Row, J, T] private[zero] () extends Ctx[R, Level[R, J, T]]
+/** the context in a reset, in a context at `R0`, `J0`, `T0`, its body written at `S0`: the outside a `shift0` takes */
+final class InReset[R0 <: Row, J0, T0, S0] private[zero] () extends At[R0, Level[R0, J0, T0], S0]
 
-/** `reset(body)`: the body's value its initial answer, its final answer the reset's value */
-def reset[R <: Row, J, T, O, A](using c: Ctx[R, J])(body: Reset[R, J, T] ?=> Eff[R, Level[R, J, T], A, O, A]): Eff[R, J, T, T, O] =
-  passAll(delimit(body(using Reset()), identity))
+/** `reset[S](body)`: the body written at the answer `S`, its value; the reset answers what the body moved the answer
+ * to, `O` */
+def reset[S](using c: Ctx)[O](body: c.Reset[S] ?=> Eff[c.R, c.Inner, S, O, S]): c.P[O] =
+  passAll(delimit(body(using InReset()), identity))
 
-/** `resetAt[T](body)`: `reset`, the answer outside named — where no type expected says it, `resetAt[T](...).flatMap(...)` */
-def resetAt[T]: ResetAt[T] = ResetAt()
-final class ResetAt[T] private[zero] ():
-  def apply[R <: Row, J, O, A](using c: Ctx[R, J])(body: Reset[R, J, T] ?=> Eff[R, Level[R, J, T], A, O, A]): Eff[R, J, T, T, O] =
-    passAll(delimit(body(using Reset()), identity))
+/** `shift[A, O](k => body)` up to the nearest delimiter — a reset, a handler, the top: `A` the hole's value, `O` the
+ * answer the delimiter is moved to; the hole's answer is the context's. `k` the rest up to the delimiter, under it
+ * again — a handler's `ret` and clauses with it; the body runs under the delimiter, at `O`, its value the answer */
+def shift[A, O](using c: Ctx)(f: c.Answer[O] ?=> (A => Eff[c.R, c.J, O, O, c.T]) => Eff[c.R, c.J, O, O, O]): Eff[c.R, c.J, c.T, O, A] =
+  control(f(using At()))
 
-/** `shift[A, I, O](k => body)` up to the nearest delimiter — a reset, a handler, the top: `A` the hole's value, `I`
- * its answer, `O` the delimiter's. `k` the rest up to it, under it again — a handler's `ret` and clauses with it;
- * the body runs under the delimiter, at its answer `O`, its value the delimiter's answer */
-def shift[A, I, O]: Shift[A, I, O] = Shift()
-final class Shift[A, I, O] private[zero] ():
-  def apply[R <: Row, J](using c: Ctx[R, J])(f: (A => Eff[R, J, O, O, I]) => Eff[R, J, O, O, O]): Eff[R, J, I, O, A] = control(f)
-
-/** `shift0[A, I, O](k => body)` up to the nearest `reset`: as `shift`, the body runs OUTSIDE the reset, in its place,
- * in the context outside, given it — a shift0 in it reaches the next reset out. `k` the rest under the reset again,
- * its operations passed on outside */
-def shift0[A, I, O]: Shift0To[A, I, O] = Shift0To()
-final class Shift0To[A, I, O] private[zero] ():
-  def apply[R <: Row, J, T](using r: Reset[R, J, T])(f: Ctx[R, J] ?=> (A => Eff[R, J, T, T, I]) => Eff[R, J, T, T, O])
-      : Eff[R, Level[R, J, T], I, O, A] =
-    capture[R, J, T, A, I, O](k => f(using Ctx())(a => passAll(k(a))).map(o => Res.Done(o)))
+/** `shift0[A, O](k => body)` up to the nearest `reset`: as `shift`, but the body runs OUTSIDE the reset, in its place
+ * — in the context outside, given it — so a shift0 in it reaches the next reset out. `k` the rest under the reset
+ * again, its operations passed on */
+def shift0[A, O]: Shift0To[A, O] = Shift0To()
+final class Shift0To[A, O] private[zero] ():
+  def apply[R <: Row, J, T, S](using r: InReset[R, J, T, S])(f: At[R, J, T] ?=> (A => Eff[R, J, T, T, S]) => Eff[R, J, T, T, O])
+      : Eff[R, Level[R, J, T], S, O, A] =
+    capture[R, J, T, A, S, O](k => f(using At())(a => passAll(k(a))).map(o => Res.Done(o)))
 
 /** a reset's reading: every operation asked again outside — its path the same, the row is — the rest under it again */
 private def passAll[R <: Row, J, T, O](out: Eff[R, J, T, T, Res[R, Level[R, J, T], O]]): Eff[R, J, T, T, O] =

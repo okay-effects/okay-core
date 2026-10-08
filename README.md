@@ -85,3 +85,28 @@ sbt "benchHistory <regexp>"             # the benchmarks matching it, run by run
 ```
 
 Scala 3.9.0, sbt 1.13.0, JDK 25.
+
+## `okay.zero` — the same on shift0
+
+Everything above, on a kernel of four nodes: `Cont0` (`Return`, `Bind`, `Shift0`, `Dollar` — Materzok–Biernacki's
+shift0 and `$`, the answers modified), hidden — `private[zero]`, so no raw delimiter can catch a request on its
+way to a handler. On it one protocol of delimiters (`Eff.scala`): a body under a delimiter, its answers read —
+a value, an operation's request, a `shift`'s — and two modules written on it, each a delimiter:
+
+| File | What is in it |
+|---|---|
+| `Cont0.scala` | the kernel, hidden |
+| `Rows.scala` | `Row`, `+:`, `Empty`, `In`, `%`, `Sub`, `Req`, `Paths` |
+| `Eff.scala` | `Eff[R, J, I, O, A]` and `Level` (opaque), `Ctx` (`c.R`, `c.J`, `c.T`, `c.P[A]`, `c.Body`, `c.Reset`), `pure`, `flatMap`, `map`, `delay`, `run`; the protocol |
+| `Control.scala` | `reset[S]`, `shift[A, O]` (Danvy–Filinski's: up to any delimiter — a reset, a handler, the top), `shift0[A, O]` (the body outside the reset) |
+| `Effects.scala` | `Handler`, `Answering`, `perform`, `performAt`, `handle`, `Needs`, `A ! Es` |
+| `std/` | `Reader`, `State`, `Writer`, `Throws`, `Choose`, `Emit` (`collect`, `generate`), `PState`, `Async` — `okay.std`'s |
+
+A reset answers no operation — it passes every one on — and a `shift` is a request every delimiter takes alike,
+its body under that delimiter again: so effects and control compose, as on `Cont`. Handlers are dynamic: the
+handler is the delimiter an operation reaches where the program runs. Master's tests run on it, ported
+(`src/test/scala/okay/zero/master`), their answers the same.
+
+Not as on `Cont`: a context carries its level, `c.J`, so an answer holding a program of its own level is a
+recursive type — `generate` is over the consumer's own, nominal, generator type; at the top, where a reset's
+body would fix the answer before it says it, `run[A]` names it.

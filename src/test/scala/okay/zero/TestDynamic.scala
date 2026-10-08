@@ -1,0 +1,58 @@
+package okay.zero
+
+import okay.zero.std.*
+
+/** the handlers' semantics, beyond master's tests: a clause outside its handler, the order of handlers with a
+ * functional state, two handlers of one effect by path, a program leaving its handler, deep crossings */
+class TestDynamic extends munit.FunSuite:
+  enum FState[+A]:
+    case Get extends FState[Int]
+    case Put(n: Int) extends FState[Unit]
+  def fget(using c: Ctx, in: FState :? c.R): c.P[Int] = perform(FState.Get)
+  def fput(n: Int)(using c: Ctx, in: FState :? c.R): c.P[Unit] = perform(FState.Put(n))
+  /** functional state: the answer a function of the state, threaded through `k` — no cell */
+  def stating[A](using c: Ctx)(s0: Int)(body: c.Body[FState, Int => c.P[(Int, A)], A]): c.P[(Int, A)] =
+    handle(new Handler[c.P, FState, A, Int => c.P[(Int, A)]]:
+      def ret(a: A): Int => c.P[(Int, A)] = s => pure((s, a))
+      def apply[X](op: FState[X], k: X => c.P[Int => c.P[(Int, A)]]): c.P[Int => c.P[(Int, A)]] = op match
+        case FState.Get => pure(s => k(s).flatMap(f => f(s)))
+        case FState.Put(n) => pure(_ => k(()).flatMap(f => f(n))))(body).flatMap(f => f(s0))
+
+  def stepped(using c: Ctx, s: FState :? c.R, ch: Choose :? c.R): c.P[Int] =
+    among(Seq(1, 2)).flatMap(x => fget.flatMap(s => fput(s + x))).flatMap(_ => fget)
+  test("the order of handlers is the semantics: functional state per path under choose, one through the paths over it"):
+    assertEquals(run(choose[(Int, Int)](stating[Int](0)(stepped))), Seq((1, 1), (2, 2)))
+    assertEquals(run(stating[Seq[Int]](0)(choose[Int](stepped))), (3, Seq(1, 3)))
+
+  test("a clause runs outside its handler: an operation in it goes to the handler further out"):
+    def loud[A](using c: Ctx, w: Writer % String :? c.R)(body: c.Body[Reader % Int, A, A]): c.P[A] =
+      handle(new Handler[c.P, Reader % Int, A, A]:
+        def ret(a: A): A = a
+        def apply[X](op: Reader[Int, X], k: X => c.P[A]): c.P[A] = op match
+          case Reader.Ask() => tell("asked").flatMap(_ => k(7)))(body)
+    assertEquals(run(writer[String, Int](loud(ask[Int].flatMap(a => ask[Int].map(_ + a))))), (List("asked", "asked"), 14))
+
+  test("two handlers of one effect: the nearer by default, the further by its path"):
+    def outer(using c: Ctx { type R = Reader % Int +: Reader % Int +: Empty }): c.P[Int] =
+      perform[Reader % Int, Int](Reader.Ask[Int]())(using c, In.There(In.Here()))
+    assertEquals(run(reader[Int](1)(reader[Int](2)(ask[Int].flatMap(a => outer.map(b => a * 10 + b))))), 21)
+
+  test("a program left its handler: the handler it runs under answers it"):
+    var e: Option[Eff[Reader % Int +: Empty, Level[Empty, Int, Int], Int, Int, Int]] = None
+    run(reader[Int](1) { e = Some(ask[Int].map(_ * 10)); pure(0) })
+    assertEquals(run(reader[Int](2)(e.get)), 20)
+
+  test("1 000 operations, each crossing 500 handlers"):
+    def loop(n: Int, acc: Int)(using c: Ctx, r: Reader % Int :? c.R): c.P[Int] =
+      if n == 0 then pure(acc) else ask[Int].flatMap(x => loop(n - 1, acc + x))
+    def deep(d: Int)(using c: Ctx, r: Reader % Int :? c.R): c.P[Int] =
+      if d == 0 then loop(1000, 0) else writer[String, Int](deep(d - 1)).map(_._2)
+    assertEquals(run(reader[Int](1)(deep(500))), 1000)
+
+  test("a handler resuming twice under 10 000 binds: each path runs the whole rest"):
+    def binds(using c: Ctx, ch: Choose :? c.R): c.P[Int] = (1 to 10000).foldLeft(among(Seq(1, 2)))((p, _) => p.flatMap(x => pure(x + 1)))
+    assertEquals(run(choose[Int](binds)), Seq(10001, 10002))
+
+  test("100 000 tells, each clause k(()).map(...) — the rest resumed under the maps pending outside"):
+    def tells(n: Int)(using c: Ctx, w: Writer % String :? c.R): c.P[Int] = if n == 0 then pure(0) else tell(n.toString).flatMap(_ => tells(n - 1))
+    assertEquals(run(writer[String, Int](tells(100000)))._1.length, 100000)

@@ -22,9 +22,35 @@ opaque type Level[R <: Row, J, V] = Cont0[J, J, Res[R, J, V]]
  * and handlers — over the kernel, which nothing outside this package reaches */
 opaque type Eff[R <: Row, J, I, O, A] = Cont0[Level[R, J, I], Level[R, J, O], A]
 
-/** THE CONTEXT a program is written in: its row `R`, its nearest delimiter's outside `J`. A type, nothing at run
- * time: made by `run`, a handler and a reset only — its constructor this package's, so no subclass elsewhere */
-class Ctx[R <: Row, J] private[zero] ()
+/** THE CONTEXT a program is written in, as master's: its row `R`, its nearest delimiter's outside `J`, the answer at
+ * this point `T` — what an operation, a handler, a reset and a shift take their types from, by its members. The
+ * nearest wins: a delimiter gives its body one of its own. A type, nothing at run time; made here only */
+abstract class Ctx private[zero] ():
+  type R <: Row
+  type J
+  type T
+  /** a program here, pure in the answer */
+  type P[A] = Eff[R, J, T, T, A]
+  /** the level a delimiter here gives its body */
+  type Inner = Level[R, J, T]
+  /** the context under a handler of `E` here, at its answer `Ans` */
+  type Handled[E[_], Ans] = At[E +: R, Inner, Ans]
+  /** a handler's body here: in its context, of value `A`, at its answer `Ans` */
+  type Body[E[_], Ans, A] = Handled[E, Ans] ?=> Eff[E +: R, Inner, Ans, Ans, A]
+  /** the context in a reset here, its body written at `S` */
+  type Reset[S] = InReset[R, J, T, S]
+  /** this context at the answer `O`: a shift's body */
+  type Answer[O] = At[R, J, O]
+
+/** contexts made in this package: a library's own runner (`Async.runAsync`) re-entering at the top */
+private[zero] object Ctxs:
+  def at[R0 <: Row, J0, T0]: At[R0, J0, T0] = At()
+
+/** a context at `R0`, `J0`, `T0` */
+class At[R0 <: Row, J0, T0] private[zero] () extends Ctx:
+  type R = R0
+  type J = J0
+  type T = T0
 
 extension [R <: Row, J, I, O, A](p: Eff[R, J, I, O, A])
   def flatMap[I2, B](f: A => Eff[R, J, I2, I, B]): Eff[R, J, I2, O, B] = Bind(p, f)
@@ -37,7 +63,7 @@ def delay[R <: Row, J, I, O, A](p: => Eff[R, J, I, O, A]): Eff[R, J, I, O, A] = 
 
 /** `run(body)`: the body at the top, under a delimiter of its own — the top's: nothing to ask over `Empty`, a `shift`
  * up to it the body's — its answer its value */
-def run[A](body: Ctx[Empty, A] ?=> Eff[Empty, A, A, A, A]): A = top(Dollar(body(using Ctx()), (a: A) => Return(Res.Done[Empty, A, A](a)))).value
+def run[A](body: At[Empty, A, A] ?=> Eff[Empty, A, A, A, A]): A = top(Dollar(body(using At()), (a: A) => Return(Res.Done[Empty, A, A](a)))).value
 
 private def top[A](out: Cont0[A, A, Res[Empty, A, A]]): Cont0[A, A, A] =
   Bind(out, (res: Res[Empty, A, A]) => res match
