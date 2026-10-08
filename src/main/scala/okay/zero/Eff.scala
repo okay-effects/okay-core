@@ -153,18 +153,32 @@ private def within[E[_], R <: Row](h: Handler[?, E, ?, ?], ev: Ev[R]): Ev[E +: R
   // a program outside run there, its value back into the rest under the delimiter
   case l: Lift[rb, l, o, x] => Bind(l.m, Resumed(unit[Cont0[L, L, Res[RB, L, V]], X], k, d, ev))
   // a shift up to a reset: Danvy–Filinski's, its body under a reset again, k the rest under the reset, lifted in —
-  // shift0 and reset0, the reset answering nothing. Up to a handler, the reading below: its operations there the
-  // handler's of the body
+  // shift0 and reset0, the reset answering nothing. Up to an answering handler the same, the body under the handler
+  // again: an operation in k answered there in place, as the body's handler would. Up to another handler, the reading
+  // below: an operation in k the body's handler's, its clause with the rest of the body
   case c: Ctl[r, j, a, i, o] => d match
     case s: Reset[r2, j2, t2, s2, o2] => shiftAtReset[r2, j2, t2, I0, V, a, i](c, k, ev)
     case s: Rst[r2, j2, t2, s2, v2] => shiftAtReset[r2, j2, t2, I0, V, a, i](c, k, ev)
-    case _ => bail(c, k, d)
+    case h: Handle[e, r2, j2, t2, a2, ans] => h.h match
+      case an: Answering[p, e2, a3, ans2] => shiftAtHandler[e, r2, j2, t2, I0, V, A, a, i](an, h.h.ret, c, k, ev)
+      case _ => bail(c, k, d)
+    case hd: Hd[e, r2, j2, t2, a2, i02, v2] => shiftAtHandler[e, r2, j2, t2, I0, V, A, a, i](hd.h, hd.r, c, k, ev)
   case _ => bail(c, k, d)
 
 /** a `shift` up to a reset: its body under a reset again, `k` the rest under the reset, run outside, its value back in */
 private def shiftAtReset[R <: Row, J, T, I0, V, X, Hole](c: Ctl[R, Cont0[J, J, Res[R, J, T]], X, Hole, V],
     k: Frames[X, Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], I0]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], Hole]], I0], ev: Ev[R]): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], V] =
-  deliver0[R, Cont0[J, J, Res[R, J, T]], V, V, V](c.f(x => Lift[R, Cont0[J, J, Res[R, J, T]], V, Hole](Resume(x, unit, k, Rst[R, J, T, I0, Hole](), ev))), Rst[R, J, T, V, V](), ev)
+  val rd = Rst[R, J, T, I0, Hole]()
+  deliver0[R, Cont0[J, J, Res[R, J, T]], V, V, V](c.f(x => Lift[R, Cont0[J, J, Res[R, J, T]], V, Hole](Resume(x, unit, k, rd, ev))), Rst[R, J, T, V, V](), ev)
+
+/** a `shift` up to an answering handler: its body under the handler again, `k` the rest under the handler, run
+ * outside, its value back in */
+private def shiftAtHandler[E[_], R <: Row, J, T, I0, V, A, X, Hole](h: Answering[?, E, ?, ?], r: A => I0,
+    c: Ctl[E +: R, Cont0[J, J, Res[R, J, T]], X, Hole, V], k: Frames[X, Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], I0]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Hole]], A],
+    ev: Ev[E +: R]): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], V] =
+  val rd = Hd[E, R, J, T, A, I0, Hole](h, r)
+  deliver0[E +: R, Cont0[J, J, Res[R, J, T]], V, V, V](c.f(x => Lift[E +: R, Cont0[J, J, Res[R, J, T]], V, Hole](Resume(x, unit, k, rd, ev))),
+    Hd[E, R, J, T, V, V, V](h, v => v), ev)
 
 /** the loop while nothing is bound under the body — a resumption's, a handler's at its entry, a tail call's — the
  * common heads taken with no stack made; `deliver` from the first bind on */
@@ -192,6 +206,7 @@ private def ret[RB <: Row, L, I0, V, A](d: Delim[RB, L, I0, V, A], a: A): I0 = d
   case h: Handle[e, r, j, t, a, ans] => h.h.ret(a)
   case _: Reset[r, j, t, s, o] => a
   case _: Rst[r, j, t, s, v] => a
+  case hd: Hd[e, r, j, t, a, i0, v] => hd.r(a)
 
 /** an operation not answered in place, at the delimiter: a handler's own — its clause, `k` the rest under it again;
  * another's — on outside, one handler shorter, or as it is past a reset */
@@ -203,6 +218,9 @@ private def route[RB <: Row, L, I0, V, A, E[_], X, T1, Y](op: E[X], in: In[E, RB
     case In.There(o) => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], ans](op, o, Resumed(f, k, d, ev))
   case _: Reset[r, j, t, s, o] => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], o](op, in, Resumed(f, k, d, ev))
   case _: Rst[r, j, t, s, v] => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], v](op, in, Resumed(f, k, d, ev))
+  case hd: Hd[e, r, j, t, a, i0, v] => in match
+    case In.Here() => Resume(hd.h.value(op), f, k, d, ev)
+    case In.There(o) => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], v](op, o, Resumed(f, k, d, ev))
 
 /** a captured rest as `k`: applied, a `Resume` — lazily, so a clause that keeps it runs nothing by making it */
 private final class Resumed[RB <: Row, L, I0, V, A, X, T1, Y](f: X => Cont0[T1, Cont0[L, L, Res[RB, L, V]], Y],
@@ -221,6 +239,9 @@ private def inner[RB <: Row, RO <: Row, LO, VO, I0, V, A](d: Delim[RB, Cont0[LO,
       case _ => within(h.h, ev)
     case _: Reset[r, j, t, s, o] => ev
     case _: Rst[r, j, t, s, v] => ev
+    case hd: Hd[e, r, j, t, a, i0, v] => was match
+      case w: Ev.Entry[e2, t2] if w.outer eq ev => was
+      case _ => within(hd.h, ev)
 
 /** a resumption: its rest under its delimiter again, in a loop of its own */
 private[zero] def enter[RB <: Row, L, I0, V, A, X, T1, Y](r: Resume[RB, L, I0, V, A, X, T1, Y], ev: Ev[RB]): Cont0[L, L, V] =
@@ -240,6 +261,7 @@ private[zero] def enterUnknown[RB <: Row, L, I0, V, A, X, T1, Y](r: Resume[RB, L
   case h: Handle[e, rr, j, t, a, ans] => enter(r, inner[RB, rr, j, t, I0, V, A](r.d, Ev.Unknown, r.ev))
   case _: Reset[rr, j, t, s, o] => enter(r, Ev.Unknown)
   case _: Rst[rr, j, t, s, v] => enter(r, Ev.Unknown)
+  case hd: Hd[e, rr, j, t, a, i0, v] => enter(r, inner[RB, rr, j, t, I0, V, A](r.d, Ev.Unknown, r.ev))
 
 /** what the loop does not take, a `shift` or a raw capture: the rest under the delimiter as a `$` of the kernel, its
  * answers read as values — the delimiter's reading, the same semantics */
@@ -250,6 +272,9 @@ private def bail[RB <: Row, L, I0, V, A, T, X](c: Cont0[T, Cont0[L, L, Res[RB, L
     case h: Handle[e, r, j, t, a, ans] => readHand[e, r, j, t, V](out, h.h)
     case _: Reset[r, j, t, s, o] => passAll[r, j, t, V](out)
     case _: Rst[r, j, t, s, v] => passAll[r, j, t, V](out)
+    case hd: Hd[e, r, j, t, a, i0, v] => readHand[e, r, j, t, V](out, new Answering[[X] =>> Eff[r, j, t, t, X], e, V, V]:
+      def ret(a: V): V = a
+      def value[X](op: e[X]): X = hd.h.value(op))
 
 // THE DELIMITERS' READING of their answers as values — for what the machine does not take, and for shift0
 

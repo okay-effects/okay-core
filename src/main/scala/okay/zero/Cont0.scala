@@ -125,6 +125,11 @@ private[zero] sealed trait Delim[RB <: Row, L, I0, V, A]
 /** a reset's delimiter, made by the machine: for a `shift`'s body under the reset again, and for its rest resumed */
 private[zero] final case class Rst[R <: Row, J, T, S, V]() extends Delim[R, Cont0[J, J, Res[R, J, T]], S, V, S]
 
+/** an answering handler's delimiter, made by the machine: for a `shift`'s body under the handler again, its value the
+ * answer as it is, and for its rest resumed, the body's value to the handler's answer by `r` */
+private[zero] final case class Hd[E[_], R <: Row, J, T, A, I0, V](h: Answering[?, E, ?, ?], r: A => I0)
+    extends Delim[E +: R, Cont0[J, J, Res[R, J, T]], I0, V, A]
+
 /** what a value goes through, innermost first; as a function, the rest */
 private[zero] enum Frames[A, I, T, B] extends (A => Cont0[I, T, B]):
   case End[S, A]() extends Frames[A, S, S, A]
