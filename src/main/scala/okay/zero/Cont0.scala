@@ -48,13 +48,17 @@ object Cont0:
   private[zero] final case class Handle[E[_], R <: Row, J, T, A, Ans](body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], A],
       h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans]
       with Delim[E +: R, Cont0[J, J, Res[R, J, T]], Ans, Ans, A]
+  /** `m`, a program outside the nearest delimiter, run there, its value back here: `shift0(k => Bind(m, k))` — what
+   * a `shift`'s `k` is from inside the reset it is under again */
+  private[zero] final case class Lift[RB <: Row, L, O, X](m: Cont0[L, L, X]) extends Cont0[Cont0[L, L, Res[RB, L, O]], Cont0[L, L, Res[RB, L, O]], X]
   /** a reset: `Done $ body`, every operation in it passed on */
   private[zero] final case class Reset[R <: Row, J, T, S, O](body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], S]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], O]], S])
     extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O]
     with Delim[R, Cont0[J, J, Res[R, J, T]], S, O, S]
-  /** a captured rest `k` applied to `x`: the rest under its delimiter `d` again, the handlers in force those where the
-   * node runs — `ev`, those of when it was captured, kept if the ones outside are the same */
-  private[zero] final case class Resume[RB <: Row, L, I0, V, A, X](x: X, k: X => Cont0[Cont0[L, L, Res[RB, L, I0]], Cont0[L, L, Res[RB, L, V]], A],
+  /** a captured rest `f` then `k` applied to `x`: the rest under its delimiter `d` again, the handlers in force those
+   * where the node runs — `ev`, those of when it was captured, kept if the ones outside are the same */
+  private[zero] final case class Resume[RB <: Row, L, I0, V, A, X, T1, Y](x: X, f: X => Cont0[T1, Cont0[L, L, Res[RB, L, V]], Y],
+      k: Frames[Y, Cont0[L, L, Res[RB, L, I0]], T1, A],
       d: Delim[RB, L, I0, V, A], ev: Ev[RB]) extends Cont0[L, L, V]
 
   /** `c.flatMap(f)`: an operation bound one node, `OpK` */
@@ -79,15 +83,19 @@ object Cont0:
     case Return(a) => k match
       case Frames.End() => Head.Done(a)
       case Frames.Then(f, next) => step(f(a), next)
-      case Frames.Mapped(f, next) => step(Return(f(a)), next)
+      case mp: Frames.Mapped[a1, x1, i1, t1, b1] => mp.next match
+        case Frames.End() => Head.Done(mp.f(a))
+        case th: Frames.Then[a2, x2, i2, t3, t4, b2] => step(th.f(mp.f(a)), th.next)
+        case mp2: Frames.Mapped[a2, x2, i2, t3, b2] => step(Return(mp2.f(mp.f(a))), mp2.next)
     case Map(m, f) => step(m, Frames.Mapped(f, k))
     case Delay(t) => step(t(), k)
     case o: Op[r, j, t, e, x] => Head.Cut[I, j, j, Res[r, j, t], Cont0[j, j, Res[r, j, t]], x, A](kk => Return(Res.Req(o.op, o.in, kk)), k)
     case o: OpK[r, j, t, e, x, i, b] => Head.Cut[I, j, j, Res[r, j, t], Cont0[j, j, Res[r, j, t]], x, A](kk => Return(Res.Req(o.op, o.in, kk)), Frames.Then(o.k, k))
+    case l: Lift[rb, l, o, x] => Head.Cut[I, l, l, Res[rb, l, o], Cont0[l, l, Res[rb, l, o]], x, A](kk => Bind(l.m, kk), k)
     case c: Ctl[r, j, a, i, o] => Head.Cut[I, j, j, Res[r, j, i], Cont0[j, j, Res[r, j, o]], a, A](kk => Return(Res.Ctl(c.f, kk)), k)
     case h: Handle[e, r, j, t, a, ans] => step(enterHandle(h, Ev.Unknown), k)
     case s: Reset[r, j, t, sv, o] => step(enterReset(s, Ev.Unknown), k)
-    case r: Resume[rb, l, i0, v, a, x] => step(enterUnknown(r), k)
+    case r: Resume[rb, l, i0, v, a, x, t1, y] => step(enterUnknown(r), k)
     case Shift0(f) => Head.Cut(f, k)
     case Dollar(body, ret) => step(delimit(body, ret), k)
 
@@ -114,6 +122,9 @@ object Cont0:
  * at the answer `Ans`), or a reset (its body over `R`, written at `S`) */
 private[zero] sealed trait Delim[RB <: Row, L, I0, V, A]
 
+/** a reset's delimiter, made by the machine: for a `shift`'s body under the reset again, and for its rest resumed */
+private[zero] final case class Rst[R <: Row, J, T, S, V]() extends Delim[R, Cont0[J, J, Res[R, J, T]], S, V, S]
+
 /** what a value goes through, innermost first; as a function, the rest */
 private[zero] enum Frames[A, I, T, B] extends (A => Cont0[I, T, B]):
   case End[S, A]() extends Frames[A, S, S, A]
@@ -130,6 +141,16 @@ private[zero] enum Frames[A, I, T, B] extends (A => Cont0[I, T, B]):
     case Mapped(f, next) => next match
       case End() => Cont0.Return(f(a))
       case _ => Cont0.Bind(Cont0.Return(f(a)), next)
+
+/** a value through the maps on top of the frames, at once: to the end, its value; to a bind, the program it makes */
+private[zero] enum Fed[I, T, B]:
+  case Value[S, B](b: B) extends Fed[S, S, B]
+  case Next[X, I, T1, T, B](c: Cont0[T1, T, X], next: Frames[X, I, T1, B]) extends Fed[I, T, B]
+
+@tailrec private[zero] def feed[A, I, T, B](a: A, k: Frames[A, I, T, B]): Fed[I, T, B] = k match
+  case Frames.End() => Fed.Value(a)
+  case th: Frames.Then[a, x, i, t1, t, b] => Fed.Next(th.f(a), th.next)
+  case mp: Frames.Mapped[a, x, i, t, b] => feed(mp.f(a), mp.next)
 
 /** a program's head: its value, or a capture with the rest */
 private[zero] enum Head[I, O, A]:
