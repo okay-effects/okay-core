@@ -22,10 +22,6 @@ sealed abstract class Cont0[I, O, A]:
   final def flatMap[I2, B](f: A => Cont0[I2, I, B]): Cont0[I2, O, B] = Cont0.bind(this, f)
   final def map[B](f: A => B): Cont0[I, O, B] = Cont0.Map(this, f)
 
-/** the answer at a point of a body over `R`, its delimiter's outside at `J`: a program there, yielding the body's
- * answers — its value or a request, `Res` */
-private[zero] type Lv[R <: Row, J, T] = Cont0[J, J, Res[R, J, T]]
-
 object Cont0:
   final case class Return[S, A](a: A) extends Cont0[S, S, A]
   final case class Bind[I, T, O, A, B](m: Cont0[T, O, A], f: A => Cont0[I, T, B]) extends Cont0[I, O, B]
@@ -47,14 +43,16 @@ object Cont0:
   /** a handler of `E`: `Done∘h.ret $ body`, its answers read by `h` — the delimiter its loop answers to, itself */
   private[zero] final case class Handle[E[_], R <: Row, J, T, A, Ans](body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], A],
       h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans]
-      with Delim[E +: R, Cont0[J, J, Res[R, J, T]], Ans, Ans, A]
+      with ByHandler[E, R, J, T, A, Ans, Ans]:
+    def handler: Handler[?, E, ?, ?] = h
+    def ret(a: A): Ans = h.ret(a)
   /** `m`, a program outside the nearest delimiter, run there, its value back here: `shift0(k => Bind(m, k))` — what
    * a `shift`'s `k` is from inside the reset it is under again */
   private[zero] final case class Lift[RB <: Row, L, O, X](m: Cont0[L, L, X]) extends Cont0[Cont0[L, L, Res[RB, L, O]], Cont0[L, L, Res[RB, L, O]], X]
   /** a reset: `Done $ body`, every operation in it passed on */
   private[zero] final case class Reset[R <: Row, J, T, S, O](body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], S]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], O]], S])
     extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O]
-    with Delim[R, Cont0[J, J, Res[R, J, T]], S, O, S]
+    with ByReset[R, J, T, S, O]
   /** a captured rest `f` then `k` applied to `x`: the rest under its delimiter `d` again, the handlers in force those
    * where the node runs — `ev`, those of when it was captured, kept if the ones outside are the same */
   private[zero] final case class Resume[RB <: Row, L, I0, V, A, X, T1, Y](x: X, f: X => Cont0[T1, Cont0[L, L, Res[RB, L, V]], Y],
@@ -118,17 +116,27 @@ object Cont0:
       case Head.Done(a) => a
       case Head.Cut(f, k) => f(x => Dollar(resumed(x, k), identity))
 
-/** A DELIMITER the machine runs, its own node: a handler of `E` (its body over `E +: R`, the outside over `R` at `T`,
- * at the answer `Ans`), or a reset (its body over `R`, written at `S`) */
+/** A DELIMITER the machine runs: its body over `RB`, the outside at `L`, the body's value `A` to the answer `I0`, the
+ * delimiter's answer `V` — a reset's or a handler's, the node itself or one the machine makes */
 private[zero] sealed trait Delim[RB <: Row, L, I0, V, A]
 
-/** a reset's delimiter, made by the machine: for a `shift`'s body under the reset again, and for its rest resumed */
-private[zero] final case class Rst[R <: Row, J, T, S, V]() extends Delim[R, Cont0[J, J, Res[R, J, T]], S, V, S]
+/** a reset's: its body over `R`, written at `S`, every operation passed on */
+private[zero] sealed trait ByReset[R <: Row, J, T, S, V] extends Delim[R, Cont0[J, J, Res[R, J, T]], S, V, S]
 
-/** an answering handler's delimiter, made by the machine: for a `shift`'s body under the handler again, its value the
- * answer as it is, and for its rest resumed, the body's value to the handler's answer by `r` */
+/** a handler's of `E`: its body over `E +: R`, its value to the answer by `ret` */
+private[zero] sealed trait ByHandler[E[_], R <: Row, J, T, A, I0, V] extends Delim[E +: R, Cont0[J, J, Res[R, J, T]], I0, V, A]:
+  def handler: Handler[?, E, ?, ?]
+  def ret(a: A): I0
+
+/** a reset's, made by the machine: for a `shift`'s body under the reset again, and for its rest resumed */
+private[zero] final case class Rst[R <: Row, J, T, S, V]() extends ByReset[R, J, T, S, V]
+
+/** an answering handler's, made by the machine: for a `shift`'s body under the handler again, its value the answer
+ * as it is, and for its rest resumed, the body's value to the handler's answer by `r` */
 private[zero] final case class Hd[E[_], R <: Row, J, T, A, I0, V](h: Answering[?, E, ?, ?], r: A => I0)
-    extends Delim[E +: R, Cont0[J, J, Res[R, J, T]], I0, V, A]
+    extends ByHandler[E, R, J, T, A, I0, V]:
+  def handler: Handler[?, E, ?, ?] = h
+  def ret(a: A): I0 = r(a)
 
 /** what a value goes through, innermost first; as a function, the rest */
 private[zero] enum Frames[A, I, T, B] extends (A => Cont0[I, T, B]):

@@ -106,17 +106,15 @@ private[zero] def capture[R <: Row, J, T, A, I, O](f: (A => Eff[R, J, T, T, Res[
 private[zero] enum Ev[+R <: Row]:
   case Unknown extends Ev[Nothing]
   /** a handler of `E` in front of the others, `answers` it if it answers in place — found once, when entered */
-  case Entry[E[_], T <: Row](h: Handler[?, E, ?, ?], outer: Ev[T], answers: Answering[?, E, ?, ?] | Null) extends Ev[E +: T]
+  case Entry[E[_], T <: Row](outer: Ev[T], answers: Answering[?, E, ?, ?] | Null) extends Ev[E +: T]
 
 /** the handlers in force inside a handler `h` entered with `ev` outside: `h` in front — or, if it answers nothing
  * in place and nothing is known outside, nothing known still: a lookup through it finds the same */
-private def within[E[_], R <: Row](h: Handler[?, E, ?, ?], ev: Ev[R]): Ev[E +: R] = ev match
-  case Ev.Unknown => h match
-    case a: Answering[?, E, ?, ?] => Ev.Entry(h, ev, a)
-    case _ => Ev.Unknown
-  case _ => h match
-    case a: Answering[?, E, ?, ?] => Ev.Entry(h, ev, a)
-    case _ => Ev.Entry(h, ev, null)
+private def within[E[_], R <: Row](h: Handler[?, E, ?, ?], ev: Ev[R]): Ev[E +: R] = h match
+  case a: Answering[?, E, ?, ?] => Ev.Entry(ev, a)
+  case _ => ev match
+    case Ev.Unknown => Ev.Unknown
+    case _ => Ev.Entry(ev, null)
 
 /** the handler at the path, if it answers in place — `shift0 k. k(v)` is `v` */
 @tailrec private def inPlace[E[_], R <: Row](in: In[E, R], ev: Ev[R]): Answering[?, E, ?, ?] | Null = ev match
@@ -157,12 +155,10 @@ private def within[E[_], R <: Row](h: Handler[?, E, ?, ?], ev: Ev[R]): Ev[E +: R
   // again: an operation in k answered there in place, as the body's handler would. Up to another handler, the reading
   // below: an operation in k the body's handler's, its clause with the rest of the body
   case c: Ctl[r, j, a, i, o] => d match
-    case s: Reset[r2, j2, t2, s2, o2] => shiftAtReset[r2, j2, t2, I0, V, a, i](c, k, ev)
-    case s: Rst[r2, j2, t2, s2, v2] => shiftAtReset[r2, j2, t2, I0, V, a, i](c, k, ev)
-    case h: Handle[e, r2, j2, t2, a2, ans] => h.h match
-      case an: Answering[p, e2, a3, ans2] => shiftAtHandler[e, r2, j2, t2, I0, V, A, a, i](an, h.h.ret, c, k, ev)
+    case _: ByReset[r2, j2, t2, s2, v2] => shiftAtReset[r2, j2, t2, I0, V, a, i](c, k, ev)
+    case h: ByHandler[e, r2, j2, t2, a2, i02, v2] => h.handler match
+      case an: Answering[p, e2, a3, ans2] => shiftAtHandler[e, r2, j2, t2, I0, V, A, a, i](an, h.ret, c, k, ev)
       case _ => bail(c, k, d)
-    case hd: Hd[e, r2, j2, t2, a2, i02, v2] => shiftAtHandler[e, r2, j2, t2, I0, V, A, a, i](hd.h, hd.r, c, k, ev)
   case _ => bail(c, k, d)
 
 /** a `shift` up to a reset: its body under a reset again, `k` the rest under the reset, run outside, its value back in */
@@ -203,10 +199,8 @@ private def shiftAtHandler[E[_], R <: Row, J, T, I0, V, A, X, Hole](h: Answering
 
 /** the body's value to the delimiter's answer */
 private def ret[RB <: Row, L, I0, V, A](d: Delim[RB, L, I0, V, A], a: A): I0 = d match
-  case h: Handle[e, r, j, t, a, ans] => h.h.ret(a)
-  case _: Reset[r, j, t, s, o] => a
-  case _: Rst[r, j, t, s, v] => a
-  case hd: Hd[e, r, j, t, a, i0, v] => hd.r(a)
+  case h: ByHandler[e, r, j, t, a, i0, v] => h.ret(a)
+  case _: ByReset[r, j, t, s, v] => a
 
 /** an operation not answered in place, at the delimiter: a handler's own — its clause, `k` the rest under it again;
  * another's — on outside, one handler shorter, or as it is past a reset */
@@ -216,8 +210,7 @@ private def route[RB <: Row, L, I0, V, A, E[_], X, T1, Y](op: E[X], in: In[E, RB
   case h: Handle[e, r, j, t, a, ans] => in match
     case In.Here() => h.h(op, Resumed(f, k, d, ev))
     case In.There(o) => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], ans](op, o, Resumed(f, k, d, ev))
-  case _: Reset[r, j, t, s, o] => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], o](op, in, Resumed(f, k, d, ev))
-  case _: Rst[r, j, t, s, v] => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], v](op, in, Resumed(f, k, d, ev))
+  case _: ByReset[r, j, t, s, v] => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], v](op, in, Resumed(f, k, d, ev))
   case hd: Hd[e, r, j, t, a, i0, v] => in match
     case In.Here() => Resume(hd.h.value(op), f, k, d, ev)
     case In.There(o) => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], v](op, o, Resumed(f, k, d, ev))
@@ -234,14 +227,10 @@ private def unit[S, A]: A => Cont0[S, S, A] = a => Return(a)
  * those of when the rest was captured, `was`, if the ones outside are those it had */
 private def inner[RB <: Row, RO <: Row, LO, VO, I0, V, A](d: Delim[RB, Cont0[LO, LO, Res[RO, LO, VO]], I0, V, A], ev: Ev[RO], was: Ev[RB]): Ev[RB] =
   d match
-    case h: Handle[e, r, j, t, a, ans] => was match
+    case h: ByHandler[e, r, j, t, a, i0, v] => was match
       case w: Ev.Entry[e2, t2] if w.outer eq ev => was
-      case _ => within(h.h, ev)
-    case _: Reset[r, j, t, s, o] => ev
-    case _: Rst[r, j, t, s, v] => ev
-    case hd: Hd[e, r, j, t, a, i0, v] => was match
-      case w: Ev.Entry[e2, t2] if w.outer eq ev => was
-      case _ => within(hd.h, ev)
+      case _ => within(h.handler, ev)
+    case _: ByReset[r, j, t, s, v] => ev
 
 /** a resumption: its rest under its delimiter again, in a loop of its own */
 private[zero] def enter[RB <: Row, L, I0, V, A, X, T1, Y](r: Resume[RB, L, I0, V, A, X, T1, Y], ev: Ev[RB]): Cont0[L, L, V] =
@@ -258,10 +247,8 @@ private[zero] def enterReset[R <: Row, J, T, S, O](s: Reset[R, J, T, S, O], ev: 
 
 /** a resumption entered with nothing known of the handlers around it — by the kernel's loop */
 private[zero] def enterUnknown[RB <: Row, L, I0, V, A, X, T1, Y](r: Resume[RB, L, I0, V, A, X, T1, Y]): Cont0[L, L, V] = r.d match
-  case h: Handle[e, rr, j, t, a, ans] => enter(r, inner[RB, rr, j, t, I0, V, A](r.d, Ev.Unknown, r.ev))
-  case _: Reset[rr, j, t, s, o] => enter(r, Ev.Unknown)
-  case _: Rst[rr, j, t, s, v] => enter(r, Ev.Unknown)
-  case hd: Hd[e, rr, j, t, a, i0, v] => enter(r, inner[RB, rr, j, t, I0, V, A](r.d, Ev.Unknown, r.ev))
+  case _: ByHandler[e, rr, j, t, a, i0, v] => enter(r, inner[RB, rr, j, t, I0, V, A](r.d, Ev.Unknown, r.ev))
+  case _: ByReset[rr, j, t, s, v] => enter(r, Ev.Unknown)
 
 /** what the loop does not take, a `shift` or a raw capture: the rest under the delimiter as a `$` of the kernel, its
  * answers read as values — the delimiter's reading, the same semantics */
@@ -270,8 +257,7 @@ private def bail[RB <: Row, L, I0, V, A, T, X](c: Cont0[T, Cont0[L, L, Res[RB, L
   val out: Cont0[L, L, Res[RB, L, V]] = Dollar(Bind(c, k), (a: A) => Return(Res.Done[RB, L, I0](ret(d, a))))
   d match
     case h: Handle[e, r, j, t, a, ans] => readHand[e, r, j, t, V](out, h.h)
-    case _: Reset[r, j, t, s, o] => passAll[r, j, t, V](out)
-    case _: Rst[r, j, t, s, v] => passAll[r, j, t, V](out)
+    case _: ByReset[r, j, t, s, v] => passAll[r, j, t, V](out)
     case hd: Hd[e, r, j, t, a, i0, v] => readHand[e, r, j, t, V](out, new Answering[[X] =>> Eff[r, j, t, t, X], e, V, V]:
       def ret(a: V): V = a
       def value[X](op: e[X]): X = hd.h.value(op))
