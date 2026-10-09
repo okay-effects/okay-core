@@ -209,7 +209,7 @@ shifts — on `Cont`, `Cont0`, `Ref` and `Cps0`, which must agree).
 - `DispatchBenchmark` — `Cont`'s own: what the interface costs against the concrete monad; a plain baseline.
 - `ZeroShift0Benchmark` — `Cont0`'s `shift0`.
 
-Where `Cont0` is slower — `choose`, `throws`, a shallow shift directly under a handler, by 3–17% — it is the price of
-a delimiter being a node the machine enters: an entry, a frame stack, a resumption a little larger than `Cont`'s.
-The same choice makes an operation across handlers 2–16× faster. Measurements and the changes behind them are in
+Where `Cont0` is slower — an operation answered in place, `state`, `throws` by 2–9%, `choose` under one more
+handler by 25% — it is the price of a delimiter being a node the machine enters. The same choice finds an
+operation's handler once per path: across 4 to 16 handlers 1.3–3.7× faster than `Cont`'s walk out to it. Measurements and the changes behind them are in
 `changelog.d` and `bench.d`.

@@ -51,19 +51,19 @@ time, the handlers in force: an operation of an answering handler is answered **
 handlers and resets between. Its path keeps what it found last and from where, so a loop's operations, coming with
 one path, find their handler by a compare: the same cost across 1 handler or 16.
 
-The same programs, `MonadsBenchmark` (bench.d, 2026-10-09), ns an operation unless noted:
+The same programs, `MonadsBenchmark` (bench.d, 2026-10-09T20-43, JDK 25), ns an operation unless noted:
 
 | | `Cont` | `Cont0` | |
 |---|---|---|---|
-| an operation across 1 handler | 11.7 | 5.5 | 2.1× |
-| across 4 handlers | 22.8 | 5.2 | 4.4× |
-| across 16 handlers | 90.4 | 5.5 | 16× |
-| answered in place / by a general clause | 6.50 / 8.99 | 5.43 / 7.72 | 1.2× |
-| state / writer / collect | 15.5 / 20.0 / 13.1 | 14.1 / 17.3 / 10.5 | 1.1–1.25× |
-| 8 queens (a run) | 231 µs | 145 µs | 1.6× |
-| choose | 24.4 | 22.6 | 1.1× |
-| a shift under a reset, 16 / 256 maps, `k` 8 times (a run) | 439 / 6050 ns | 323 / 4740 ns | 1.3× |
-| a shift under a handler, 16 maps, `k` 8 times (a run) | 411 ns | 366 ns | 1.1× |
+| an operation across 1 handler | 5.7 | 5.5 | 1.03× |
+| across 4 handlers | 7.4 | 5.5 | 1.3× |
+| across 16 handlers | 21.5 | 5.7 | 3.7× |
+| answered in place / by a general clause | 4.97 / 9.62 | 5.44 / 8.22 | 0.91× / 1.2× |
+| state / writer / collect | 13.4 / 19.8 / 10.3 | 14.2 / 17.6 / 10.3 | 0.94–1.1× |
+| 8 queens (a run) | 169 µs | 149 µs | 1.1× |
+| choose / under one more handler | 26.3 / 26.5 | 23.3 / 35.1 | 1.1× / 0.76× |
+| a shift under a reset, 16 / 256 maps, `k` 8 times (a run) | 536 / 6710 ns | 312 / 4790 ns | 1.4–1.7× |
+| a shift under a handler, 16 maps, `k` 8 times (a run) | 607 ns | 361 ns | 1.7× |
 
 A resumed `k` passes its value through the captured frames in the machine's loop, with no program of the rest
 rebuilt frame by frame — the deeper the rest, the larger the gain. Real programs layer effects (state under a
@@ -78,9 +78,9 @@ executable definition beside it.
 
 ## Where `Cont` is better
 
-- **Speed in two places**, by 5–12%: `throws` (13.7 against 14.4 ns), a shallow
-  shift directly under a handler (122 against 139 ns a run). `Cont` folds a handler when the program is built;
-  `Cont0` makes a delimiter node the machine enters — an entry, a frame stack, a resumption a little larger.
+- **Speed in a few places**, by 2–9%: an operation answered in place (4.97 against 5.44 ns), `state` (13.4
+  against 14.2), `throws` (16.0 against 16.4); and `choose` under one more handler by 25% (26.5 against 35.1),
+  where the clause's loop is `Cont0`'s machine's, not its kernel's.
 - **Simpler types.** No levels: a `Cont` program's type does not depend on how many delimiters it is under.
   Under effects still to be handled, `generate`'s consumer type can be generic over the monad for `Cont`; for
   `Cont0` a generic one would be recursive through the level, so the consumer names its own. At the top both give
@@ -92,5 +92,5 @@ executable definition beside it.
 ## In short
 
 `Cont0` is the more general foundation (shift0 and `$`, the CPS hierarchy, an open kernel), with stronger static
-guarantees (levels in the types), a cleaner semantics for `shift` under a handler, and 2–16× faster effects where
-handlers are layered. `Cont` is simpler and a little faster in a few shallow cases.
+guarantees (levels in the types), a cleaner semantics for `shift` under a handler, and effects 1.3–3.7× faster where
+handlers are layered (4 to 16). `Cont` is simpler and a little faster in a few shallow cases.
