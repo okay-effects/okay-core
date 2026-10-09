@@ -233,6 +233,7 @@ class MonadsBenchmark:
     while i < n do
       s match
         case e: okay.std.Stream.Next[Long] => sum += e.w; i += 1; if i < n then s = e.pull()
+        case e: okay.std.Stream.Later[Long] => sum += e.w; i += 1; if i < n then s = e.pull()
         case okay.std.Stream.Done() => i = n
     sum
 

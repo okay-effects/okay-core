@@ -29,7 +29,7 @@ abstract class TestStreamOn(top: Top) extends munit.FunSuite:
         assertEquals(w, 5)
         assertEquals(n.top.run(n.rest).take(2), List(6, 7))
         assertEquals(n.pull().take(2), List(6, 7))
-      case Stream.Done() => fail("an element")
+      case Stream.Later(_, _) | Stream.Done() => fail("a generator's element")
 
   test("stream: an iterator, the collections' own operations, none pulled past the last asked"):
     var ran = 0
@@ -43,6 +43,24 @@ abstract class TestStreamOn(top: Top) extends munit.FunSuite:
     val out = List.newBuilder[Int]
     stream[Int](top)(yield_(1).flatMap(_ => yield_(2)).flatMap(_ => yield_(3))).foreach(out += _)
     assertEquals(out.result(), List(1, 2, 3))
+
+  test("stream: map and flatMap, lazy, for-comprehensions"):
+    var ran = 0
+    def counted(i: Int)(using c: Effects, e: Emit % Int :? c.Effs): c.Prog[Unit] =
+      c.delay { ran += 1; yield_(i).flatMap(_ => counted(i + 1)) }
+    val pairs = for
+      n <- stream[Int](top)(counted(1))
+      if n % 2 == 1
+      ch <- Stream.of('a', 'b')
+    yield s"$n$ch"
+    assertEquals(pairs.take(5), List("1a", "1b", "3a", "3b", "5a"))
+    assertEquals(ran, 5)
+    assertEquals(stream[Int](top)(from(0)).map(_ * 10).take(3), List(0, 10, 20))
+    assertEquals((Stream.of(1, 2) ++ stream[Int](top)(from(3))).take(4), List(1, 2, 3, 4))
+
+  test("stream: flatMap and filter skip 100 000 empties in constant stack"):
+    assertEquals(stream[Int](top)(from(0)).flatMap(n => if n < 100000 then Stream.of() else Stream.of(n)).take(1), List(100000))
+    assertEquals(stream[Int](top)(from(0)).filter(_ >= 100000).take(1), List(100000))
 
   test("stream: 100 000 elements, a run each"):
     assertEquals(stream[Int](top)(from(0)).take(100000).last, 99999)

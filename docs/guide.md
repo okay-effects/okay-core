@@ -214,8 +214,14 @@ pstate(7)(st => st.get[Int].flatMap(n => st.put[Int]("x" * n)).flatMap(_ => st.g
 `okay.cont.top`, or a context's own `c.top`. `Stream` is one type whatever the monad: an enum, `Next(w, top, rest)` — the
 element, and the rest of the body, a program of `top`'s monad, its type `top`'s — or `Done()`; nothing names the
 monad. `pull()` runs the rest at its top.
-Nothing runs past an element until the rest is pulled; `take(n)`, `foreach` pull in a loop, `iterator` gives the
-collections' own operations.
+A stream made from one — `map`, `flatMap`, `filter`, `++`, `Stream.of` — has a third case, `Later(w, rest)`, its
+rest a function. Nothing runs past an element until the rest is pulled; `take(n)`, `foreach` pull in a loop,
+`iterator` gives the collections' own operations; empties skipped by `flatMap` and `filter` in a loop.
+
+```scala
+for n <- stream[Long](okay.zero.top)(fibs(0, 1)) if n % 2 == 0; s <- Stream.of(n, -n) yield s
+// 0, 0, 2, -2, 8, -8, ...
+```
 
 ```scala
 def fibs(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =

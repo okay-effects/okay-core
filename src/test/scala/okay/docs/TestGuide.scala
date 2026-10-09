@@ -90,3 +90,5 @@ class TestGuide extends munit.FunSuite:
       yield_(a).flatMap(_ => fibs(b, a + b))
     assertEquals(stream[Long](okay.zero.top)(fibs(0, 1)).take(8), List(0L, 1, 1, 2, 3, 5, 8, 13))
     assertEquals(stream[Long](okay.cont.top)(fibs(0, 1)).take(8), List(0L, 1, 1, 2, 3, 5, 8, 13))
+    val evens = for n <- stream[Long](okay.zero.top)(fibs(0, 1)) if n % 2 == 0; s <- Stream.of(n, -n) yield s
+    assertEquals(evens.take(6), List(0L, 0, 2, -2, 8, -8))

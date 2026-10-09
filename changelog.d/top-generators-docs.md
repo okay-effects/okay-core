@@ -26,3 +26,6 @@
   variables lose the dependence: `n @ Next(w, _, _)` then `n.top.run(n.rest)`, or `n.pull()`.
 - `Stream.iterator` (the collections' `map`, `filter`, `sum`; none pulled past the last asked) and `foreach`.
   `okay.std.Gen[M, W]` out of okay.std into the tests that use it: `generate` takes any consumer type.
+- `Stream.map`, `flatMap`, `filter` (for-comprehensions), `++`, `Stream.of`: a third case, `Later(w, rest: () =>
+  Stream[W])`, the rest of a made stream a function — a generator's own elements stay `Next`, no closure. Lazy, the
+  empties skipped in a loop: 100 000 of them in constant stack.
