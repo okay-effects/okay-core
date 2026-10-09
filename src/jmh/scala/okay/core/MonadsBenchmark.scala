@@ -1,7 +1,6 @@
 package okay.core
 
 import okay.cont.Cont
-import okay.cont.Cont.value
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
@@ -13,14 +12,6 @@ enum Tick[+A]:
   case Value[A](a: A) extends Tick[A]
 enum Skip[+A]:
   case Value[A](a: A) extends Skip[A]
-
-/** a generator's consumer type on each monad: the rest a program of its own */
-enum GCont:
-  case Next(w: Long, rest: Cont[Pure, GCont, GCont, GCont])
-  case Done
-enum GZero:
-  case Next(w: Long, rest: okay.zero.Eff[Pure, GZero, GZero, GZero, GZero])
-  case Done
 
 /**
  * THE SAME PROGRAMS ON EACH MONAD: written once over master's `Effects` and `Control` and `okay.std`, run on the
@@ -231,24 +222,8 @@ class MonadsBenchmark:
   /** `n` elements of an infinite generator pulled, each a run of the rest: the consumer's type the monad's own */
   @Benchmark
   def generate(): Long = backend match
-    case "cont" =>
-      var g = okay.cont.run[GCont](okay.std.generate[Long, GCont](GCont.Next(_, _), GCont.Done)(forever(0, 1)))
-      var i = 0
-      var sum = 0L
-      while i < n do
-        g match
-          case GCont.Next(w, rest) => sum += w; g = rest.value; i += 1
-          case GCont.Done => i = n
-      sum
-    case _ =>
-      var g = okay.zero.run[GZero](okay.std.generate[Long, GZero](GZero.Next(_, _), GZero.Done)(forever(0, 1)))
-      var i = 0
-      var sum = 0L
-      while i < n do
-        g match
-          case GZero.Next(w, rest) => sum += w; g = okay.zero.run(rest); i += 1
-          case GZero.Done => i = n
-      sum
+    case "cont" => okay.cont.run[okay.cont.Gen[Long]](okay.std.generate[Long, okay.cont.Gen[Long]](okay.cont.Gen.Next(_, _), okay.cont.Gen.Done())(forever(0, 1))).take(n).sum
+    case _ => okay.zero.run[okay.zero.Gen[Long]](okay.std.generate[Long, okay.zero.Gen[Long]](okay.zero.Gen.Next(_, _), okay.zero.Gen.Done())(forever(0, 1))).take(n).sum
 
   /** a shift under a reset: the rest 256 maps, `k` 8 times; the rest one map, `k` once */
   @Benchmark

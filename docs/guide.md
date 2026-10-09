@@ -210,9 +210,20 @@ pstate(7)(st => st.get[Int].flatMap(n => st.put[Int]("x" * n)).flatMap(_ => st.g
 
 ## Generators
 
-`generate(next, done)(body)` makes the body a lazy generator of the consumer's own type: each `yield_` hands
-`next` the element and the rest (a program, run when pulled). The consumer's type is its own enum, its rest a
-program of the monad it is pulled on — see `GCont` and `GZero` in `MonadsBenchmark`.
+`generate(next, done)(body)` makes the body a lazy generator of the consumer's own type: each `yield_` hands `next`
+the element and the rest — a program, run when pulled. Each monad has a ready consumer at the top, `Gen[W]`, with
+`take(n)`:
+
+```scala
+def fibs(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
+  yield_(a).flatMap(_ => fibs(b, a + b))
+
+okay.zero.run[okay.zero.Gen[Long]](generate[Long, okay.zero.Gen[Long]](okay.zero.Gen.Next(_, _), okay.zero.Gen.Done())(fibs(0, 1)))
+  .take(8)   // List(0, 1, 1, 2, 3, 5, 8, 13)
+```
+
+`okay.cont.Gen` the same on `Cont`. Under effects still to be handled, a consumer type of your own; on `Cont`,
+`okay.std.Gen[M, W]` over its monad.
 
 ## Async
 
