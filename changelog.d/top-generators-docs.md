@@ -29,3 +29,9 @@
 - `Stream.map`, `flatMap`, `filter` (for-comprehensions), `++`, `Stream.of`: a third case, `Later(w, rest: () =>
   Stream[W])`, the rest of a made stream a function — a generator's own elements stay `Next`, no closure. Lazy, the
   empties skipped in a loop: 100 000 of them in constant stack.
+- Then `Source[W]`, what `stream` gives: a generator not started, a value — each consumption a run from the
+  beginning, a `state` in it a cell of its own. `map` and `filter` fused into the generator's handler; pulled
+  (`take`, `iterator`, `start` a `Stream`) or pushed (`foreach`, `fold`, `toList`: answered in place, nothing
+  captured). A body's own handlers in the stream, pinned on the four monads: a reader; a state one cell a start.
+- Measured, ns an element (Cont / Cont0): pulled 14.9 / 14.5; mapped by `Later` 21.8 / 19.5, fused 18.0 / 16.2 (the
+  rest of the +24 B the boxed mapped `Long`); pushed 10.3 / 7.6.

@@ -126,12 +126,74 @@ object Stream:
     case Done() => that()
     case at => Later(at.head, () => concat(at.pull(), that))
 
-/** `stream(t)(body)`: the body as a `Stream` of its elements, on the monad of the top `t` — `okay.zero.top`,
- * `okay.cont.top`, a context's `c.top`. Nothing runs past the first element until the rest is pulled. The body's
- * effects are `Emit` only; under effects still to be handled, `generate` */
-def stream[W](t: Top)(body: Yields[W]): Stream[W] =
-  val c = t.at[Stream[W]]
-  t.run(generate[W, Stream[W]](using c)((w, rest) => Stream.Next(w, t, rest), Stream.Done())(body))
+/** A GENERATOR NOT STARTED: its top and what each element becomes. `map` and `filter` here are FUSED — composed
+ * into what the generator's handler does with an element, no object an element of their own — and `start` runs
+ * it to its first element, a `Stream`. A value: each start a run of its own, from the beginning */
+abstract class Source[W]:
+  val top: Top
+  /** the generator run at its top, each element and the rest through `out`: a program there answering `G` */
+  def run[G](out: (W, top.M[G, G, G, G]) => top.M[G, G, G, G], done: G): G
+  /** the generator run to its end at its top, `f` of each element where it is yielded — answered in place, no
+   * rest captured: a whole stream's fastest pass */
+  def push(f: W => Unit): Unit
+
+  /** started: the first element and the rest, or done */
+  def start: Stream[W] =
+    val c = top.at[Stream[W]]
+    run[Stream[W]]((w, rest) => c.pure(Stream.Next(w, top, rest)), Stream.Done())
+
+  /** `f` of each element, in the generator's handler */
+  def map[B](f: W => B): Source[B] =
+    val src = this
+    new Source[B]:
+      val top: src.top.type = src.top
+      def run[G](out: (B, top.M[G, G, G, G]) => top.M[G, G, G, G], done: G): G =
+        src.run[G]((w, rest) => out(f(w), rest), done)
+      def push(g: B => Unit): Unit = src.push(w => g(f(w)))
+
+  /** the elements `p` keeps, in the generator's handler: a dropped one's rest run in its place */
+  def filter(p: W => Boolean): Source[W] =
+    val src = this
+    new Source[W]:
+      val top: src.top.type = src.top
+      def run[G](out: (W, top.M[G, G, G, G]) => top.M[G, G, G, G], done: G): G =
+        src.run[G]((w, rest) => if p(w) then out(w, rest) else rest, done)
+      def push(g: W => Unit): Unit = src.push(w => if p(w) then g(w))
+  def withFilter(p: W => Boolean): Source[W] = filter(p)
+
+  def flatMap[B](f: W => Stream[B]): Stream[B] = start.flatMap(f)
+  /** pulled, each element a run of the rest: for any stream, to stop anywhere */
+  def take(n: Int): List[W] = start.take(n)
+  def iterator: Iterator[W] = start.iterator
+  /** pushed, for a stream that ends: the whole of it, nothing captured */
+  def foreach(f: W => Unit): Unit = push(f)
+  def fold[B](z: B)(op: (B, W) => B): B =
+    var acc = z
+    push(w => acc = op(acc, w))
+    acc
+  def toList: List[W] =
+    val out = List.newBuilder[W]
+    push(out += _)
+    out.result()
+
+/** `stream(t)(body)`: the body as a `Source` of its elements, on the monad of the top `t` — `okay.zero.top`,
+ * `okay.cont.top`, a context's `c.top`; `start` makes it a `Stream`. Nothing runs past an element until the rest
+ * is pulled. The body's effects are `Emit` and those it handles itself; under effects still to be handled,
+ * `generate` */
+def stream[W](t: Top)(body: Yields[W]): Source[W] = new Source[W]:
+  val top: t.type = t
+  def run[G](out: (W, t.M[G, G, G, G]) => t.M[G, G, G, G], done: G): G =
+    val c = t.at[G]
+    t.run(c.handle(new Handler[c.Prog, Emit % W, Unit, G]:
+      def ret(u: Unit): G = done
+      def apply[X](op: Emit[W, X], k: X => c.Prog[G]): c.Prog[G] = op match
+        case Emit.Yield(w) => out(w, k(())))(body))
+  def push(f: W => Unit): Unit =
+    val c = t.at[Unit]
+    t.run(c.handle(new Answering[c.Prog, Emit % W, Unit, Unit]:
+      def ret(u: Unit): Unit = ()
+      def value[X](op: Emit[W, X]): X = op match
+        case Emit.Yield(w) => f(w))(body))
 /** a stream's body: a program yielding `W`, under `Emit % W` alone */
 type Yields[W] = (c: Effects { type Effs = Emit % W +: Pure }) ?=> c.Prog[Unit]
 
