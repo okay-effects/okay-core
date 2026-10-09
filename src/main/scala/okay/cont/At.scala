@@ -124,3 +124,8 @@ private final class Refold[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T,
 private final class Resume[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans])
   extends (X => Cont[T, Q, Q, Ans]):
   def apply(x: X): Cont[T, Q, Q, Ans] = Delay(() => fold0(k(x), ret, h))
+
+/** `Cont`'s top, for a library re-entering it */
+given top: Top with
+  val at: At[Pure, Unit] = At()
+  def run(p: at.Prog[Unit]): Unit = p.value

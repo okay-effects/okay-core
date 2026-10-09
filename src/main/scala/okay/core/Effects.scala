@@ -91,3 +91,9 @@ def perform[E[_], X](op: E[X])(using c: Effects, in: In[E, c.Effs]): c.Prog[X] =
 
 /** `pure(a)`: the value, a program here */
 def pure[A](a: A)(using c: Context): c.Prog[A] = c.pure(a)
+
+/** A MONAD'S TOP: its context there, over `Pure` at the answer `Unit`, and a run of a program of it — what a library
+ * re-entering the top takes (`Async`, a run going on in a callback's thread) */
+trait Top:
+  val at: Effects { type Effs = Pure; type S = Unit }
+  def run(p: at.Prog[Unit]): Unit

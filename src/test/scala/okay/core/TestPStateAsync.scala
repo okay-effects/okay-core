@@ -81,4 +81,11 @@ abstract class TestAsyncOn extends munit.FunSuite:
 /** on `Cont` */
 class TestAsync extends TestAsyncOn:
   def runIO[A](body: (c: Effects { type Effs = Async +: Async.Fails; type S = Unit }) ?=> c.Prog[A]): Either[Throwable, A] =
-    okay.cont.run(throws[Throwable, A](okay.cont.Async.run(body(using summon[okay.cont.At[Async +: Async.Fails, Unit]]))))
+    given Top = okay.cont.top
+    okay.cont.run(throws[Throwable, A](Async.run(body)))
+
+/** on the textbook CPS, not stack safe: on a thread of a large stack */
+class TestAsyncOnCps0 extends TestAsyncOn:
+  def runIO[A](body: (c: Effects { type Effs = Async +: Async.Fails; type S = Unit }) ?=> c.Prog[A]): Either[Throwable, A] =
+    given Top = Cps0.top
+    BackendSuite.onLargeStack(Cps0.run(throws[Throwable, A](Async.run(body))))

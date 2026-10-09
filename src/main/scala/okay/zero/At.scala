@@ -49,3 +49,8 @@ object At:
   /** a context with the paths of the effects a program needs */
   final class Needy[R0 <: Row, J0, T0, Es <: AnyKind](p: Paths[Es, R0]) extends At[R0, J0, T0] with core.Needs[Es]:
     def find[E[_]](r: Req[E, Es]): In[E, R0] = p.find(r)
+
+/** `Cont0`'s top, for a library re-entering it */
+given top: core.Top with
+  val at: At[Pure, Unit, Unit] = At()
+  def run(p: at.Prog[Unit]): Unit = runTop(p)

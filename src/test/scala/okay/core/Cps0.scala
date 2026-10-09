@@ -104,3 +104,8 @@ object Cps0:
       case Done(a) => pure(a)
       case c: Ctl[r, j, v, b, i] => top(again(c))
     top(dollar(body(using At()), (a: A) => pure(Done[Pure, A, A](a)))).run(identity)
+
+  /** the textbook's top, for a library re-entering it */
+  given top: Top with
+    val at: At[Pure, Unit, Unit] = At()
+    def run(p: at.Prog[Unit]): Unit = Cps0.run(p)

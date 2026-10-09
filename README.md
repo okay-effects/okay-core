@@ -13,10 +13,10 @@ operations, a reset one that answers none — so `Effects` is `Control` with han
 
 | Package | What is in it |
 |---|---|
-| `okay.core` | the interface: `Row`, `+:`, `Pure`, `In` and `E :? R`, `%`, `Paths` (`Rows.scala`); `Context` (`Effs`, `S`, `Inner`, `Prog`), `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`, `Body`), `Handler`, `Answering`, `Needs`, `A ! Es`, `perform`, `pure` |
+| `okay.core` | the interface: `Row`, `+:`, `Pure`, `In` and `E :? R`, `%`, `Paths` (`Rows.scala`); `Context` (the monad `M`, `Effs`, `S`, `Inner`, `Prog`), `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`, `Body`), `Handler`, `Answering`, `Needs`, `A ! Es`, `perform`, `pure`, `Top` |
 | `okay.std` | the effects, written once over the interface |
-| `okay.cont` | `Cont[R, I, O, A]`, its loop and fold; `At`, the instance; `run`; `Async.run` |
-| `okay.zero` | `Cont0[I, O, A]` (the kernel, open), the machine; `At`, the instance, `run`; `shift0`; `Async.run` |
+| `okay.cont` | `Cont[R, I, O, A]`, its loop and fold; `At`, the instance; `run`; `top` |
+| `okay.zero` | `Cont0[I, O, A]` (the kernel, open), the machine; `At`, the instance, `run`; `top`; `shift0` |
 
 A context's delimiters have contexts of their own, members of it: `Handled[E, S]` (a handler's body), `Reset[S]` (a
 reset's), `Answer[S]` (a shift's); a handler's and a reset's body is in `Inner`, the monad ONE LEVEL IN — `Cont`'s
@@ -33,7 +33,7 @@ the same, `Cont0`'s a level deeper, its answers programs of the level outside.
 | `Choose` | `among` (multi-shot) | `choose[A](body)` → `Seq[A]` |
 | `Emit` | `yield_` | `collect(body)`, `generate(next, done)(body)` (lazy, of the consumer's own type) |
 | `PState` | `st.get`, `st.put` | `pstate(s0)(st => body)` |
-| `Async` | `async`, `await` (callbacks) | `okay.cont.Async.run(body)`, `okay.zero.Async.run(body)` — the run is the monad's |
+| `Async` | `async`, `await` (callbacks) | `Async.run(body)` on the monad of the `Top` given — `okay.cont.top`, `okay.zero.top` |
 
 `PState` is a state whose *type* may change, carried by the answer type, not by
 the row. `Async` fails by `Throws % Throwable`.
@@ -84,7 +84,7 @@ on `Cont0` across any handlers and resets between.
 Written once: `TestEffectsOn`, `TestContextOn`, `TestControlOn`, `TestTogetherOn`, `TestDynamicOn`, `TestPStateOn`
 take a `Backend` (a monad's run) and run on `Cont`, on `Cont0`, on the reference and on `Cps0` — shift0 and `$` in
 CPS from the textbook, functions `(A => I) => O`, no code of `Cont` nor of `Cont0`: the four agree (`Cps0`, not stack
-safe, runs its tests on a thread of a large stack); `TestAsyncOn` on `Cont` and `Cont0`. The references are in the tests: `Ref` (`Cont0` by the kernel alone, its delimiters their shift0 programs read) and
+safe, runs its tests on a thread of a large stack); `TestAsyncOn` on all four. The references are in the tests: `Ref` (`Cont0` by the kernel alone, its delimiters their shift0 programs read) and
 `Cps0`. `MonadsBenchmark` runs the same programs, `backend=cont|zero`; `ref` measured when it was a backend there (ns
 an operation; the captures a run):
 

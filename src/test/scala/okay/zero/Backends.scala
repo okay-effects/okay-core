@@ -35,7 +35,14 @@ class TestDynamicOnRef extends okay.core.TestDynamicOn(RefBackend)
 class TestControlOnZero extends okay.core.TestControlOn(ZeroBackend)
 class TestControlOnRef extends okay.core.TestControlOn(RefBackend)
 
-/** master's tests of `Async` on `Cont0`: `okay.zero.Async` its run */
+/** master's tests of `Async` on `Cont0`: its top, `okay.zero.top`, the run */
 class TestAsyncOnZero extends okay.core.TestAsyncOn:
   def runIO[A](body: (c: Effects { type Effs = okay.std.Async +: okay.std.Async.Fails; type S = Unit }) ?=> c.Prog[A]): Either[Throwable, A] =
-    run(okay.std.throws[Throwable, A](Async.run(body(using summon[Async.Body]))))
+    given okay.core.Top = okay.zero.top
+    okay.zero.run(okay.std.throws[Throwable, A](okay.std.Async.run(body)))
+
+/** `Async` on the reference: its top */
+class TestAsyncOnRef extends okay.core.TestAsyncOn:
+  def runIO[A](body: (c: Effects { type Effs = okay.std.Async +: okay.std.Async.Fails; type S = Unit }) ?=> c.Prog[A]): Either[Throwable, A] =
+    given okay.core.Top = Ref.top
+    Ref.run(okay.std.throws[Throwable, A](okay.std.Async.run(body)))
