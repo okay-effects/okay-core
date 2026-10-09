@@ -22,7 +22,7 @@ opaque type Level[R <: Row, J, V] = Cont0[J, J, Res[R, J, V]]
  * and handlers — over the kernel, and no bridge to it: no raw `shift0` or `$` reaches a request */
 opaque type Eff[R <: Row, J, I, O, A] = Cont0[Level[R, J, I], Level[R, J, O], A]
 
-// THE PROGRAMS' OPERATIONS, for the contexts of `Fx` and `FxRef` (Fx.scala): master's interface the way in
+// THE PROGRAMS' OPERATIONS, for the contexts of `At` and `Ref` (At.scala): master's interface the way in
 
 extension [R <: Row, J, I, O, A](p: Eff[R, J, I, O, A])
   private[zero] def flatMap[I2, B](f: A => Eff[R, J, I2, I, B]): Eff[R, J, I2, O, B] = p.flatMap(f)
@@ -35,7 +35,7 @@ private[zero] def delay[R <: Row, J, I, O, A](p: => Eff[R, J, I, O, A]): Eff[R, 
 
 /** `run(p)`: the program at the top, under a delimiter of its own — the top's: nothing to ask over `Pure`, a `shift`
  * up to it the program's — its answer its value */
-private[zero] def run[A](p: Eff[Pure, A, A, A, A]): A =
+private[zero] def runTop[A](p: Eff[Pure, A, A, A, A]): A =
   // to the head first: its value — no shift up to the top, the common case — or a capture up to the top, the top's
   step(p, Frames.End()) match
     case Head.Done(a) => a

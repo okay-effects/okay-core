@@ -16,7 +16,7 @@ operations, a reset one that answers none — so `Effects` is `Control` with han
 | `okay.core` | the interface: `Row`, `+:`, `Pure`, `In` and `E :? R`, `%`, `Paths` (`Rows.scala`); `Context` (`Effs`, `S`, `Inner`, `Prog`), `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`, `Body`), `Handler`, `Answering`, `Needs`, `A ! Es`, `perform`, `pure` |
 | `okay.std` | the effects, written once over the interface |
 | `okay.cont` | `Cont[R, I, O, A]`, its loop and fold; `At`, the instance; `run`; `Async.run` |
-| `okay.zero` | `Cont0[I, O, A]` (the kernel, open), the machine; `Fx`, the instance, `Fx.run`; `FxRef`, the reference; `shift0`; `Async.run` |
+| `okay.zero` | `Cont0[I, O, A]` (the kernel, open), the machine; `At`, the instance, `run`; `Ref`, the reference, `Ref.run`; `shift0`; `Async.run` |
 
 A context's delimiters have contexts of their own, members of it: `Handled[E, S]` (a handler's body), `Reset[S]` (a
 reset's), `Answer[S]` (a shift's); a handler's and a reset's body is in `Inner`, the monad ONE LEVEL IN — `Cont`'s
@@ -66,8 +66,8 @@ Run on a monad of your choice — the same program, the same answer:
 
 ```scala
 okay.cont.run(state[Int](0)(counting(10)))      // (10, 10), on Cont
-okay.zero.Fx.run(state[Int](0)(counting(10)))   // (10, 10), on Cont0
-okay.zero.FxRef.run(state[Int](0)(counting(10))) // (10, 10), on the reference
+okay.zero.run(state[Int](0)(counting(10)))   // (10, 10), on Cont0
+okay.zero.Ref.run(state[Int](0)(counting(10))) // (10, 10), on the reference
 ```
 
 A handler that only answers — each clause `k(value(op))` — is an `Answering`: its operations answered in place,

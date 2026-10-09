@@ -6,12 +6,11 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import Control.{reset, shift}
 import okay.std.*
-import okay.zero.Fx
 
 /**
  * THE SAME PROGRAMS ON EACH MONAD: written once over master's `Effects` and `Control` and `okay.std`, run on the
- * monad `backend` — `cont` (`Cont`, `Effects.At`), `zero` (`Cont0`, `okay.zero.Fx`) or `ref` (`Cont0` by the kernel
- * alone, `okay.zero.FxRef`, the reference); `n` operations a run.
+ * monad `backend` — `cont` (`Cont`, `okay.cont.At`), `zero` (`Cont0`, `okay.zero.At`) or `ref` (`Cont0` by the kernel
+ * alone, `okay.zero.Ref`, the reference); `n` operations a run.
  *
  *  - pure: `n` binds, tail calls, no effect
  *  - answered / general / forwarded: `n` operations of a handler answering in place, of its clause written out,
@@ -37,8 +36,8 @@ class MonadsBenchmark:
   def run[A](body: (c: Effects { type Effs = Pure; type S = A }) ?=> c.Prog[A]): A =
     backend match
       case "cont" => okay.cont.run(body(using summon[okay.cont.At[Pure, A]]))
-      case "zero" => Fx.run(body(using summon[Fx[Pure, A, A]]))
-      case _ => okay.zero.FxRef.run(body(using summon[okay.zero.FxRef[Pure, A, A]]))
+      case "zero" => okay.zero.run(body(using summon[okay.zero.At[Pure, A, A]]))
+      case _ => okay.zero.Ref.run(body(using summon[okay.zero.Ref[Pure, A, A]]))
 
   def isEven(i: Int)(using c: Effects): c.Prog[Boolean] =
     if i == 0 then c.pure(true) else c.pure(()).flatMap(_ => isOdd(i - 1))

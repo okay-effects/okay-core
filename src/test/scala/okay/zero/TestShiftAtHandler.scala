@@ -9,7 +9,6 @@ import okay.std.*
  * and another's alike, every program here run under both: a reader answering in place and the same reader as a
  * general clause */
 class TestShiftAtHandler extends munit.FunSuite:
-  def run[A](body: Fx[Pure, A, A] ?=> Eff[Pure, A, A, A, A]): A = Fx.run(body)
 
   /** the environment `e`, the body's value times `scale`: in place, or by a general clause */
   def env(general: Boolean, e: Int, scale: Int)(using c: Effects)(body: c.Body[Reader % Int, Int, Int]): c.Prog[Int] =

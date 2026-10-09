@@ -15,7 +15,7 @@ object Async:
   type Top = Level[Pure, Unit, Unit]
   type InFails = Level[Fails, Top, Unit]
   /** the context a body run by `runAsync` is written in */
-  type Body = Fx[okay.std.Async +: Fails, InFails, Unit]
+  type Body = At[okay.std.Async +: Fails, InFails, Unit]
 
   private enum Slot[+A]:
     case Waiting
@@ -26,11 +26,11 @@ object Async:
   def runAsync[A](body: Body ?=> Eff[okay.std.Async +: Fails, InFails, Unit, Unit, A])(done: Either[Throwable, A] => Unit): Unit =
     // the run up to its end or to a wait, a failure raised in it `done`'s, the rest of the run aborted
     def go(p: Eff[Fails, Top, Unit, Unit, Unit]): Unit =
-      Fx.run[Unit](Effects.handle(new okay.core.Handler[[X] =>> Eff[Pure, Unit, Unit, Unit, X], Throws % Throwable, Unit, Unit]:
+      okay.zero.run[Unit](Effects.handle(new okay.core.Handler[[X] =>> Eff[Pure, Unit, Unit, Unit, X], Throws % Throwable, Unit, Unit]:
         def ret(u: Unit): Unit = ()
         def apply[X](op: Throws[Throwable, X], k: X => Eff[Pure, Unit, Unit, Unit, Unit]): Eff[Pure, Unit, Unit, Unit, Unit] = op match
           case Throws.Raise(e) => done(Left(e)); okay.zero.pure(()))(p))
-    def handled(using c: Fx[Fails, Top, Unit]): Eff[Fails, Top, Unit, Unit, Unit] =
+    def handled(using c: At[Fails, Top, Unit]): Eff[Fails, Top, Unit, Unit, Unit] =
       Effects.handle(new okay.core.Handler[c.Prog, okay.std.Async, A, Unit]:
         def ret(a: A): Unit = done(Right(a))
         def apply[X](op: okay.std.Async[X], k: X => c.Prog[Unit]): c.Prog[Unit] =
@@ -45,7 +45,7 @@ object Async:
               else slot.get match
                 case Slot.Ready(r) => resume(r)
                 case _ => c.pure(()))(body)
-    go(handled(using Fx()))
+    go(handled(using At()))
 
   /** `run(body)`: the body's value, this thread waiting for it — at the edge of a program only; its failure raised in
    * the context */

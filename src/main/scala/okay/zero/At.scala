@@ -5,15 +5,15 @@ import okay.core
 /** OKAY.ZERO AS AN INSTANCE of master's `Effects`: a context of `okay.core` whose programs are `Eff` — the
  * programs written over master's `Effects` and `Control`, `okay.std` among them, run on `Cont0`. Its monad is `Eff`
  * at its level `J0`; a delimiter's body is one level in, `Inner`, the level `Level[R0, J0, T0]` */
-class Fx[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
+class At[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   type M[X <: Row, I, O, A] = Eff[X, J0, I, O, A]
   type Inner[X <: Row, I, O, A] = Eff[X, Level[R0, J0, T0], I, O, A]
   type Effs = R0
   type S = T0
-  type Handled[E[_], S2] = Fx[E +: R0, Level[R0, J0, T0], S2]
-  type Reset[S2] = Fx[R0, Level[R0, J0, T0], S2]
-  type Answer[S2] = Fx[R0, J0, S2]
-  def answer[S2]: Fx[R0, J0, S2] = Fx()
+  type Handled[E[_], S2] = At[E +: R0, Level[R0, J0, T0], S2]
+  type Reset[S2] = At[R0, Level[R0, J0, T0], S2]
+  type Answer[S2] = At[R0, J0, S2]
+  def answer[S2]: At[R0, J0, S2] = At()
 
   def pure[X <: Row, S2, A](a: A): M[X, S2, S2, A] = okay.zero.pure(a)
   def delay[X <: Row, I, O, A](m: => M[X, I, O, A]): M[X, I, O, A] = okay.zero.delay(m)
@@ -22,47 +22,47 @@ class Fx[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
     def map[B](f: A => B): M[X, I, O, B] = okay.zero.map(m)(f)
 
   def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = request(op, in)
-  def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: Fx[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
+  def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: At[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
       : M[R0, T0, T0, Ans] =
-    handleNode(h, body(using Fx()))
+    handleNode(h, body(using At()))
   def shift[I, O, A](f: (A => M[R0, O, O, I]) => M[R0, O, O, O], same: (I =:= O) | Null): M[R0, I, O, A] = control(f, same)
-  def reset[S2, O](body: Fx[R0, Level[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[R0, T0, T0, O] =
-    resetNode(body(using Fx()))
+  def reset[S2, O](body: At[R0, Level[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[R0, T0, T0, O] =
+    resetNode(body(using At()))
 
-  type Needing[Es <: AnyKind] = Fx[R0, J0, T0] & core.Needs[Es]
-  def needing[Es <: AnyKind](p: Paths[Es, R0]): Fx[R0, J0, T0] & core.Needs[Es] = Fx.Needy(p)
+  type Needing[Es <: AnyKind] = At[R0, J0, T0] & core.Needs[Es]
+  def needing[Es <: AnyKind](p: Paths[Es, R0]): At[R0, J0, T0] & core.Needs[Es] = At.Needy(p)
 
 /** `shift0[A, O](k => body)` up to the nearest reset — `Cont0`'s own, beyond master's: as `shift`, but the body runs
  * OUTSIDE the reset, in its place, in the context outside — so a shift0 in it reaches the next reset out. `k` the
- * rest under the reset again. Its context a reset's of `Fx`: a handler's row is one longer than its level's, so
+ * rest under the reset again. Its context a reset's of `At`: a handler's row is one longer than its level's, so
  * under a handler it does not compile */
 def shift0[A, O]: Shift0To[A, O] = Shift0To()
 final class Shift0To[A, O] private[zero] ():
-  def apply[R <: Row, J, T, S](using r: Fx[R, Level[R, J, T], S])(f: Fx[R, J, T] ?=> (A => Eff[R, J, T, T, S]) => Eff[R, J, T, T, O])
+  def apply[R <: Row, J, T, S](using r: At[R, Level[R, J, T], S])(f: At[R, J, T] ?=> (A => Eff[R, J, T, T, S]) => Eff[R, J, T, T, O])
       : Eff[R, Level[R, J, T], S, O, A] =
-    shift0Node[R, J, T, A, S, O](f(using Fx()))
+    shift0Node[R, J, T, A, S, O](f(using At()))
 
-object Fx:
-  /** `run(body)`: a program written over master's `Effects` and `Control`, at the top, on `Cont0` */
-  def run[A](body: Fx[Pure, A, A] ?=> Eff[Pure, A, A, A, A]): A = okay.zero.run(body(using Fx()))
+/** `run(body)`: a program written over master's `Effects` and `Control`, at the top, on `Cont0` */
+def run[A](body: At[Pure, A, A] ?=> Eff[Pure, A, A, A, A]): A = runTop(body(using At()))
 
+object At:
   /** a context with the paths of the effects a program needs */
-  final class Needy[R0 <: Row, J0, T0, Es <: AnyKind](p: Paths[Es, R0]) extends Fx[R0, J0, T0] with core.Needs[Es]:
+  final class Needy[R0 <: Row, J0, T0, Es <: AnyKind](p: Paths[Es, R0]) extends At[R0, J0, T0] with core.Needs[Es]:
     def find[E[_]](r: Req[E, Es]): In[E, R0] = p.find(r)
 
 /** THE REFERENCE: `Eff` run by the kernel alone — a handler and a reset their shift0 programs, `$`s whose answers
  * are read (`readHand`, `passAll`), an operation and a shift requests to them; no machine, nothing answered in
- * place. Slow, and the definition: what `Fx` runs fast. A shift up to a handler is master's there, `k` the rest
+ * place. Slow, and the definition: what `At` runs fast. A shift up to a handler is master's there, `k` the rest
  * under the handler's `ret`, its operations the body's handler's */
-class FxRef[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
+class Ref[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   type M[X <: Row, I, O, A] = Eff[X, J0, I, O, A]
   type Inner[X <: Row, I, O, A] = Eff[X, Level[R0, J0, T0], I, O, A]
   type Effs = R0
   type S = T0
-  type Handled[E[_], S2] = FxRef[E +: R0, Level[R0, J0, T0], S2]
-  type Reset[S2] = FxRef[R0, Level[R0, J0, T0], S2]
-  type Answer[S2] = FxRef[R0, J0, S2]
-  def answer[S2]: FxRef[R0, J0, S2] = FxRef()
+  type Handled[E[_], S2] = Ref[E +: R0, Level[R0, J0, T0], S2]
+  type Reset[S2] = Ref[R0, Level[R0, J0, T0], S2]
+  type Answer[S2] = Ref[R0, J0, S2]
+  def answer[S2]: Ref[R0, J0, S2] = Ref()
 
   def pure[X <: Row, S2, A](a: A): M[X, S2, S2, A] = okay.zero.pure(a)
   def delay[X <: Row, I, O, A](m: => M[X, I, O, A]): M[X, I, O, A] = okay.zero.delay(m)
@@ -71,19 +71,19 @@ class FxRef[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
     def map[B](f: A => B): M[X, I, O, B] = okay.zero.map(m)(f)
 
   def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = request(op, in)
-  def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: FxRef[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
+  def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: Ref[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
       : M[R0, T0, T0, Ans] =
-    handleRead(h, body(using FxRef()))
+    handleRead(h, body(using Ref()))
   def shift[I, O, A](f: (A => M[R0, O, O, I]) => M[R0, O, O, O], same: (I =:= O) | Null): M[R0, I, O, A] = control(f, null)
-  def reset[S2, O](body: FxRef[R0, Level[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[R0, T0, T0, O] =
-    resetRead(body(using FxRef()))
+  def reset[S2, O](body: Ref[R0, Level[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[R0, T0, T0, O] =
+    resetRead(body(using Ref()))
 
-  type Needing[Es <: AnyKind] = FxRef[R0, J0, T0] & core.Needs[Es]
-  def needing[Es <: AnyKind](p: Paths[Es, R0]): FxRef[R0, J0, T0] & core.Needs[Es] = FxRef.Needy(p)
+  type Needing[Es <: AnyKind] = Ref[R0, J0, T0] & core.Needs[Es]
+  def needing[Es <: AnyKind](p: Paths[Es, R0]): Ref[R0, J0, T0] & core.Needs[Es] = Ref.Needy(p)
 
-object FxRef:
+object Ref:
   /** `run(body)`: a program over master's `Effects` and `Control`, at the top, by the kernel alone */
-  def run[A](body: FxRef[Pure, A, A] ?=> Eff[Pure, A, A, A, A]): A = okay.zero.run(body(using FxRef()))
+  def run[A](body: Ref[Pure, A, A] ?=> Eff[Pure, A, A, A, A]): A = runTop(body(using Ref()))
 
-  final class Needy[R0 <: Row, J0, T0, Es <: AnyKind](p: Paths[Es, R0]) extends FxRef[R0, J0, T0] with core.Needs[Es]:
+  final class Needy[R0 <: Row, J0, T0, Es <: AnyKind](p: Paths[Es, R0]) extends Ref[R0, J0, T0] with core.Needs[Es]:
     def find[E[_]](r: Req[E, Es]): In[E, R0] = p.find(r)
