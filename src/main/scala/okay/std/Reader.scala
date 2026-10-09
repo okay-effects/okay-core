@@ -13,3 +13,9 @@ def reader[A](using c: Effects)[E](e: E)(body: c.Body[Reader % E, A, A]): c.Prog
     def ret(a: A): A = a
     def value[X](op: Reader[E, X]): X = op match
       case Reader.Ask() => e)(body)
+/** `local[E, A](f)(body)`: every `ask` of the body answered `f` of the value outside — the reader intercepted */
+def local[E, A](f: E => E)(using c: Effects, in: Reader % E :? c.Effs)(body: c.Reset[A] ?=> c.Inner[c.Effs, A, A, A]): c.Prog[A] =
+  Effects.intercept(new Handler[c.Prog, Reader % E, A, A]:
+    def ret(a: A): A = a
+    def apply[X](op: Reader[E, X], k: X => c.Prog[A]): c.Prog[A] = op match
+      case Reader.Ask() => ask[E].flatMap(v => k(f(v))))(body)
