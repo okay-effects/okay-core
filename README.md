@@ -60,18 +60,20 @@ The same program gives the same answer on both, but for one case by design: a `s
 with no `reset` between — on `Cont0` its `k` holds the handler (a `raise` in `k` is that `k`'s `Left`), on `Cont`
 only the handler's `ret` (a `raise` in `k` aborts the shift's body). `shift0` is `Cont0`'s alone.
 
-`MonadsBenchmark`, the same programs on each (bench.d, 2026-10-09T11-37), ns an operation:
+`MonadsBenchmark`, the same programs on each (bench.d, 2026-10-09T16-09), ns an operation:
 
 | | `Cont` | `Cont0` |
 |---|---|---|
-| an operation across 1 / 4 / 16 handlers | 11.6 / 23.4 / 91.7 | 5.5 / 5.2 / 5.5 |
-| answered in place / by a general clause | 6.43 / 8.92 | 5.41 / 7.79 |
-| state, writer, collect | 16.1, 20.0, 13.1 | 14.7, 17.3, 10.5 |
-| a generator, an element pulled / pushed (`stream`, measured apart) | 14.9 / 10.3 | 14.5 / 7.6 |
-| 8 queens (a run) | 256 µs | 190 µs |
-| a shift under a reset, 16 maps, `k` 8 times (a run) | 438 ns | 324 ns |
-| choose, throws | 29.2, 13.6 | 34.3, 14.3 |
-| pure binds | 3.36 | 3.42 |
+| an operation across 1 / 4 / 16 handlers | 11.9 / 23.2 / 96.8 | 5.7 / 5.4 / 5.7 |
+| answered in place / by a general clause | 5.65 / 9.07 | 5.53 / 7.76 |
+| state, writer, collect | 15.6, 20.5, 12.2 | 14.7, 17.6, 10.7 |
+| a generator, an element pulled / pushed | 15.2 / 9.3 | 14.6 / 7.8 |
+| an ask under `local` (an interceptor) / under the reader alone | 16.6 / 4.6 | 15.0 / 4.9 |
+| `state` as a `Program`: the state first in the row / third | 23.0 / 38.9 | 23.9 / 39.7 |
+| 8 queens (a run) | 282 µs | 184 µs |
+| a shift under a reset, 16 maps, `k` 8 times (a run) | 453 ns | 338 ns |
+| choose, throws | 29.5, 14.3 | 34.6, 15.8 |
+| pure binds | 3.33 | 3.32 |
 
 `Cont0` is 2–16× faster where handlers are layered and faster in most of the rest; `Cont` is ahead by 3–17% in
 `choose`, `throws` and a shallow shift directly under a handler.
