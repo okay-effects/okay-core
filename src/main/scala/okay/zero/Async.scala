@@ -31,10 +31,10 @@ object Async:
         def apply[X](op: Throws[Throwable, X], k: X => Eff[Pure, Unit, Unit, Unit, Unit]): Eff[Pure, Unit, Unit, Unit, Unit] = op match
           case Throws.Raise(e) => done(Left(e)); okay.zero.pure(()))(p))
     def handled(using c: Fx[Fails, Top, Unit]): Eff[Fails, Top, Unit, Unit, Unit] =
-      Effects.handle(new okay.core.Handler[c.P, okay.std.Async, A, Unit]:
+      Effects.handle(new okay.core.Handler[c.Prog, okay.std.Async, A, Unit]:
         def ret(a: A): Unit = done(Right(a))
-        def apply[X](op: okay.std.Async[X], k: X => c.P[Unit]): c.P[Unit] =
-          def resume(r: Either[Throwable, X]): c.P[Unit] = r.fold(raise[Throwable, Unit], k)
+        def apply[X](op: okay.std.Async[X], k: X => c.Prog[Unit]): c.Prog[Unit] =
+          def resume(r: Either[Throwable, X]): c.Prog[Unit] = r.fold(raise[Throwable, Unit], k)
           op match
             case Run(run) => resume(try Right(run()) catch { case NonFatal(e) => Left(e) })
             case Await(register) =>
@@ -49,7 +49,7 @@ object Async:
 
   /** `run(body)`: the body's value, this thread waiting for it — at the edge of a program only; its failure raised in
    * the context */
-  def run[A](body: Body ?=> Eff[okay.std.Async +: Fails, InFails, Unit, Unit, A])(using c: Effects, has: Throws % Throwable :? c.R): c.P[A] =
+  def run[A](body: Body ?=> Eff[okay.std.Async +: Fails, InFails, Unit, Unit, A])(using c: Effects, has: Throws % Throwable :? c.Effs): c.Prog[A] =
     c.delay:
       val result = java.util.concurrent.CompletableFuture[Either[Throwable, A]]()
       runAsync(body)(result.complete)

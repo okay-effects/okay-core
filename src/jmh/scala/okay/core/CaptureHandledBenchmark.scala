@@ -26,7 +26,7 @@ class CaptureHandledBenchmark:
   enum Nop[X]:
     case Op extends Nop[Unit]
 
-  def nop[A](using c: Effects): Handler[c.P, Nop, A, A] = new Answering[c.P, Nop, A, A]:
+  def nop[A](using c: Effects): Handler[c.Prog, Nop, A, A] = new Answering[c.Prog, Nop, A, A]:
     def ret(a: A): A = a
     def value[X](op: Nop[X]): X = op match
       case Nop.Op => ()

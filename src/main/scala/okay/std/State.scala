@@ -9,15 +9,15 @@ enum State[S, +A]:
   case Get[S]() extends State[S, S]
   case Put[S](s: S) extends State[S, Unit]
 
-def get[S](using c: Effects, has: State % S :? c.R): c.P[S] = perform[State % S, S](State.Get[S]())
-def put[S](s: S)(using c: Effects, has: State % S :? c.R): c.P[Unit] = perform[State % S, Unit](State.Put(s))
+def get[S](using c: Effects, has: State % S :? c.Effs): c.Prog[S] = perform[State % S, S](State.Get[S]())
+def put[S](s: S)(using c: Effects, has: State % S :? c.Effs): c.Prog[Unit] = perform[State % S, Unit](State.Put(s))
 /** the state changed by `f`; the new state */
-def modify[S](f: S => S)(using c: Effects, has: State % S :? c.R): c.P[S] =
+def modify[S](f: S => S)(using c: Effects, has: State % S :? c.Effs): c.Prog[S] =
   get[S].flatMap(s => { val n = f(s); put[S](n).map(_ => n) })
 /** `state[A](s0)(body)`: the last state and the value */
-def state[A](using c: Effects)[S](s0: S)(body: c.Body[State % S, (S, A), A]): c.P[(S, A)] =
+def state[A](using c: Effects)[S](s0: S)(body: c.Body[State % S, (S, A), A]): c.Prog[(S, A)] =
   c.delay:
-    Effects.handle(new Answering[c.P, State % S, A, (S, A)]:
+    Effects.handle(new Answering[c.Prog, State % S, A, (S, A)]:
       private var s: S = s0
       def ret(a: A): (S, A) = (s, a)
       def value[X](op: State[S, X]): X = op match

@@ -19,10 +19,10 @@ class ZeroShift0Benchmark:
   @Param(Array("1", "8"))
   var shots: Int = 0
 
-  def calls(using c: Effects)(k: Unit => c.P[Int], i: Int, acc: Int): c.P[Int] =
+  def calls(using c: Effects)(k: Unit => c.Prog[Int], i: Int, acc: Int): c.Prog[Int] =
     if i == 0 then c.pure(acc) else k(()).flatMap(r => calls(using c)(k, i - 1, acc + r))
 
-  def captured[R <: Row, J](using r: Fx[R, okay.zero.Level[R, J, Int], Int]): r.P[Int] =
+  def captured[R <: Row, J](using r: Fx[R, okay.zero.Level[R, J, Int], Int]): r.Prog[Int] =
     var p = shift0[Unit, Int](k => calls(k, shots, 0)).map(_ => 1)
     var i = 0
     while i < depth do
@@ -40,7 +40,7 @@ class ZeroShift0Benchmark:
 @Measurement(iterations = 5, time = 1, timeUnit = TimeUnit.SECONDS)
 @Fork(2)
 class ZeroShift0ChainBenchmark:
-  def chain[R <: Row, J](i: Int, acc: Int)(using r: Fx[R, okay.zero.Level[R, J, Int], Int]): r.P[Int] =
+  def chain[R <: Row, J](i: Int, acc: Int)(using r: Fx[R, okay.zero.Level[R, J, Int], Int]): r.Prog[Int] =
     if i == 0 then r.pure(acc) else shift0[Int, Int](k => k(1)).flatMap(x => chain(i - 1, acc + x))
 
   @Benchmark

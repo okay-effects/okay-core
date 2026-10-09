@@ -46,7 +46,7 @@ object Async:
   /** `run(body)`: the body's value, this thread waiting for it — at the edge of a program only; its failure raised
    * in the context */
   def run[A](body: At[okay.std.Async +: Fails, Unit] ?=> Free[okay.std.Async +: Fails, A])
-            (using c: Effects, has: Throws % Throwable :? c.R): c.P[A] =
+            (using c: Effects, has: Throws % Throwable :? c.Effs): c.Prog[A] =
     c.delay:
       val result = java.util.concurrent.CompletableFuture[Either[Throwable, A]]()
       runAsync(body)(result.complete)

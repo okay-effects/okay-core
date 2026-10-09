@@ -8,7 +8,7 @@ an operation carries a path to its effect in the row, and a handler follows it.
 Final tagless: programs and the effects in `okay.std` are written against two
 type classes over an indexed monad `M[R, I, O, A]` — `Effects` (operations and
 handlers) and `Control` (shift and reset) — and the context a program is
-written in *is* the instance: `(using c: Effects)` gives `c.M`, the row `c.R`
+written in *is* the instance: `(using c: Effects)` gives `c.M`, the row `c.Effs`
 and the answer `c.S`. `Cont` is the instance that runs them; the tests run the
 same `Control` programs on a second one, plain CPS functions, too.
 
@@ -45,7 +45,7 @@ effects it needs. Two ways to write one:
 
 ```scala
 // the context as givens
-def counting(i: Int)(using c: Effects, s: State % Int :? c.R): c.M[c.R, c.S, c.S, Int] =
+def counting(i: Int)(using c: Effects, s: State % Int :? c.Effs): c.M[c.Effs, c.S, c.S, Int] =
   if i == 0 then get[Int] else get[Int].flatMap(x => put(x + 1)).flatMap(_ => counting(i - 1))
 
 // A ! Es: a program of value A, in any context whose row has every effect of Es
@@ -104,7 +104,7 @@ the value going through its frames. The reading is left for a `shift` up to the 
 |---|---|
 | `Cont0.scala` | the kernel: `Cont0`, its four nodes, `pure`, `shift0`, `dollar`, `reset0`, `value`; the package's nodes, the delimiters |
 | `Rows.scala` | `Row`, `+:`, `Empty`, `In`, `%`, `Sub`, `Req`, `Paths` |
-| `Eff.scala` | `Eff[R, J, I, O, A]` and `Level` (opaque), `Ctx` (`c.R`, `c.J`, `c.T`, `c.P[A]`, `c.Body`, `c.Reset`), `pure`, `flatMap`, `map`, `delay`, `run`; the nodes; the reading |
+| `Eff.scala` | `Eff[R, J, I, O, A]` and `Level` (opaque), `Ctx` (`c.Effs`, `c.J`, `c.T`, `c.Prog[A]`, `c.Body`, `c.Reset`), `pure`, `flatMap`, `map`, `delay`, `run`; the nodes; the reading |
 | `Machine.scala` | the machine: the loops, the handlers in force, a resumption, a shift at its delimiter |
 | `Control.scala` | `reset[S]`, `shift[A, O]`, `shift0[A, O]` (the body outside the reset), `Same` |
 | `Effects.scala` | `Handler`, `Answering`, `perform`, `performAt`, `handle`, `Needs`, `A ! Es` |

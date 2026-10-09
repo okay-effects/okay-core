@@ -16,7 +16,7 @@ enum In[E[_], R <: Row]:
   case Here[E[_], T <: Row]() extends In[E, E +: T]
   case There[E[_], E2[_], T <: Row](in: In[E, T]) extends In[E, E2 +: T]
 
-/** `E :? R`, the effect `E` in the row `R`: `In` as it is written in a signature, `(using in: Reader % E :? c.R)` —
+/** `E :? R`, the effect `E` in the row `R`: `In` as it is written in a signature, `(using in: Reader % E :? c.Effs)` —
  * a `:`-operator, so `%` and `+:` bind tighter: `Ask :? Ask +: Pure` */
 infix type :?[E[_], R <: Row] = In[E, R]
 

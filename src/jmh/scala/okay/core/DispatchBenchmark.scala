@@ -48,21 +48,21 @@ class DispatchBenchmark:
   def oddP(n: Int)(using c: At0, t: In[Tick, T]): Cont[T, Boolean, Boolean, Boolean] =
     if n == 0 then Return(false) else Inject[Tick, T, Boolean, Int](Tick.Value(n), t).flatMap(_ => evenP(n - 1))
 
-  def evenA(n: Int)(using c: At0, t: Tick :? c.R): c.P[Boolean] =
+  def evenA(n: Int)(using c: At0, t: Tick :? c.Effs): c.Prog[Boolean] =
     if n == 0 then c.pure(true) else perform(Tick.Value(n)).flatMap(_ => oddA(n - 1))
-  def oddA(n: Int)(using c: At0, t: Tick :? c.R): c.P[Boolean] =
+  def oddA(n: Int)(using c: At0, t: Tick :? c.Effs): c.Prog[Boolean] =
     if n == 0 then c.pure(false) else perform(Tick.Value(n)).flatMap(_ => evenA(n - 1))
 
-  def evenT(n: Int)(using c: Effects, t: Tick :? c.R): c.P[Boolean] =
+  def evenT(n: Int)(using c: Effects, t: Tick :? c.Effs): c.Prog[Boolean] =
     if n == 0 then c.pure(true) else perform(Tick.Value(n)).flatMap(_ => oddT(n - 1))
-  def oddT(n: Int)(using c: Effects, t: Tick :? c.R): c.P[Boolean] =
+  def oddT(n: Int)(using c: Effects, t: Tick :? c.Effs): c.Prog[Boolean] =
     if n == 0 then c.pure(false) else perform(Tick.Value(n)).flatMap(_ => evenT(n - 1))
 
   /** the context an `Effects` whose monad is `Cont`: any row, any answer, the monad known */
   type OnCont = Effects { type M[X <: Row, I, O, A] = Cont[X, I, O, A] }
-  def evenM(n: Int)(using c: OnCont, t: Tick :? c.R): c.P[Boolean] =
+  def evenM(n: Int)(using c: OnCont, t: Tick :? c.Effs): c.Prog[Boolean] =
     if n == 0 then c.pure(true) else perform(Tick.Value(n)).flatMap(_ => oddM(n - 1))
-  def oddM(n: Int)(using c: OnCont, t: Tick :? c.R): c.P[Boolean] =
+  def oddM(n: Int)(using c: OnCont, t: Tick :? c.Effs): c.Prog[Boolean] =
     if n == 0 then c.pure(false) else perform(Tick.Value(n)).flatMap(_ => evenM(n - 1))
 
   @Benchmark

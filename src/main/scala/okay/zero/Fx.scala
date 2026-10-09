@@ -8,7 +8,7 @@ import okay.core
 class Fx[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   type M[X <: Row, I, O, A] = Eff[X, J0, I, O, A]
   type Inner[X <: Row, I, O, A] = Eff[X, Level[R0, J0, T0], I, O, A]
-  type R = R0
+  type Effs = R0
   type S = T0
   type Handled[E[_], S2] = Fx[E +: R0, Level[R0, J0, T0], S2]
   type Reset[S2] = Fx[R0, Level[R0, J0, T0], S2]
@@ -22,7 +22,7 @@ class Fx[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
     def map[B](f: A => B): M[X, I, O, B] = okay.zero.map(m)(f)
 
   def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = request(op, in)
-  def handle[E[_], A, Ans](h: core.Handler[P, E, A, Ans])(body: Fx[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
+  def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: Fx[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
       : M[R0, T0, T0, Ans] =
     handleNode(h, body(using Fx()))
   def shift[I, O, A](f: (A => M[R0, O, O, I]) => M[R0, O, O, O], same: (I =:= O) | Null): M[R0, I, O, A] = control(f, same)
@@ -57,7 +57,7 @@ object Fx:
 class FxRef[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   type M[X <: Row, I, O, A] = Eff[X, J0, I, O, A]
   type Inner[X <: Row, I, O, A] = Eff[X, Level[R0, J0, T0], I, O, A]
-  type R = R0
+  type Effs = R0
   type S = T0
   type Handled[E[_], S2] = FxRef[E +: R0, Level[R0, J0, T0], S2]
   type Reset[S2] = FxRef[R0, Level[R0, J0, T0], S2]
@@ -71,7 +71,7 @@ class FxRef[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
     def map[B](f: A => B): M[X, I, O, B] = okay.zero.map(m)(f)
 
   def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = request(op, in)
-  def handle[E[_], A, Ans](h: core.Handler[P, E, A, Ans])(body: FxRef[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
+  def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: FxRef[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
       : M[R0, T0, T0, Ans] =
     handleRead(h, body(using FxRef()))
   def shift[I, O, A](f: (A => M[R0, O, O, I]) => M[R0, O, O, O], same: (I =:= O) | Null): M[R0, I, O, A] = control(f, null)

@@ -33,20 +33,20 @@ class DepthBenchmark:
   @Param(Array("0", "1", "4", "16"))
   var depth: Int = 0
 
-  def far[A](using c: Effects): Handler[c.P, Far, A, A] = new Answering[c.P, Far, A, A]:
+  def far[A](using c: Effects): Handler[c.Prog, Far, A, A] = new Answering[c.Prog, Far, A, A]:
     def ret(a: A): A = a
     def value[X](op: Far[X]): X = op match
       case Far.Value(a) => a
-  def near[A](using c: Effects): Handler[c.P, Near, A, A] = new Answering[c.P, Near, A, A]:
+  def near[A](using c: Effects): Handler[c.Prog, Near, A, A] = new Answering[c.Prog, Near, A, A]:
     def ret(a: A): A = a
     def value[X](op: Near[X]): X = op match
       case Near.Value(a) => a
 
-  def loop(i: Int, acc: Int)(using c: Effects, f: Far :? c.R): c.P[Int] =
+  def loop(i: Int, acc: Int)(using c: Effects, f: Far :? c.Effs): c.Prog[Int] =
     if i == 0 then c.pure(acc) else perform(Far.Value(1)).flatMap(x => loop(i - 1, acc + x))
 
   /** the body under `d` handlers of `Near`, each in the context of the one outside */
-  def nested(d: Int)(using c: Effects, f: Far :? c.R): c.P[Int] =
+  def nested(d: Int)(using c: Effects, f: Far :? c.Effs): c.Prog[Int] =
     if d == 0 then loop(n, 0) else Effects.handle(near)(nested(d - 1))
 
   @Benchmark

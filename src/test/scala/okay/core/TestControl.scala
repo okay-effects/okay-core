@@ -6,7 +6,7 @@ import Control.{reset, shift}
 
 /** CONTROL alone, beyond master's: Danvy–Filinski's shift in a shift's body, k lazy, shift0's hierarchy */
 abstract class TestControlOn(on: Backend) extends munit.FunSuite:
-  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.P[A]): A = on.run(body)
+  def run[A](body: (c: Effects { type Effs = Pure; type S = A }) ?=> c.Prog[A]): A = on.run(body)
 
   test("a body dropping k aborts the reset: the rest never runs"):
     var ran = false
@@ -28,7 +28,7 @@ abstract class TestControlOn(on: Backend) extends munit.FunSuite:
     assertEquals(run[Int](reset[Int](shift[Int, Int](k => { k(1); pure(if ran then 1 else 0) }).flatMap(x => { ran = true; pure(x) }))), 0)
 
   test("100 000 resets and shifts in constant stack"):
-    def many(n: Int, acc: Int)(using c: Effects): c.P[Int] =
+    def many(n: Int, acc: Int)(using c: Effects): c.Prog[Int] =
       if n == 0 then pure(acc) else reset[Int](shift[Int, Int](k => k(1)).map(_ + 1)).flatMap(x => many(n - 1, acc + x))
     assertEquals(run[Int](many(100000, 0)), 200000)
 

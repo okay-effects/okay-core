@@ -6,7 +6,7 @@ import Cont.*
 /** THE INSTANCE over `Cont`, the context at the row `R0`, the answer `S0`: effects and control both */
 class At[R0 <: Row, S0] extends Effects with Paths.Keep[R0, At[R0, S0]]:
   type M[R <: Row, I, O, A] = Cont[R, I, O, A]
-  type R = R0
+  type Effs = R0
   type S = S0
   type Inner[X <: Row, I, O, A] = Cont[X, I, O, A]
   type Handled[E[_], S2] = At[E +: R0, S2]

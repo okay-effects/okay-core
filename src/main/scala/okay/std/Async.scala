@@ -14,9 +14,9 @@ enum Async[+A]:
   case Await[A](register: (Either[Throwable, A] => Unit) => Unit) extends Async[A]
 
 /** a computation, suspended — run when the run gets to it */
-def async[A](a: => A)(using c: Effects, has: Async :? c.R): c.P[A] = perform[Async, A](Async.Run(() => a))
+def async[A](a: => A)(using c: Effects, has: Async :? c.Effs): c.Prog[A] = perform[Async, A](Async.Run(() => a))
 /** the value a callback is called with, once */
-def await[A](register: (Either[Throwable, A] => Unit) => Unit)(using c: Effects, has: Async :? c.R): c.P[A] =
+def await[A](register: (Either[Throwable, A] => Unit) => Unit)(using c: Effects, has: Async :? c.Effs): c.Prog[A] =
   perform[Async, A](Async.Await(register))
 
 object Async:

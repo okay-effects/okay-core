@@ -12,21 +12,21 @@ import okay.core.*
 type St[M[_ <: Row, _, _, _], R <: Row, Q, S, V] = S => M[R, Q, Q, V]
 
 /** the operations of one run, over the control `c`, in the run's reset `r`: the run's value `V` */
-final class PState[C <: Control & Singleton, V](val c: C)(val r: Control { type M[X <: Row, I, O, A] = c.Inner[X, I, O, A]; type R = c.R }):
-  type At[S] = St[c.M, c.R, c.S, S, V]
+final class PState[C <: Control & Singleton, V](val c: C)(val r: Control { type M[X <: Row, I, O, A] = c.Inner[X, I, O, A]; type Effs = c.Effs }):
+  type At[S] = St[c.M, c.Effs, c.S, S, V]
   /** the state, its type `S` unchanged: `shift(k => s => k(s)(s))` */
-  def get[S]: c.Inner[c.R, At[S], At[S], S] =
+  def get[S]: c.Inner[c.Effs, At[S], At[S], S] =
     r.shift[At[S], At[S], S](k => r.pure((s: S) => c.reset[At[S], At[S]](k(s)).flatMap(f => f(s))), <:<.refl)
   /** a state of another type, `S2`, for the rest; the state before was `S`: `shift(k => _ => k(())(s2))` */
   def put[S]: PutFrom[S] = PutFrom[S]()
   final class PutFrom[S]:
-    def apply[S2](s2: S2): c.Inner[c.R, At[S2], At[S], Unit] =
+    def apply[S2](s2: S2): c.Inner[c.Effs, At[S2], At[S], Unit] =
       // the rest's value, the run from `S2` on, to `S`'s answer — so it is delimited as the body it is
       r.shift[At[S2], At[S], Unit](k => r.pure((s: S) => c.reset[At[S], At[S]](k(()).map(f => ((_: S) => f(s2)): At[S])).flatMap(g => g(s))), null)
 
 /** `pstate(s0)(st => body)`: the body run from the state `s0`, of type `S0`, to a state of type `S1`, in the run's
  * reset; the last state and the value */
-def pstate[S0](s0: S0)[S1, W](using c: Control)(body: c.Reset[St[c.M, c.R, c.S, S1, (S1, W)]] ?=> PState[c.type, (S1, W)] => c.Inner[c.R, St[c.M, c.R, c.S, S1, (S1, W)], St[c.M, c.R, c.S, S0, (S1, W)], W])
-    : c.P[(S1, W)] =
-  c.reset[St[c.M, c.R, c.S, S1, (S1, W)], St[c.M, c.R, c.S, S0, (S1, W)]](r ?=>
-    body(PState(c)(r)).map(w => (s1: S1) => c.pure[c.R, c.S, (S1, W)]((s1, w)))).flatMap(f => f(s0))
+def pstate[S0](s0: S0)[S1, W](using c: Control)(body: c.Reset[St[c.M, c.Effs, c.S, S1, (S1, W)]] ?=> PState[c.type, (S1, W)] => c.Inner[c.Effs, St[c.M, c.Effs, c.S, S1, (S1, W)], St[c.M, c.Effs, c.S, S0, (S1, W)], W])
+    : c.Prog[(S1, W)] =
+  c.reset[St[c.M, c.Effs, c.S, S1, (S1, W)], St[c.M, c.Effs, c.S, S0, (S1, W)]](r ?=>
+    body(PState(c)(r)).map(w => (s1: S1) => c.pure[c.Effs, c.S, (S1, W)]((s1, w)))).flatMap(f => f(s0))

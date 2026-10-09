@@ -10,7 +10,7 @@ import java.util.concurrent.{Executors, TimeUnit}
 /** `PState`: the state's type in the answer type; `Async`: a run that waits on callbacks */
 /** `PState` on any monad of master's `Effects`: the state's type in the answer type */
 abstract class TestPStateOn(on: Backend) extends munit.FunSuite:
-  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.P[A]): A = on.run(body)
+  def run[A](body: (c: Effects { type Effs = Pure; type S = A }) ?=> c.Prog[A]): A = on.run(body)
 
   test("pstate: get after put, the type unchanged"):
     val r: (Int, Int) = run(pstate(1)(st => st.put[Int](41).flatMap(_ => st.get[Int]).map(_ + 1)))
@@ -29,8 +29,8 @@ class TestPStateAsync extends TestPStateOn(Backend.cont):
   test("pstate under an effect of the row: an operation between the moves, at the answer there"):
     // in the body the answer moves, so an operation is the answer-polymorphic node, not `ask` at the context's answer
     // the context passed by hand, the same to `pstate` and to the body: `PState` is over that very context
-    def body(c: Effects)(using has: Reader % Int :? c.R)(using r: c.Reset[St[c.M, c.R, c.S, String, (String, Int)]])(st: PState[c.type, (String, Int)]) =
-      st.get[Int].flatMap(n => r.perform[Reader % Int, c.R, st.At[Int], Int](Reader.Ask(), has).flatMap(a => st.put[Int]((n + a).toString))).map(_ => 0)
+    def body(c: Effects)(using has: Reader % Int :? c.Effs)(using r: c.Reset[St[c.M, c.Effs, c.S, String, (String, Int)]])(st: PState[c.type, (String, Int)]) =
+      st.get[Int].flatMap(n => r.perform[Reader % Int, c.Effs, st.At[Int], Int](Reader.Ask(), has).flatMap(a => st.put[Int]((n + a).toString))).map(_ => 0)
     val r: (String, Int) = okay.cont.run(reader(5):
       val c = summon[At[Reader % Int +: Pure, (String, Int)]]
       pstate(1)(using c)(body(c)))
@@ -38,7 +38,7 @@ class TestPStateAsync extends TestPStateOn(Backend.cont):
 
 /** `Async` on any monad that runs it: `runIO` the run, at the top, its failure the `Left` */
 abstract class TestAsyncOn extends munit.FunSuite:
-  def runIO[A](body: (c: Effects { type R = Async +: Async.Fails; type S = Unit }) ?=> c.P[A]): Either[Throwable, A]
+  def runIO[A](body: (c: Effects { type Effs = Async +: Async.Fails; type S = Unit }) ?=> c.Prog[A]): Either[Throwable, A]
 
   test("async: computations run in order, their values bound"):
     assertEquals(runIO[Int](async(20).flatMap(a => async(a + 1)).map(_ * 2)), Right(42))
@@ -46,13 +46,13 @@ abstract class TestAsyncOn extends munit.FunSuite:
   test("await: a callback from another thread, the run going on in it"):
     val pool = Executors.newFixedThreadPool(2)
     try
-      def later(x: Int)(using c: Effects, has: Async :? c.R): c.P[Int] =
+      def later(x: Int)(using c: Effects, has: Async :? c.Effs): c.Prog[Int] =
         await[Int](cb => pool.execute(() => { Thread.sleep(1); cb(Right(x)) }))
       assertEquals(runIO[Int](later(1).flatMap(a => later(2).map(_ + a)).flatMap(a => later(3).map(_ + a))), Right(6))
     finally pool.shutdown()
 
   test("await: 100 000 callbacks answered at once, in constant stack"):
-    def loop(i: Int, acc: Int)(using c: Effects, has: Async :? c.R): c.P[Int] =
+    def loop(i: Int, acc: Int)(using c: Effects, has: Async :? c.Effs): c.Prog[Int] =
       if i == 0 then c.pure(acc) else await[Int](cb => cb(Right(1))).flatMap(x => loop(i - 1, acc + x))
     assertEquals(runIO[Int](loop(100000, 0)), Right(100000))
 
@@ -81,5 +81,5 @@ abstract class TestAsyncOn extends munit.FunSuite:
 
 /** on `Cont` */
 class TestAsync extends TestAsyncOn:
-  def runIO[A](body: (c: Effects { type R = Async +: Async.Fails; type S = Unit }) ?=> c.P[A]): Either[Throwable, A] =
+  def runIO[A](body: (c: Effects { type Effs = Async +: Async.Fails; type S = Unit }) ?=> c.Prog[A]): Either[Throwable, A] =
     okay.cont.run(throws[Throwable, A](okay.cont.Async.run(body(using summon[okay.cont.At[Async +: Async.Fails, Unit]]))))
