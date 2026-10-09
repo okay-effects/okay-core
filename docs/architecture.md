@@ -73,7 +73,7 @@ instead.
 `There` one effect further). Nominal, so every walk is total and needs no cast. `%` fixes an effect's first
 parameter. `Sub`, `Req`, `Paths`: the paths of the effects a program needs (`A ! Es`), found in its context's row.
 
-### The context (`Effects.scala`, `Control.scala`)
+### The context (`Context.scala`, `Control.scala`, `Effects.scala`)
 
 ```scala
 abstract class Context:
