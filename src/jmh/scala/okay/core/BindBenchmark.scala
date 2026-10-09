@@ -1,8 +1,11 @@
 package okay.core
 
+import okay.cont.{Cont, Free, At}
+
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
-import Cont.*
+import okay.cont.*
+import okay.cont.Cont.*
 
 /**
  * THE MONAD ALONE, no effect: how a chain of `n` binds or maps is read by the loop.

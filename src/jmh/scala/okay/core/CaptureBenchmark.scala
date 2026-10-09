@@ -1,8 +1,11 @@
 package okay.core
 
+import okay.cont.{Cont, Free, At}
+
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
-import Cont.*
+import okay.cont.*
+import okay.cont.Cont.*
 
 /** A CAPTURE THROUGH `depth` MAPS, its `k` applied `shots` times (okay-cont's `delimCaptureDepth`): the frames
  * between the shift and its reset taken as the continuation, and run again per shot */

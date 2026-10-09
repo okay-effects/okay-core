@@ -1,6 +1,9 @@
 package okay.core
 
-import Cont.*
+import okay.cont.{Cont, Free, At}
+
+import okay.cont.*
+import okay.cont.Cont.*
 
 /** the monad alone: `shift`, `reset`, a handler written against `Handler` itself, the loop */
 class TestCont extends munit.FunSuite:

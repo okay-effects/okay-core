@@ -1,5 +1,7 @@
 package okay.core
 
+import okay.cont.{Cont, Free, At}
+
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import Control.{reset, shift}
@@ -34,7 +36,7 @@ class MonadsBenchmark:
 
   def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.P[A]): A =
     backend match
-      case "cont" => Effects.run(body(using summon[Effects.At[Pure, A]]))
+      case "cont" => okay.cont.run(body(using summon[okay.cont.At[Pure, A]]))
       case "zero" => Fx.run(body(using summon[Fx[Pure, A, A]]))
       case _ => okay.zero.FxRef.run(body(using summon[okay.zero.FxRef[Pure, A, A]]))
 

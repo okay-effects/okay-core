@@ -1,8 +1,11 @@
 package okay.core
 
+import okay.cont.{Cont, Free, At}
+
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
-import Cont.*
+import okay.cont.*
+import okay.cont.Cont.*
 
 /** CaptureBenchmark's capture under a HANDLER, no reset between: the handler is the delimiter, so each shot of
  * `k` resumes the frames and the handler's `ret` after them (`captured`, in Effects.scala) */
@@ -32,7 +35,7 @@ class CaptureHandledBenchmark:
     if i == 0 then pure(acc) else k(()).flatMap(r => calls(k, i - 1, acc + r))
 
   @Benchmark
-  def captureHandled(): Int = Effects.run:
+  def captureHandled(): Int = okay.cont.run:
     Effects.handle(nop[Int]):
       var p: Cont[Nop +: Pure, Int, Int, Int] = Control.shift[Unit, Int](k => calls(k, shots, 0)).map(_ => 1)
       var i = 0

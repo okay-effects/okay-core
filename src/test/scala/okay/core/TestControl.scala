@@ -1,5 +1,7 @@
 package okay.core
 
+import okay.cont.{Cont, Free, At}
+
 import Control.{reset, shift}
 
 /** CONTROL alone, beyond master's: Danvy–Filinski's shift in a shift's body, k lazy, shift0's hierarchy */

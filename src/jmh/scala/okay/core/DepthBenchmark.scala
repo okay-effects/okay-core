@@ -2,7 +2,8 @@ package okay.core
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
-import Cont.*
+import okay.cont.*
+import okay.cont.Cont.*
 import Effects.*
 import Control.*
 import okay.std.*

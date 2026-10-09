@@ -1,5 +1,7 @@
 package okay.core
 
+import okay.cont.{Cont, Free, At}
+
 import Effects.*
 import Control.*
 import okay.std.*
@@ -126,7 +128,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
   test("generate over a remaining effect: the rest of the generator still asks, under the handler it is run in"):
     type F = Reader % Int +: Pure
     type G = Gen[Cont, Int, F]
-    def all(g: Cont[F, G, G, G]): List[Int] = Effects.run(reader[G](7)(g)) match
+    def all(g: Cont[F, G, G, G]): List[Int] = okay.cont.run(reader[G](7)(g)) match
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: all(rest)
     val gen: Cont[F, G, G, G] =
@@ -143,9 +145,9 @@ class TestEffects extends TestEffectsOn(Backend.cont):
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: take(n - 1, rest)
     val first = List(0L, 1, 1, 2, 3, 5, 8, 13, 21, 34)
-    assertEquals(Effects.run(collect[Long, Unit](fibs(10, 0, 1)))._1, first)
+    assertEquals(okay.cont.run(collect[Long, Unit](fibs(10, 0, 1)))._1, first)
     assertEquals(take(10, generate[Long, G](using At[Pure, G]())(Gen.Next(_, _), Gen.Done())(forever(0, 1))), first)
-    assertEquals(Effects.run(collect[Long, Unit](fibs(10000, 0, 1)))._1.length, 10000)
+    assertEquals(okay.cont.run(collect[Long, Unit](fibs(10000, 0, 1)))._1.length, 10000)
 
   test("generate stays lazy over a forwarded effect: an infinite body asking at every step, three pulled"):
     type F = Reader % Int +: Pure
@@ -153,7 +155,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
     var produced = 0
     def from(n: Int)(using c: Effects, e: Emit % Int :? c.R, r: Reader % Int :? c.R): c.P[Unit] =
       ask[Int].flatMap(x => yield_(n * x)).flatMap(_ => { produced += 1; from(n + 1) })
-    def take(i: Int, g: Cont[F, G, G, G]): List[Int] = if i == 0 then Nil else Effects.run(reader[G](10)(g)) match
+    def take(i: Int, g: Cont[F, G, G, G]): List[Int] = if i == 0 then Nil else okay.cont.run(reader[G](10)(g)) match
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: take(i - 1, rest)
     assertEquals(take(3, generate[Int, G](using At[F, G]())(Gen.Next(_, _), Gen.Done())(from(1))), List(10, 20, 30))
@@ -169,7 +171,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
     gen.value match
       case Gen.Next(first, rest) =>
         assertEquals(first, 7)
-        Effects.run(reader[G](8)(rest)) match
+        okay.cont.run(reader[G](8)(rest)) match
           case Gen.Next(second, _) => assertEquals(second, 8)
           case Gen.Done() => fail("a second element")
       case Gen.Done() => fail("a first element")

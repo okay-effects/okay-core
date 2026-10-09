@@ -1,5 +1,7 @@
 package okay.core
 
+import okay.cont.{Cont, Free, At}
+
 import Effects.*
 import Control.*
 import okay.std.*
@@ -29,7 +31,7 @@ class TestPStateAsync extends TestPStateOn(Backend.cont):
     // the context passed by hand, the same to `pstate` and to the body: `PState` is over that very context
     def body(c: Effects)(using has: Reader % Int :? c.R)(using r: c.Reset[St[c.M, c.R, c.S, String, (String, Int)]])(st: PState[c.type, (String, Int)]) =
       st.get[Int].flatMap(n => r.perform[Reader % Int, c.R, st.At[Int], Int](Reader.Ask(), has).flatMap(a => st.put[Int]((n + a).toString))).map(_ => 0)
-    val r: (String, Int) = Effects.run(reader(5):
+    val r: (String, Int) = okay.cont.run(reader(5):
       val c = summon[At[Reader % Int +: Pure, (String, Int)]]
       pstate(1)(using c)(body(c)))
     assertEquals(r, ("6", 0))
@@ -80,4 +82,4 @@ abstract class TestAsyncOn extends munit.FunSuite:
 /** on `Cont` */
 class TestAsync extends TestAsyncOn:
   def runIO[A](body: (c: Effects { type R = Async +: Async.Fails; type S = Unit }) ?=> c.P[A]): Either[Throwable, A] =
-    Effects.run(throws[Throwable, A](Async.run(body(using summon[Effects.At[Async +: Async.Fails, Unit]]))))
+    okay.cont.run(throws[Throwable, A](okay.cont.Async.run(body(using summon[okay.cont.At[Async +: Async.Fails, Unit]]))))

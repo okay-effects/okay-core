@@ -1,38 +1,7 @@
-package okay.core
+package okay.cont
 
 import scala.annotation.tailrec
-
-/** a ROW: the effects a program may perform, nominal — `Ask +: Say +: Pure`. Nominal, not a union: a union
- * value cannot be told apart without a cast, and a union type cannot be taken apart by the compiler; a class
- * can, so every walk here is total, no claim, no cast, no runtime test of an operation's class */
-sealed trait Row
-/** the effect `E` in front of the row `T` */
-sealed trait +:[E[_], T <: Row] extends Row
-/** the empty row: a program over it performs nothing */
-sealed trait Pure extends Row
-
-/** the effect `E` IN the row `R`: a path to it, the compiler builds it — the first, by priority. An operation
- * carries its path; a handler follows it: at `Here`, the operation is the handler's; at `There`, it goes on
- * outside, one effect off the row */
-enum In[E[_], R <: Row]:
-  case Here[E[_], T <: Row]() extends In[E, E +: T]
-  case There[E[_], E2[_], T <: Row](in: In[E, T]) extends In[E, E2 +: T]
-
-  /** the head for an operation at this path: the row has the effect, the path says so */
-  def op[I, O, X, A](op: E[X], k: X => Cont[R, I, O, A]): Head[R, I, O, A] = this match
-    case h: Here[e, t] => Head.Op[E, E, t, I, O, X, A](op, h, k)
-    case h: There[e, e2, t] => Head.Op[E, e2, t, I, O, X, A](op, h, k)
-  /** the operation out at this path, bound to `k`: an operation crossing a delimiter goes on outside so, `k` the
-   * rest put back under the delimiter it crossed */
-  def bind[Q, X, Z](op: E[X], k: X => Cont[R, Q, Q, Z]): Cont[R, Q, Q, Z] = Cont.Suspend(op, this, k)
-/** `E :? R`, the effect `E` in the row `R`: `In` as it is written in a signature, `(using in: Reader % E :? c.R)` —
- * a `:`-operator, so `%` and `+:` bind tighter: `Ask :? Ask +: Pure` */
-infix type :?[E[_], R <: Row] = In[E, R]
-
-object In extends InLow:
-  given here[E[_], T <: Row]: In[E, E +: T] = Here()
-sealed trait InLow:
-  given there[E[_], E2[_], T <: Row](using in: In[E, T]): In[E, E2 +: T] = In.There(in)
+import okay.core.*
 
 /**
  * THE MONAD OF DELIMITED CONTINUATIONS over a row `R`, one level: `Cont[R, I, O, A]` is a program of value `A`
@@ -165,7 +134,7 @@ object Cont:
   /** the delimiter's body to its head: a value is answered by `ret`; an operation goes out, with the rest of the
    * body under the delimiter again; a capture's body goes under the delimiter in place of the rest, with the
    * rest under a delimiter of its own, `ret` included, as `k` */
-  private[core] def delimited[R <: Row, Q, S, O, A](body: Cont[R, S, O, A], ret: A => S): Cont[R, Q, Q, O] =
+  private[cont] def delimited[R <: Row, Q, S, O, A](body: Cont[R, S, O, A], ret: A => S): Cont[R, Q, Q, O] =
     body.step match
       case Head.Done(a) => Return(ret(a))
       case Head.Op(op, in, k) => in.bind(op, Redelimit(k, ret))
@@ -176,7 +145,7 @@ object Cont:
         case b => Reset(b, identity)
 
   /** a captured rest as `k`: applied, the stack it holds resumed, under a delimiter of its own with `ret` */
-  private[core] def under[R <: Row, Q, S, T, X, A](k: Frames[R, X, S, T, A], ret: A => S): X => Cont[R, Q, Q, T] =
+  private[cont] def under[R <: Row, Q, S, T, X, A](k: Frames[R, X, S, T, A], ret: A => S): X => Cont[R, Q, Q, T] =
     x => Reset(Push(Return(x), k), ret)
 
   /** the rest of a delimiter's body, once the operation it waits on is answered outside: under the delimiter
@@ -190,3 +159,12 @@ object Cont:
     def value: A = c.step match
       case Head.Done(a) => a
       case Head.Cut(f, k) => f(under(k, identity)).value
+
+extension [E[_], R <: Row](in: In[E, R])
+  /** the head for an operation at this path: the row has the effect, the path says so */
+  private[cont] def op[I, O, X, A](op: E[X], k: X => Cont[R, I, O, A]): Head[R, I, O, A] = in match
+    case h: In.Here[e, t] => Head.Op[E, E, t, I, O, X, A](op, h, k)
+    case h: In.There[e, e2, t] => Head.Op[E, e2, t, I, O, X, A](op, h, k)
+  /** the operation out at this path, bound to `k`: an operation crossing a delimiter goes on outside so, `k` the
+   * rest put back under the delimiter it crossed */
+  private[cont] def bind[Q, X, Z](op: E[X], k: X => Cont[R, Q, Q, Z]): Cont[R, Q, Q, Z] = Cont.Suspend(op, in, k)

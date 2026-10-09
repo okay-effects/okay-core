@@ -1,8 +1,11 @@
 package okay.core
 
+import okay.cont.{Cont, Free, At}
+
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
-import Cont.*
+import okay.cont.*
+import okay.cont.Cont.*
 import Effects.*
 
 /**
@@ -28,7 +31,7 @@ class DispatchBenchmark:
   var n: Int = 0
 
   type T = Tick +: Pure
-  type At0 = Effects.At[T, Boolean]
+  type At0 = okay.cont.At[T, Boolean]
 
   val ticking: Handler[[Z] =>> Cont[Pure, Boolean, Boolean, Z], Tick, Boolean, Boolean] = new Answering[[Z] =>> Cont[Pure, Boolean, Boolean, Z], Tick, Boolean, Boolean]:
     def ret(a: Boolean): Boolean = a
@@ -63,16 +66,16 @@ class DispatchBenchmark:
     if n == 0 then c.pure(false) else perform(Tick.Value(n)).flatMap(_ => evenM(n - 1))
 
   @Benchmark
-  def monadKnown(): Boolean = evenM(n)(using Effects.At[T, Boolean](), summon).handle(ticking).value
+  def monadKnown(): Boolean = evenM(n)(using okay.cont.At[T, Boolean](), summon).handle(ticking).value
 
   @Benchmark
   def cont(): Boolean = evenC(n).handle(ticking).value
 
   @Benchmark
-  def contParams(): Boolean = evenP(n)(using Effects.At(), summon).handle(ticking).value
+  def contParams(): Boolean = evenP(n)(using okay.cont.At(), summon).handle(ticking).value
 
   @Benchmark
-  def atStatic(): Boolean = evenA(n)(using Effects.At(), summon).handle(ticking).value
+  def atStatic(): Boolean = evenA(n)(using okay.cont.At(), summon).handle(ticking).value
 
   @Benchmark
-  def tagless(): Boolean = evenT(n)(using Effects.At[T, Boolean](), summon).handle(ticking).value
+  def tagless(): Boolean = evenT(n)(using okay.cont.At[T, Boolean](), summon).handle(ticking).value
