@@ -108,5 +108,6 @@ object Cps0:
 
   /** the textbook's top, for a library re-entering it */
   object top extends Top:
-    val at: At[Pure, Unit, Unit] = At()
-    def run(p: at.Prog[Unit]): Unit = Cps0.run(p)
+    type M[J, I, O, A] = Eff[Pure, J, I, O, A]
+    def at[J]: At[Pure, J, J] = At()
+    def run[J](p: Eff[Pure, J, J, J, J]): J = Cps0.run(p)

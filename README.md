@@ -48,7 +48,7 @@ outside in; a program names only the effects it needs. These examples are compil
 | Package | What is in it |
 |---|---|
 | `okay.core` | the interface: rows (`Row`, `+:`, `Pure`, `E :? R`, `%`), `Context`, `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`), `Handler`, `Answering`, `A ! Es`, `Top` |
-| `okay.std` | the effects, written once: `Reader`, `State`, `Writer`, `Throws`, `Choose`, `Emit` (`collect`, `generate`), `PState`, `Async` |
+| `okay.std` | the effects, written once: `Reader`, `State`, `Writer`, `Throws`, `Choose`, `Emit` (`collect`, `stream`, `generate`), `PState`, `Async` |
 | `okay.cont` | `Cont`, its loop and fold; the instance `At`; `run`; `top` |
 | `okay.zero` | `Cont0` (the kernel, open as a monad of its own), the machine; the instance `At`; `run`; `top`; `shift0` |
 

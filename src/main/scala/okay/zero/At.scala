@@ -53,22 +53,6 @@ object At:
 
 /** `Cont0`'s top, for a library re-entering it */
 object top extends core.Top:
-  val at: At[Pure, Unit, Unit] = At()
-  def run(p: at.Prog[Unit]): Unit = runTop(p)
-
-/** a generator's consumer at the top, on `Cont0`: the next element and the rest — a program, run when pulled — or
- * done: `generate(Gen.Next(_, _), Gen.Done())(body)` */
-enum Gen[W]:
-  case Next(w: W, rest: Eff[Pure, Gen[W], Gen[W], Gen[W], Gen[W]])
-  case Done()
-
-  /** the first `n` elements, each pulled by a run of the rest */
-  def take(n: Int): List[W] =
-    val out = List.newBuilder[W]
-    var g = this
-    var i = 0
-    while i < n do
-      g match
-        case Gen.Next(w, rest) => out += w; g = runTop(rest); i += 1
-        case Gen.Done() => i = n
-    out.result()
+  type M[J, I, O, A] = Eff[Pure, J, I, O, A]
+  def at[J]: At[Pure, J, J] = At()
+  def run[J](p: Eff[Pure, J, J, J, J]): J = runTop(p)

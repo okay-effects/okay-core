@@ -11,3 +11,6 @@
   refinement) — a toolchain bug; the docs build, the page for it lacks the signature.
 - Measured: `MonadsBenchmark.queens` a loop, not `zipWithIndex` — the pairs, made or not as the JIT inlined it, were
   most of the run and its spread.
+- Then one type for every monad: `Top` at any answer (`type M[J, I, O, A]`, `at[J]`, `run[J]`), and
+  `stream(top)(body): LazyList[W]` in okay.std — each element a run of the rest at the top, once. `okay.cont.Gen`
+  and `okay.zero.Gen` gone; `TestStreamOn` on Cont, Cont0, Ref and Cps0.

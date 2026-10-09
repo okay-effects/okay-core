@@ -128,22 +128,6 @@ private final class Resume[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T,
 
 /** `Cont`'s top, for a library re-entering it */
 object top extends Top:
-  val at: At[Pure, Unit] = At()
-  def run(p: at.Prog[Unit]): Unit = p.value
-
-/** a generator's consumer at the top, on `Cont`: the next element and the rest — a program, run when pulled — or done:
- * `generate(Gen.Next(_, _), Gen.Done())(body)` */
-enum Gen[W]:
-  case Next(w: W, rest: Cont[Pure, Gen[W], Gen[W], Gen[W]])
-  case Done()
-
-  /** the first `n` elements, each pulled by a run of the rest */
-  def take(n: Int): List[W] =
-    val out = List.newBuilder[W]
-    var g = this
-    var i = 0
-    while i < n do
-      g match
-        case Gen.Next(w, rest) => out += w; g = rest.value; i += 1
-        case Gen.Done() => i = n
-    out.result()
+  type M[J, I, O, A] = Cont[Pure, I, O, A]
+  def at[J]: At[Pure, J] = At()
+  def run[J](p: Cont[Pure, J, J, J]): J = p.value

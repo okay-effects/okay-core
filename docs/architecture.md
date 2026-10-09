@@ -56,8 +56,9 @@ abstract class Effects extends Control:
   `Answering` adds `value(op)` and fixes `apply` to `k(value(op))`. `Value[E]` is what answering in place needs.
 - **`Needs`, `Paths.Keep`.** The context of an `A ! Es`: an instance keeps the paths in a context of its own
   (`Paths.kept`), so an operation finds its path in one call.
-- **`Top`.** A monad's context at the top and a run of a program of it: what a library re-entering the top
-  (`Async`) takes. Every context has its monad's, `c.top`.
+- **`Top`.** A monad's context at the top, at any answer (`at[J]`), and a run of a program of it: what a library
+  re-entering the top takes — `Async`, a run going on in a callback's thread; `stream`, a run an element, so a
+  generator is a `LazyList` whatever the monad. Every context has its monad's, `c.top`.
 
 ## `okay.cont` — `Cont`
 
@@ -138,7 +139,7 @@ The suites are written once over the interface and take a `Backend` — a monad'
 `TestEffectsOn`, `TestContextOn`, `TestControlOn`, `TestTogetherOn`, `TestDynamicOn`, `TestPStateOn`, `TestAsyncOn`.
 Each runs on `Cont`, `Cont0`, `Ref` and `Cps0`. Beside them: `TestCont` and `TestCont0` (the kernels), `TestMonads`
 (the same programs on each monad, and where they differ), `TestShiftAtHandler` and `TestZero` (`Cont0`'s own),
-`TestSealed` (what does not compile), `TestGuide` (the guide's examples).
+`TestStreamOn` (`stream` on each monad's top), `TestSealed` (what does not compile), `TestGuide` (the guide's examples).
 
 ## Benchmarks
 

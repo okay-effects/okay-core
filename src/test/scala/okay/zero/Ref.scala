@@ -43,5 +43,6 @@ object Ref:
 
   /** the reference's top, for a library re-entering it */
   object top extends core.Top:
-    val at: Ref[Pure, Unit, Unit] = Ref()
-    def run(p: at.Prog[Unit]): Unit = runTop(p)
+    type M[J, I, O, A] = Eff[Pure, J, I, O, A]
+    def at[J]: Ref[Pure, J, J] = Ref()
+    def run[J](p: Eff[Pure, J, J, J, J]): J = runTop(p)

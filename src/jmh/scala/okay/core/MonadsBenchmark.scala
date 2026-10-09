@@ -222,8 +222,8 @@ class MonadsBenchmark:
   /** `n` elements of an infinite generator pulled, each a run of the rest: the consumer's type the monad's own */
   @Benchmark
   def generate(): Long = backend match
-    case "cont" => okay.cont.run[okay.cont.Gen[Long]](okay.std.generate[Long, okay.cont.Gen[Long]](okay.cont.Gen.Next(_, _), okay.cont.Gen.Done())(forever(0, 1))).take(n).sum
-    case _ => okay.zero.run[okay.zero.Gen[Long]](okay.std.generate[Long, okay.zero.Gen[Long]](okay.zero.Gen.Next(_, _), okay.zero.Gen.Done())(forever(0, 1))).take(n).sum
+    case "cont" => okay.std.stream[Long](okay.cont.top)(forever(0, 1)).take(n).sum
+    case _ => okay.std.stream[Long](okay.zero.top)(forever(0, 1)).take(n).sum
 
   /** a shift under a reset: the rest 256 maps, `k` 8 times; the rest one map, `k` once */
   @Benchmark

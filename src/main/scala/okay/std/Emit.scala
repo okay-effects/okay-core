@@ -23,6 +23,15 @@ def collect[W, A](using c: Effects)(body: c.Body[Emit % W, (List[W], A), A])
       def value[X](op: Emit[W, X]): X = op match
         case Emit.Yield(w) => out += w; ())(body)
 
+/** `stream(t)(body)`: the body as a `LazyList` of its elements, on the monad of the top `t` — `okay.zero.top`,
+ * `okay.cont.top`, a context's `c.top`: each element pulled by a run there of the rest, once. The body's effects
+ * are `Emit` only; under effects still to be handled, `generate` */
+def stream[W](t: Top)(body: Stream[W]): LazyList[W] =
+  val c = t.at[LazyList[W]]
+  t.run(generate[W, LazyList[W]](using c)((w, rest) => w #:: t.run(rest), LazyList.empty)(body))
+/** a stream's body: a program yielding `W`, under `Emit % W` alone */
+type Stream[W] = (c: Effects { type Effs = Emit % W +: Pure }) ?=> c.Prog[Unit]
+
 /** a lazy generator over the row `R`: the next element and the rest, a program over `R` at the generator's own
  * answer; or done */
 enum Gen[M[_, _, _], W]:

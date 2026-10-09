@@ -86,7 +86,7 @@ At the top `run` sometimes needs the answer named: `okay.cont.run[Int](...)`.
 | `Writer[W]` | `tell(w)` | `writer[W, A](body)` → `(List[W], A)` |
 | `Throws[E]` | `raise[E, A](e)` | `throws[E, A](body)` → `Either[E, A]` |
 | `Choose` | `among(as)` — multi-shot | `choose[A](body)` → `Seq[A]`, every path |
-| `Emit[W]` | `yield_(w)` | `collect(body)` → `(List[W], A)`; `generate(next, done)(body)` — lazy |
+| `Emit[W]` | `yield_(w)` | `collect(body)` → `(List[W], A)`; `stream(top)(body)` → `LazyList[W]`; `generate(next, done)(body)` — lazy |
 | `PState` | `st.get[S]`, `st.put[S](s2)` | `pstate(s0)(st => body)` — the state's *type* may change |
 | `Async` | `async(a)`, `await(register)` | `Async.run(body)` on the context's own monad |
 
@@ -210,20 +210,20 @@ pstate(7)(st => st.get[Int].flatMap(n => st.put[Int]("x" * n)).flatMap(_ => st.g
 
 ## Generators
 
-`generate(next, done)(body)` makes the body a lazy generator of the consumer's own type: each `yield_` hands `next`
-the element and the rest — a program, run when pulled. Each monad has a ready consumer at the top, `Gen[W]`, with
-`take(n)`:
+`stream(top)(body)` makes the body a `LazyList` of its elements, on the monad of the top given — `okay.zero.top`,
+`okay.cont.top`, or a context's own `c.top`. Nothing runs until an element is pulled; each is pulled by a run of
+the rest, once.
 
 ```scala
 def fibs(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
   yield_(a).flatMap(_ => fibs(b, a + b))
 
-okay.zero.run[okay.zero.Gen[Long]](generate[Long, okay.zero.Gen[Long]](okay.zero.Gen.Next(_, _), okay.zero.Gen.Done())(fibs(0, 1)))
-  .take(8)   // List(0, 1, 1, 2, 3, 5, 8, 13)
+stream[Long](okay.zero.top)(fibs(0, 1)).take(8).toList   // List(0, 1, 1, 2, 3, 5, 8, 13)
+stream[Long](okay.cont.top)(fibs(0, 1)).take(8).toList   // the same, on Cont
 ```
 
-`okay.cont.Gen` the same on `Cont`. Under effects still to be handled, a consumer type of your own; on `Cont`,
-`okay.std.Gen[M, W]` over its monad.
+Under effects still to be handled, `generate(next, done)(body)`: a generator of the consumer's own type, each
+element with the rest — a program here, run when pulled.
 
 ## Async
 

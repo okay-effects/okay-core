@@ -80,8 +80,9 @@ executable definition beside it.
   shift directly under a handler (122 against 139 ns a run). `Cont` folds a handler when the program is built;
   `Cont0` makes a delimiter node the machine enters — an entry, a frame stack, a resumption a little larger.
 - **Simpler types.** No levels: a `Cont` program's type does not depend on how many delimiters it is under.
-  `generate`'s consumer type can be generic (`Gen[M, W]`) for `Cont`; for `Cont0` a generic one would be recursive
-  through the level, so the consumer names its own.
+  Under effects still to be handled, `generate`'s consumer type can be generic (`Gen[M, W]`) for `Cont`; for
+  `Cont0` a generic one would be recursive through the level, so the consumer names its own. At the top both give
+  a `LazyList` (`stream`).
 - **A smaller implementation.** `okay.cont` is about 350 lines; `okay.zero` about 600 — the kernel, the machine,
   the levels.
 - **Master's semantics** for a `shift` directly under a handler, if that is the one wanted.

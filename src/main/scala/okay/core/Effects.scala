@@ -95,8 +95,10 @@ def perform[E[_], X](op: E[X])(using c: Effects, in: In[E, c.Effs]): c.Prog[X] =
 /** `pure(a)`: the value, a program here */
 def pure[A](a: A)(using c: Context): c.Prog[A] = c.pure(a)
 
-/** A MONAD'S TOP: its context there, over `Pure` at the answer `Unit`, and a run of a program of it — what a library
- * re-entering the top takes (`Async`, a run going on in a callback's thread); every context has its monad's, `c.top` */
+/** A MONAD'S TOP: its context there, over `Pure` at an answer `J`, and a run of a program of it — what a library
+ * re-entering the top takes (`Async`, a run going on in a callback's thread; `stream`, a run an element); every
+ * context has its monad's, `c.top`. `M[J, I, O, A]`: the monad at the top answering `J` */
 trait Top:
-  val at: Effects { type Effs = Pure; type S = Unit }
-  def run(p: at.Prog[Unit]): Unit
+  type M[J, I, O, A]
+  def at[J]: Effects { type M[I, O, A] = Top.this.M[J, I, O, A]; type Effs = Pure; type S = J }
+  def run[J](p: M[J, J, J, J]): J

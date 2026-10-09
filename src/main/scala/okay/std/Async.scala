@@ -37,7 +37,7 @@ object Async:
    * thread, or in a callback's: a resumption after a wait is a run of its own, at the top, the run going on in the
    * callback's thread when it comes later, in place when it came already — a loop, not a frame */
   def runAsync[A](using t: Top)(body: Body[A])(done: Either[Throwable, A] => Unit): Unit =
-    val c: t.at.type = t.at
+    val c = t.at[Unit]
     // the run up to its end or to a wait, under the failure's handler — a failure `done`'s, the rest aborted
     def go(p: c.Body[Throws % Throwable, Unit, Unit]): Unit =
       t.run(Effects.handle(using c)(new Handler[c.Prog, Throws % Throwable, Unit, Unit]:

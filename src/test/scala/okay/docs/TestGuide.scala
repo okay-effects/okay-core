@@ -85,10 +85,8 @@ class TestGuide extends munit.FunSuite:
     def io(using c: Effects, a: Async :? c.Effs): c.Prog[Int] = async(20).flatMap(x => async(x + 1))
     assertEquals(okay.zero.run(throws[Throwable, Int](Async.run(io))), Right(21))
 
-  test("guide: generators, the consumer's type each monad's own"):
+  test("guide: a stream, one type on every monad"):
     def fibs(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
       yield_(a).flatMap(_ => fibs(b, a + b))
-    val onZero = okay.zero.run[okay.zero.Gen[Long]](generate[Long, okay.zero.Gen[Long]](okay.zero.Gen.Next(_, _), okay.zero.Gen.Done())(fibs(0, 1)))
-    val onCont = okay.cont.run[okay.cont.Gen[Long]](generate[Long, okay.cont.Gen[Long]](okay.cont.Gen.Next(_, _), okay.cont.Gen.Done())(fibs(0, 1)))
-    assertEquals(onZero.take(8), List(0L, 1, 1, 2, 3, 5, 8, 13))
-    assertEquals(onCont.take(8), List(0L, 1, 1, 2, 3, 5, 8, 13))
+    assertEquals(stream[Long](okay.zero.top)(fibs(0, 1)).take(8).toList, List(0L, 1, 1, 2, 3, 5, 8, 13))
+    assertEquals(stream[Long](okay.cont.top)(fibs(0, 1)).take(8).toList, List(0L, 1, 1, 2, 3, 5, 8, 13))
