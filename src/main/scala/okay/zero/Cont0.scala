@@ -50,9 +50,11 @@ object Cont0:
   private[zero] final case class Ctl0[R <: Row, J, T, A, S, O](f: (A => Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], S]) => Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O])
     extends Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], S]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], O]], A]
   /** a handler of `E`: `Done∘h.ret $ body`, its answers read by `h` — the delimiter its loop answers to, itself */
-  private[zero] final case class Handle[E[_], R <: Row, J, T, A, Ans](body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], A],
+  private[zero] final case class Handle[E[_], R <: Row, J, T, A, Ans](mk: () => Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], A],
       h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans]
       with ByHandler[E, R, J, T, A, Ans, Ans] with (A => Ans):
+    /** the body, built when the machine enters the handler — a handler in a handler… built in constant stack */
+    def body = mk()
     def clauses: Handler[[Y] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Y], E, ?, Ans] = h
     def ret(a: A): Ans = h.ret(a)
     /** the node its own `ret`, a function: no closure made for it, a shift each */
@@ -61,9 +63,10 @@ object Cont0:
   /** an interceptor of `E` at `target`, over the row `R`: `Done∘h.ret $ body`, its operations at `target` read by
    * `h`, the others passed on — the delimiter its loop answers to, itself */
   private[zero] final case class Icpt[E[_], R <: Row, J, T, A, Ans](target: In[E, R],
-      body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], Ans]], A],
+      mk: () => Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], Ans]], A],
       h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans]
       with ByIntercept[E, R, J, T, A, Ans] with (A => Ans):
+    def body = mk()
     def clauses: Handler[[Y] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Y], E, ?, Ans] = h
     def ret(a: A): Ans = h.ret(a)
     def apply(a: A): Ans = h.ret(a)
@@ -72,9 +75,10 @@ object Cont0:
    * a `shift`'s `k` is from inside the reset it is under again */
   private[zero] final case class Lift[RB <: Row, L, O, X](m: Cont0[L, L, X]) extends Cont0[Cont0[L, L, Res[RB, L, O]], Cont0[L, L, Res[RB, L, O]], X]
   /** a reset: `Done $ body`, every operation in it passed on */
-  private[zero] final case class Reset[R <: Row, J, T, S, O](body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], S]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], O]], S])
+  private[zero] final case class Reset[R <: Row, J, T, S, O](mk: () => Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], S]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], O]], S])
     extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O]
-    with ByReset[R, J, T, S, O]
+    with ByReset[R, J, T, S, O]:
+    def body = mk()
   /** a captured rest `f` then `k` applied to `x`: the rest under its delimiter `d` again, the handlers in force those
    * where the node runs — `ev`, those of when it was captured, kept if the ones outside are the same */
   private[zero] final case class Resume[RB <: Row, L, I0, V, A, X, T1, Y](x: X, f: X => Cont0[T1, Cont0[L, L, Res[RB, L, V]], Y],
@@ -165,7 +169,9 @@ object Cont0:
 
 /** A DELIMITER the machine runs: its body over `RB`, the outside at `L`, the body's value `A` to the answer `I0`, the
  * delimiter's answer `V` — a reset's or a handler's, the node itself or one the machine makes */
-private[zero] sealed trait Delim[RB <: Row, L, I0, V, A]
+private[zero] sealed trait Delim[RB <: Row, L, I0, V, A]:
+  /** the top of a loop entered at this delimiter: one for all its entries, not an object each */
+  final val top: Meta[L, V, Cont0[L, L, V]] = Meta.Top()
 
 /** a reset's: its body over `R`, written at `S`, every operation passed on */
 private[zero] sealed trait ByReset[R <: Row, J, T, S, V] extends Delim[R, Cont0[J, J, Res[R, J, T]], S, V, S]

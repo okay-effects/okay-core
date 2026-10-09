@@ -22,10 +22,13 @@ reported and is not stack recursion. The inventory, 2026-10-09 (30 rows):
 | `zero/Machine.scala` `deliver` ↔ `shiftAtReset`, `shiftAtHandler` | mutual | bounded: a resumption run nested in a shift's body up to `Nested`, 64, then out and back |
 | `cont/Cont.scala` `step` ↔ `loop0` ↔ `loop` ↔ `delimited` | mutual | **not bounded**: a `reset` at a body's head stepped in a loop of its own |
 | `cont/At.scala`, `cont/Cont.scala` `handle` → `fold0` | (through the body's building) | **not bounded**: a handler is a fold made at once, so one at the head of another's body is folded inside it |
-| `zero/Cont0.scala` `step` ↔ `delimit` | mutual | **not bounded**: a `$` at a body's head stepped in a loop of its own |
-| `zero/Machine.scala` `deliver` ↔ `deliver0`, `enter`, `enterHandle`, `enterIntercept`, `enterReset` | mutual | **not bounded**: a delimiter at a body's head entered in a loop of its own |
+| `zero/Cont0.scala` `step` → `go` | — | the kernel's metacontinuation (`KMeta`): a `$` pushed, not entered by a call (was `delimit`, not bounded) |
+| `zero/Machine.scala` `deliver` ↔ `enter`, `enterHandle`, `enterIntercept`, `enterReset` | mutual | bounded: entered nested up to `Deep`, 32; past it pushed on the machine's metacontinuation (`Meta`) |
 
-## The known limit: delimiters nested deep
+## Delimiters nested deep
+
+On `Cont0` (and `Ref`) done — the metacontinuation below, `changelog.d/metacontinuation.md`; `Cont` still has the
+limit. What follows is the account of it.
 
 The rows marked not bounded are one thing: a delimiter — a handler, a reset, an interceptor — at the head of
 another's body is entered by a call, a few frames a level. A program nesting delimiters by recursion — a function

@@ -236,20 +236,20 @@ private def inner[RB <: Row, RO <: Row, LO, VO, I0, V, A](d: Delim[RB, Cont0[LO,
 /** a resumption: its rest under its delimiter again, in a loop of its own */
 private[zero] def enter[RB <: Row, L, I0, V, A, X, T1, Y](r: Resume[RB, L, I0, V, A, X, T1, Y], ev: Ev[RB], n: Int, depth: Int): Cont0[L, L, V] =
   // the value through the frames in the loop, no program of the rest built frame by frame
-  deliver[RB, L, I0, V, A, T1, Y, Cont0[L, L, V]](r.f(r.x), r.k, r.d, ev, n, depth, Meta.Top())
+  deliver[RB, L, I0, V, A, T1, Y, Cont0[L, L, V]](r.f(r.x), r.k, r.d, ev, n, depth, r.d.top)
 
 /** a handler entered: its body in a loop of its own, the node its delimiter, the handler in front of those in force */
 private[zero] def enterHandle[E[_], R <: Row, J, T, A, Ans](h: Handle[E, R, J, T, A, Ans], ev: Ev[R], n: Int, depth: Int): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans] =
-  deliver0(h.body, h, within(h.h, ev), n, depth, Meta.Top())
+  deliver0(h.body, h, within(h.h, ev), n, depth, h.top)
 
 /** an interceptor entered: its body in a loop of its own, the node its delimiter, the handler at its path answering
  * nothing in place */
 private[zero] def enterIntercept[E[_], R <: Row, J, T, A, Ans](ic: Icpt[E, R, J, T, A, Ans], ev: Ev[R], n: Int, depth: Int): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans] =
-  deliver0(ic.body, ic, masked(ev, ic.target), n, depth, Meta.Top())
+  deliver0(ic.body, ic, masked(ev, ic.target), n, depth, ic.top)
 
 /** a reset entered: its body in a loop of its own, the node its delimiter */
 private[zero] def enterReset[R <: Row, J, T, S, O](s: Reset[R, J, T, S, O], ev: Ev[R], n: Int, depth: Int): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O] =
-  deliver0(s.body, s, ev, n, depth, Meta.Top())
+  deliver0(s.body, s, ev, n, depth, s.top)
 
 /** a resumption entered with nothing known of the handlers around it — by the kernel's loop */
 private[zero] def enterUnknown[RB <: Row, L, I0, V, A, X, T1, Y](r: Resume[RB, L, I0, V, A, X, T1, Y]): Cont0[L, L, V] = r.d match

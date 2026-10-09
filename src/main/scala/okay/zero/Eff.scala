@@ -60,14 +60,14 @@ private[zero] def control[R <: Row, J, A, I, O](f: (A => Eff[R, J, O, O, I]) => 
 
 /** a handler of `E`: its body, its answers read by `h` */
 private[zero] def handleNode[E[_], R <: Row, J, T, A, Ans](h: Handler[[X] =>> Eff[R, J, T, T, X], E, A, Ans],
-    body: Eff[E +: R, Level[R, J, T], Ans, Ans, A]): Eff[R, J, T, T, Ans] = Handle(body, h)
+    body: => Eff[E +: R, Level[R, J, T], Ans, Ans, A]): Eff[R, J, T, T, Ans] = Handle(() => body, h)
 
 /** an interceptor of `E` at `in`: its body, its operations at `in` read by `h`, the others passed on */
 private[zero] def interceptNode[E[_], R <: Row, J, T, A, Ans](in: In[E, R], h: Handler[[X] =>> Eff[R, J, T, T, X], E, A, Ans],
-    body: Eff[R, Level[R, J, T], Ans, Ans, A]): Eff[R, J, T, T, Ans] = Icpt(in, body, h)
+    body: => Eff[R, Level[R, J, T], Ans, Ans, A]): Eff[R, J, T, T, Ans] = Icpt(in, () => body, h)
 
 /** a reset: its body, every operation passed on */
-private[zero] def resetNode[R <: Row, J, T, S, O](body: Eff[R, Level[R, J, T], S, O, S]): Eff[R, J, T, T, O] = Reset(body)
+private[zero] def resetNode[R <: Row, J, T, S, O](body: => Eff[R, Level[R, J, T], S, O, S]): Eff[R, J, T, T, O] = Reset(() => body)
 
 /** a `shift0` to the nearest reset, its outside over `R` at `T`: the body in the reset's place, `k` the rest under
  * the reset again */
