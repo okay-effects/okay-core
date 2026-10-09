@@ -14,6 +14,7 @@ class At[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   type Reset[S2] = At[R0, Level[R0, J0, T0], S2]
   type Answer[S2] = At[R0, J0, S2]
   def answer[S2]: At[R0, J0, S2] = At()
+  def top: core.Top = okay.zero.top
 
   def pure[S2, A](a: A): M[S2, S2, A] = okay.zero.pure(a)
   def delay[I, O, A](m: => M[I, O, A]): M[I, O, A] = okay.zero.delay(m)
@@ -51,6 +52,6 @@ object At:
     def find[E[_]](r: Req[E, Es]): In[E, R0] = p.find(r)
 
 /** `Cont0`'s top, for a library re-entering it */
-given top: core.Top with
+object top extends core.Top:
   val at: At[Pure, Unit, Unit] = At()
   def run(p: at.Prog[Unit]): Unit = runTop(p)

@@ -27,6 +27,7 @@ class At[R0 <: Row, S0] extends Effects with Paths.Keep[R0, At[R0, S0]]:
   def one[E0[_]](head: In[E0, R0]): At[R0, S0] & Needs[E0] = NeedyOne(head)
   def row[Es <: Row](sub: Sub[Es, R0]): At[R0, S0] & Needs[Es] = NeedyRow(sub)
   def answer[S2]: At[R0, S2] = At()
+  def top: Top = okay.cont.top
   def shift[I, O, A](f: (A => Cont[R0, O, O, I]) => Cont[R0, O, O, O], same: (I =:= O) | Null): Cont[R0, I, O, A] = Shift(f)
   def reset[S2, O](body: At[R0, S2] ?=> Cont[R0, S2, O, S2]): Cont[R0, S0, S0, O] = Reset(body(using At()), identity)
 
@@ -126,6 +127,6 @@ private final class Resume[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T,
   def apply(x: X): Cont[T, Q, Q, Ans] = Delay(() => fold0(k(x), ret, h))
 
 /** `Cont`'s top, for a library re-entering it */
-given top: Top with
+object top extends Top:
   val at: At[Pure, Unit] = At()
   def run(p: at.Prog[Unit]): Unit = p.value

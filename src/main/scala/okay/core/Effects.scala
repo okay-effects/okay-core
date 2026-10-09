@@ -40,6 +40,8 @@ abstract class Effects extends Control:
   /** this context with the paths of the effects a program needs: the context of an `A ! Es` */
   type Needing[Es <: AnyKind] <: Needs[Es] { type M[I, O, A] = Effects.this.M[I, O, A]; type Effs = Effects.this.Effs; type S = Effects.this.S }
   def needing[Es <: AnyKind](p: Paths[Es, Effs]): Needing[Es]
+  /** this monad's top, for a library re-entering it (`Async`): a run there on the same monad */
+  def top: Top
 
 /** THE CONTEXT WITH THE EFFECTS A PROGRAM NEEDS, `Es`, found in its row: a context of the instance's own making,
  * `c.needing(paths)` — for `Cont`, an `At` itself, so an operation is the context's own call, nothing forwarded */
@@ -94,7 +96,7 @@ def perform[E[_], X](op: E[X])(using c: Effects, in: In[E, c.Effs]): c.Prog[X] =
 def pure[A](a: A)(using c: Context): c.Prog[A] = c.pure(a)
 
 /** A MONAD'S TOP: its context there, over `Pure` at the answer `Unit`, and a run of a program of it — what a library
- * re-entering the top takes (`Async`, a run going on in a callback's thread) */
+ * re-entering the top takes (`Async`, a run going on in a callback's thread); every context has its monad's, `c.top` */
 trait Top:
   val at: Effects { type Effs = Pure; type S = Unit }
   def run(p: at.Prog[Unit]): Unit

@@ -81,7 +81,6 @@ class TestGuide extends munit.FunSuite:
     // reset(shift0(k => k(1) + 1) * 10): k = _ * 10, the body outside the reset
     assertEquals(okay.zero.run[Int](reset[Int](shift0[Int, Int](k => k(1).map(_ + 1)).map(_ * 10))), 11)
 
-  test("guide: async, on the monad of the Top given"):
-    given Top = okay.zero.top
+  test("guide: async, on the monad of the context"):
     def io(using c: Effects, a: Async :? c.Effs): c.Prog[Int] = async(20).flatMap(x => async(x + 1))
     assertEquals(okay.zero.run(throws[Throwable, Int](Async.run(io))), Right(21))

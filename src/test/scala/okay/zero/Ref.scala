@@ -15,6 +15,7 @@ class Ref[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   type Reset[S2] = Ref[R0, Level[R0, J0, T0], S2]
   type Answer[S2] = Ref[R0, J0, S2]
   def answer[S2]: Ref[R0, J0, S2] = Ref()
+  def top: core.Top = Ref.top
 
   def pure[S2, A](a: A): M[S2, S2, A] = okay.zero.pure(a)
   def delay[I, O, A](m: => M[I, O, A]): M[I, O, A] = okay.zero.delay(m)
@@ -41,6 +42,6 @@ object Ref:
     def find[E[_]](r: Req[E, Es]): In[E, R0] = p.find(r)
 
   /** the reference's top, for a library re-entering it */
-  given top: core.Top with
+  object top extends core.Top:
     val at: Ref[Pure, Unit, Unit] = Ref()
     def run(p: at.Prog[Unit]): Unit = runTop(p)

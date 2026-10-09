@@ -88,7 +88,7 @@ At the top `run` sometimes needs the answer named: `okay.cont.run[Int](...)`.
 | `Choose` | `among(as)` — multi-shot | `choose[A](body)` → `Seq[A]`, every path |
 | `Emit[W]` | `yield_(w)` | `collect(body)` → `(List[W], A)`; `generate(next, done)(body)` — lazy |
 | `PState` | `st.get[S]`, `st.put[S](s2)` | `pstate(s0)(st => body)` — the state's *type* may change |
-| `Async` | `async(a)`, `await(register)` | `Async.run(body)` on the monad of the `Top` given |
+| `Async` | `async(a)`, `await(register)` | `Async.run(body)` on the context's own monad |
 
 The order of handlers is the semantics: `state(throws(body))` keeps the state of a failed body,
 `throws(state(body))` loses it.
@@ -217,11 +217,10 @@ program of the monad it is pulled on — see `GCont` and `GZero` in `MonadsBench
 ## Async
 
 `async(a)` suspends a computation, `await(register)` waits on a callback. `Async.run(body)` runs the body on the
-monad of the `Top` given — the run goes on in the callback's thread when the callback comes later; its failure is
+context's own monad, at its top (`c.top`) — the run goes on in the callback's thread when the callback comes later; its failure is
 raised in the context as `Throws % Throwable`.
 
 ```scala
-given Top = okay.zero.top
 def io(using c: Effects, a: Async :? c.Effs): c.Prog[Int] = async(20).flatMap(x => async(x + 1))
 okay.zero.run(throws[Throwable, Int](Async.run(io)))   // Right(21)
 ```

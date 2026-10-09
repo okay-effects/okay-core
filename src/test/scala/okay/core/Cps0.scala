@@ -81,6 +81,7 @@ object Cps0:
     type Reset[S2] = At[R0, Lv[R0, J0, T0], S2]
     type Answer[S2] = At[R0, J0, S2]
     def answer[S2]: At[R0, J0, S2] = At()
+    def top: Top = Cps0.top
     def pure[S2, A](a: A): M[S2, S2, A] = Cps0.pure(a)
     def delay[I, O, A](m: => M[I, O, A]): M[I, O, A] = F(k => m.run(k))
     extension [I, O, A](m: M[I, O, A])
@@ -106,6 +107,6 @@ object Cps0:
     top(dollar(body(using At()), (a: A) => pure(Done[Pure, A, A](a)))).run(identity)
 
   /** the textbook's top, for a library re-entering it */
-  given top: Top with
+  object top extends Top:
     val at: At[Pure, Unit, Unit] = At()
     def run(p: at.Prog[Unit]): Unit = Cps0.run(p)

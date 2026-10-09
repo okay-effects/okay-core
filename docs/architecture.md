@@ -57,7 +57,7 @@ abstract class Effects extends Control:
 - **`Needs`, `Paths.Keep`.** The context of an `A ! Es`: an instance keeps the paths in a context of its own
   (`Paths.kept`), so an operation finds its path in one call.
 - **`Top`.** A monad's context at the top and a run of a program of it: what a library re-entering the top
-  (`Async`) takes.
+  (`Async`) takes. Every context has its monad's, `c.top`.
 
 ## `okay.cont` — `Cont`
 

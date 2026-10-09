@@ -61,10 +61,10 @@ object Async:
                 case _ => f.pure(()))(body)
     go(handled)
 
-  /** `run(body)`: the body's value, run on the monad of `t`, this thread waiting for it — at the edge of a program
-   * only; its failure raised in the context */
-  def run[A](body: Body[A])(using c: Effects, has: Throws % Throwable :? c.Effs, t: Top): c.Prog[A] =
+  /** `run(body)`: the body's value, run on the context's monad — at its top, `c.top` — this thread waiting for it,
+   * at the edge of a program only; its failure raised in the context */
+  def run[A](body: Body[A])(using c: Effects, has: Throws % Throwable :? c.Effs): c.Prog[A] =
     c.delay:
       val result = java.util.concurrent.CompletableFuture[Either[Throwable, A]]()
-      runAsync(using t)(body)(result.complete)
+      runAsync(using c.top)(body)(result.complete)
       result.get().fold(raise[Throwable, A], c.pure)
