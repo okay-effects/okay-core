@@ -79,8 +79,9 @@ Handlers nested by recursion — a function installing one and calling itself in
 both, a hundred thousand deep: each monad's loop keeps the delimiters it is inside as a stack of its own
 (docs/stack-safety.md).
 
-`Cont0` is 2–16× faster where handlers are layered and faster in most of the rest; `Cont` is ahead by 5–12% in
-`throws` and a shallow shift directly under a handler.
+`Cont0` is ahead where handlers are layered (3.7× across 16), on a general clause, captures, `queens`, `choose`;
+`Cont` by a few per cent on an operation answered in place, `state` and `throws` — since both find a handler further
+out that answers in place where the operation is, the rest is close.
 
 ## Tests
 
