@@ -3,9 +3,10 @@
 Algebraic effects and handlers for Scala 3 — and Scala 2.13, from the same artifact — with delimited control — `shift`/`reset` with the answer type modified
 (Danvy–Filinski, Asai–Kameyama) — written **once** over an interface and run on **two monads**:
 
-- **`Cont`** (`okay.cont`) — shift and reset; a handler a fold over the program;
-- **`Cont0`** (`okay.zero`) — Materzok–Biernacki's shift0 and `$`, the levels in the types; a handler a delimiter
-  run by a machine that answers operations in place.
+- **`Cont0`** (`okay.zero`), **the default** — Materzok–Biernacki's shift0 and `$`, the levels in the types; a
+  handler a delimiter run by a machine that answers operations in place;
+- **`Cont`** (`okay.cont`) — shift and reset; a handler a fold over the program. A second implementation of the same
+  interface, a different one: what keeps the interface an interface, not one monad's API.
 
 No macros, no casts, no runtime tests of an operation's class: an operation carries a path to its effect in the row,
 and a handler follows it.

@@ -1,15 +1,16 @@
 # Architecture
 
-One interface, written once; several monads implementing it; references that define what they must do. No macros,
-no casts, no runtime tests of an operation's class.
+One interface, written once; several monads implementing it; references that define what they must do. `Cont0` is
+the default; `Cont` a second implementation, different by design — what keeps the interface from being one monad's
+API. No macros, no casts, no runtime tests of an operation's class.
 
 ```
 okay.core   the interface          rows, Context, Control, Effects, Handler, intercept, Needs, A ! Es, Top,
                                    Program (a program over a row, built where it runs)
 okay.std    effects, written once   Reader (local), State, Writer, Throws (handleWith), Choose, Emit, PState, Async;
                                    Programs (the same as Programs), Stream
-okay.cont   the monad Cont          shift/reset, a handler a fold         — At, run, top
-okay.zero   the monad Cont0         shift0 and $, a machine               — At, run, top, shift0
+okay.zero   the monad Cont0         shift0 and $, a machine               — At, run, top, shift0   (the default)
+okay.cont   the monad Cont          shift/reset, a handler a fold         — At, run, top           (the second)
 tests       the references          Ref (Cont0 without the machine), Cps0 (textbook CPS); tofu over Program
 scala2/     Scala 2.13              the core read by scalac 2.13; tofu's 2.13 artifacts over Program
 ```
