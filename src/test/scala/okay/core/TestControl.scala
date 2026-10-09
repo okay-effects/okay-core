@@ -5,8 +5,7 @@ import okay.cont.{Cont, Free, At}
 import Control.{reset, shift}
 
 /** CONTROL alone, beyond master's: Danvy–Filinski's shift in a shift's body, k lazy, shift0's hierarchy */
-abstract class TestControlOn(on: Backend) extends munit.FunSuite:
-  def run[A](body: (c: Effects { type Effs = Pure; type S = A }) ?=> c.Prog[A]): A = on.run(body)
+abstract class TestControlOn(on: Backend) extends BackendSuite(on):
 
   test("a body dropping k aborts the reset: the rest never runs"):
     var ran = false

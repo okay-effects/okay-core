@@ -66,4 +66,5 @@ class TestMonads extends munit.FunSuite:
     def p(using c: Effects): c.Prog[Either[String, Int]] = okay.std.throws[String, Int](kRaising)
     assertEquals(okay.cont.run(p), Left("one"))
     assertEquals(Ref.run(p), Left("one"))
+    assertEquals(okay.core.Cps0.run(p), Left("one"))
     assertEquals(run(p), Right(3 + 20))

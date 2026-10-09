@@ -9,8 +9,7 @@ import java.util.concurrent.{Executors, TimeUnit}
 
 /** `PState`: the state's type in the answer type; `Async`: a run that waits on callbacks */
 /** `PState` on any monad of master's `Effects`: the state's type in the answer type */
-abstract class TestPStateOn(on: Backend) extends munit.FunSuite:
-  def run[A](body: (c: Effects { type Effs = Pure; type S = A }) ?=> c.Prog[A]): A = on.run(body)
+abstract class TestPStateOn(on: Backend) extends BackendSuite(on):
 
   test("pstate: get after put, the type unchanged"):
     val r: (Int, Int) = run(pstate(1)(st => st.put[Int](41).flatMap(_ => st.get[Int]).map(_ + 1)))

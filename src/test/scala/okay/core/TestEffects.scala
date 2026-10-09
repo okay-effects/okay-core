@@ -9,8 +9,7 @@ import okay.std.*
 /** the effects in context: the syntax and the answer never named — the handlers build the syntax, outside in */
 /** the effects in context, on any monad of master's `Effects` — `on`'s run: the syntax and the answer never named,
  * the handlers build the syntax, outside in */
-abstract class TestEffectsOn(on: Backend) extends munit.FunSuite:
-  def run[A](body: (c: Effects { type Effs = Pure; type S = A }) ?=> c.Prog[A]): A = on.run(body)
+abstract class TestEffectsOn(on: Backend) extends BackendSuite(on):
 
   test("reader: ask answered in place"):
     assertEquals(run(reader[Int](41)(ask[Int].map(_ + 1))), 42)

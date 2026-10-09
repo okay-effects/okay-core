@@ -83,8 +83,9 @@ on `Cont0` across any handlers and resets between.
 ### The tests and the benchmarks
 
 Written once: `TestEffectsOn`, `TestContextOn`, `TestControlOn`, `TestTogetherOn`, `TestDynamicOn`, `TestPStateOn`
-take a `Backend` (a monad's run) and run on `Cont`, on `Cont0` and on the reference; `TestAsyncOn` on `Cont` and
-`Cont0`. `MonadsBenchmark` runs the same programs, `backend=cont|zero|ref` (ns an operation; the captures a run):
+take a `Backend` (a monad's run) and run on `Cont`, on `Cont0`, on the reference and on `Cps0` — shift0 and `$` in
+CPS from the textbook, functions `(A => I) => O`, no code of `Cont` nor of `Cont0`: the four agree (`Cps0`, not stack
+safe, skips the tests of thousands of steps); `TestAsyncOn` on `Cont` and `Cont0`. `MonadsBenchmark` runs the same programs, `backend=cont|zero|ref` (ns an operation; the captures a run):
 
 | | cont | zero | ref |
 |---|---|---|---|

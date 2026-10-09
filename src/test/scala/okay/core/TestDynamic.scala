@@ -8,8 +8,7 @@ import okay.std.*
 
 /** the handlers' semantics, beyond master's tests: a clause outside its handler, the order of handlers with a
  * functional state, two handlers of one effect by path, a program leaving its handler, deep crossings */
-abstract class TestDynamicOn(on: Backend) extends munit.FunSuite:
-  def run[A](body: (c: Effects { type Effs = Pure; type S = A }) ?=> c.Prog[A]): A = on.run(body)
+abstract class TestDynamicOn(on: Backend) extends BackendSuite(on):
   enum FState[+A]:
     case Get extends FState[Int]
     case Put(n: Int) extends FState[Unit]

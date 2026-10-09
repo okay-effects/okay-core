@@ -8,8 +8,7 @@ import okay.std.*
 
 /** CONTROL AND EFFECTS TOGETHER, beyond master's: a reset passes every operation on, a shift's body and its k
  * perform, a handler's body resets with the answer modified */
-abstract class TestTogetherOn(on: Backend) extends munit.FunSuite:
-  def run[A](body: (c: Effects { type Effs = Pure; type S = A }) ?=> c.Prog[A]): A = on.run(body)
+abstract class TestTogetherOn(on: Backend) extends BackendSuite(on):
 
   test("k resumed twice, each path telling: the writer outside sees both paths, in order"):
     val r = run(writer[String, Int](reset[Int](shift[Int, Int](k => k(1).flatMap(a => k(2).map(b => a + b))).flatMap(x => tell(s"x=$x").map(_ => x)))))
