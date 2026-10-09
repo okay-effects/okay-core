@@ -49,6 +49,30 @@ enum Stream[W]:
   /** every element: for a stream that ends */
   def toList: List[W] = take(Int.MaxValue)
 
+  /** the elements as an `Iterator`, each pulled when asked for, none past the last asked — the collections' own
+   * `map`, `filter`, `take`, `sum` on it */
+  def iterator: Iterator[W] = new Iterator[W]:
+    private var s = Stream.this
+    private var pulled = true
+    def hasNext: Boolean =
+      if !pulled then { s = s.pull(); pulled = true }
+      s match
+        case _: Next[W] => true
+        case Done() => false
+    def next(): W =
+      hasNext
+      s match
+        case e: Next[W] => pulled = false; e.w
+        case Done() => throw java.util.NoSuchElementException("Stream.Done")
+
+  /** `f` of every element, in order: for a stream that ends — a loop, in constant stack */
+  def foreach(f: W => Unit): Unit =
+    var s = this
+    while s match
+        case e: Next[W] => f(e.w); s = e.pull(); true
+        case Done() => false
+    do ()
+
 /** `stream(t)(body)`: the body as a `Stream` of its elements, on the monad of the top `t` — `okay.zero.top`,
  * `okay.cont.top`, a context's `c.top`. Nothing runs past the first element until the rest is pulled. The body's
  * effects are `Emit` only; under effects still to be handled, `generate` */
@@ -58,14 +82,9 @@ def stream[W](t: Top)(body: Yields[W]): Stream[W] =
 /** a stream's body: a program yielding `W`, under `Emit % W` alone */
 type Yields[W] = (c: Effects { type Effs = Emit % W +: Pure }) ?=> c.Prog[Unit]
 
-/** a lazy generator over the row `R`: the next element and the rest, a program over `R` at the generator's own
- * answer; or done */
-enum Gen[M[_, _, _], W]:
-  case Next(w: W, rest: M[Gen[M, W], Gen[M, W], Gen[M, W]])
-  case Done()
 /** `generate[W, G](next, done)(body)`: the body as a lazy generator — nothing runs until the consumer pulls — of
  * the consumer's own type `G`: each element with the rest, a program here of `G`, by `next`; the end, `done`. Any
- * type will do; `Gen` is one, at a context whose answer it is */
+ * type will do. At the top, `stream` */
 def generate[W, G](using c: Effects)(next: (W, c.Prog[G]) => G, done: G)(body: c.Body[Emit % W, G, Unit]): c.Prog[G] =
   c.handle(new Handler[c.Prog, Emit % W, Unit, G]:
     def ret(u: Unit): G = done

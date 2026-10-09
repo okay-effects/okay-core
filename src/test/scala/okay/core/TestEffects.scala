@@ -6,6 +6,12 @@ import Effects.*
 import Control.*
 import okay.std.*
 
+/** a generator's consumer on `Cont`, generic over its monad: the next element and the rest, a program at the
+ * generator's own answer; or done */
+enum Gen[M[_, _, _], W]:
+  case Next(w: W, rest: M[Gen[M, W], Gen[M, W], Gen[M, W]])
+  case Done()
+
 /** the effects in context: the syntax and the answer never named — the handlers build the syntax, outside in */
 /** the effects in context, on any monad of master's `Effects` — `on`'s run: the syntax and the answer never named,
  * the handlers build the syntax, outside in */

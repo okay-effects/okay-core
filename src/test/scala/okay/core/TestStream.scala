@@ -31,6 +31,19 @@ abstract class TestStreamOn(top: Top) extends munit.FunSuite:
         assertEquals(n.pull().take(2), List(6, 7))
       case Stream.Done() => fail("an element")
 
+  test("stream: an iterator, the collections' own operations, none pulled past the last asked"):
+    var ran = 0
+    def counted(i: Int)(using c: Effects, e: Emit % Int :? c.Effs): c.Prog[Unit] =
+      c.delay { ran += 1; yield_(i).flatMap(_ => counted(i + 1)) }
+    assertEquals(stream[Int](top)(counted(0)).iterator.map(_ * 2).filter(_ % 4 == 0).take(3).toList, List(0, 4, 8))
+    assertEquals(ran, 5)
+    assertEquals(stream[Int](top)(yield_(1).flatMap(_ => yield_(2))).iterator.sum, 3)
+
+  test("stream: foreach, every element in order"):
+    val out = List.newBuilder[Int]
+    stream[Int](top)(yield_(1).flatMap(_ => yield_(2)).flatMap(_ => yield_(3))).foreach(out += _)
+    assertEquals(out.result(), List(1, 2, 3))
+
   test("stream: 100 000 elements, a run each"):
     assertEquals(stream[Int](top)(from(0)).take(100000).last, 99999)
 

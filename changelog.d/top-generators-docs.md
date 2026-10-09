@@ -24,3 +24,5 @@
 - Then `Stream` an enum: `Next(w, top: Top, rest: top.M[…])` or `Done()` — a dependent case, the rest's type its
   top's; `pull()` runs it. The same cost: 14.8 µs on Cont, 13.8 on Cont0, 224 and 208 B an element. A pattern's
   variables lose the dependence: `n @ Next(w, _, _)` then `n.top.run(n.rest)`, or `n.pull()`.
+- `Stream.iterator` (the collections' `map`, `filter`, `sum`; none pulled past the last asked) and `foreach`.
+  `okay.std.Gen[M, W]` out of okay.std into the tests that use it: `generate` takes any consumer type.
