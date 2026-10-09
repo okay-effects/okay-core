@@ -60,20 +60,24 @@ The same program gives the same answer on both, but for one case by design: a `s
 with no `reset` between — on `Cont0` its `k` holds the handler (a `raise` in `k` is that `k`'s `Left`), on `Cont`
 only the handler's `ret` (a `raise` in `k` aborts the shift's body). `shift0` is `Cont0`'s alone.
 
-`MonadsBenchmark`, the same programs on each (bench.d, 2026-10-09T16-09), ns an operation:
+`MonadsBenchmark`, the same programs on each (bench.d, 2026-10-09T20-21), ns an operation:
 
 | | `Cont` | `Cont0` |
 |---|---|---|
-| an operation across 1 / 4 / 16 handlers | 11.9 / 23.2 / 96.8 | 5.7 / 5.4 / 5.7 |
-| answered in place / by a general clause | 5.65 / 9.07 | 5.53 / 7.76 |
-| state, writer, collect | 15.6, 20.5, 12.2 | 14.7, 17.6, 10.7 |
-| a generator, an element pulled / pushed | 15.2 / 9.3 | 14.6 / 7.8 |
-| an ask under `local` (an interceptor) / under the reader alone | 16.6 / 4.6 | 15.0 / 4.9 |
-| `state` as a `Program`: the state first in the row / third | 23.0 / 38.9 | 23.9 / 39.7 |
-| 8 queens (a run) | 231 µs | 145 µs |
-| a shift under a reset, 16 maps, `k` 8 times (a run) | 453 ns | 338 ns |
-| choose, throws | 24.4, 14.3 | 22.6, 15.8 |
-| pure binds | 3.33 | 3.32 |
+| an operation across 1 / 4 / 16 handlers | 5.7 / 7.4 / 21.5 | 5.6 / 5.6 / 5.8 |
+| answered in place / by a general clause | 4.96 / 9.90 | 5.34 / 8.17 |
+| state, writer, collect | 13.3, 19.6, 10.3 | 14.3, 17.2, 10.3 |
+| a generator, an element pulled / pushed | 16.2 / 7.4 | 15.3 / 7.4 |
+| an ask under `local` (an interceptor) / under the reader alone | 16.7 / 4.6 | 15.2 / 4.7 |
+| `state` as a `Program`: the state first in the row / third | 24.0 / 38.2 | 23.0 / 38.1 |
+| 8 queens (a run) | 169 µs | 147 µs |
+| a shift under a reset, 16 maps, `k` 8 times (a run) | 522 ns | 312 ns |
+| choose, throws | 26.5, 16.1 | 24.0, 16.5 |
+| pure binds | 3.21 | 3.20 |
+
+Handlers nested by recursion — a function installing one and calling itself inside it — run in constant stack on
+both, a hundred thousand deep: each monad's loop keeps the delimiters it is inside as a stack of its own
+(docs/stack-safety.md).
 
 `Cont0` is 2–16× faster where handlers are layered and faster in most of the rest; `Cont` is ahead by 5–12% in
 `throws` and a shallow shift directly under a handler.
