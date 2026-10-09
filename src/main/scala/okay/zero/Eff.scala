@@ -74,28 +74,27 @@ private[zero] def shift0Program[R <: Row, J, T, A, S, O](c: Ctl0[R, J, T, A, S, 
   Shift0[Level[R, J, T], Level[R, J, T], Res[R, Level[R, J, T], S], Level[R, Level[R, J, T], O], A](
     k => c.f(a => passAll(k(a))).map(o => Res.Done(o)))
 
-// THE DELIMITERS AS THEIR shift0 PROGRAMS, no machine: a handler, a reset, a `$` whose answers are read — their
-// definitions, what the machine runs fast; the reference in the tests (`Ref`) is made of them
+// THE DELIMITERS AS THEIR shift0 PROGRAMS: a handler, a reset, a `$` whose answers are read — their definitions,
+// what the machine runs fast; what it does not take it runs so (`bail`), and the reference in the tests (`Ref`)
 
-/** a handler of `E`: `Done∘h.ret $ body`, its answers read by `h` */
-private[zero] def handleRead[E[_], R <: Row, J, T, A, Ans](h: Handler[[X] =>> Eff[R, J, T, T, X], E, A, Ans],
-    body: Eff[E +: R, Level[R, J, T], Ans, Ans, A]): Eff[R, J, T, T, Ans] =
-  readHand[E, R, J, T, Ans](Dollar(body, (a: A) => Return(Res.Done[E +: R, Level[R, J, T], Ans](h.ret(a)))), h)
+/** a handler of `E`: `Done∘ret $ body`, its answers read by `h` — the body's answer moved from `I0` to `V` by it */
+private[zero] def handleRead[E[_], R <: Row, J, T, A, I0, V](h: Handler[[X] =>> Eff[R, J, T, T, X], E, ?, V], ret: A => I0,
+    body: Eff[E +: R, Level[R, J, T], I0, V, A]): Eff[R, J, T, T, V] =
+  readHand[E, R, J, T, V](Dollar(body, (a: A) => Return(Res.Done[E +: R, Level[R, J, T], I0](ret(a)))), h)
 
 /** a reset: `Done $ body`, every operation passed on */
 private[zero] def resetRead[R <: Row, J, T, S, O](body: Eff[R, Level[R, J, T], S, O, S]): Eff[R, J, T, T, O] =
   passAll[R, J, T, O](Dollar(body, (s: S) => Return(Res.Done[R, Level[R, J, T], S](s))))
 
-// THE BRIDGE from the machine (Machine.scala) to the reading below
+// THE BRIDGE from the machine (Machine.scala) to the definitions above
 
-/** what the loop does not take, a raw capture: the rest under the delimiter as a `$` of the kernel, its
- * answers read as values — the delimiter's reading, the same semantics */
+/** what the loop does not take, a raw capture: the rest under the delimiter's definition — its shift0 program, the
+ * rest under a `$` whose answers are read — the same semantics */
 private[zero] def bail[RB <: Row, L, I0, V, A, T, X](c: Cont0[T, Cont0[L, L, Res[RB, L, V]], X], k: Frames[X, Cont0[L, L, Res[RB, L, I0]], T, A],
     d: Delim[RB, L, I0, V, A]): Cont0[L, L, V] =
-  val out: Cont0[L, L, Res[RB, L, V]] = Dollar(Bind(c, k), (a: A) => Return(Res.Done[RB, L, I0](ret(d, a))))
   d match
-    case h: ByHandler[e, r, j, t, a, i0, v] => readHand[e, r, j, t, V](out, h.clauses)
-    case _: ByReset[r, j, t, s, v] => passAll[r, j, t, V](out)
+    case h: ByHandler[e, r, j, t, a, i0, v] => handleRead[e, r, j, t, A, I0, V](h.clauses, h.rets, Bind(c, k))
+    case _: ByReset[r, j, t, s, v] => resetRead[r, j, t, I0, V](Bind(c, k))
 
 // THE DELIMITERS' READING of their answers as values — for what the machine does not take, and for shift0
 

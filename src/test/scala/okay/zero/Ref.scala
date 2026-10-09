@@ -25,7 +25,7 @@ class Ref[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = request(op, in)
   def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: Ref[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
       : M[R0, T0, T0, Ans] =
-    handleRead(h, body(using Ref()))
+    handleRead(h, h.ret, body(using Ref()))
   def shift[I, O, A](f: (A => M[R0, O, O, I]) => M[R0, O, O, O], same: (I =:= O) | Null): M[R0, I, O, A] = control(f, null)
   def reset[S2, O](body: Ref[R0, Level[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[R0, T0, T0, O] =
     resetRead(body(using Ref()))

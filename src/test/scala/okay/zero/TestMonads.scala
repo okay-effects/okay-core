@@ -68,3 +68,15 @@ class TestMonads extends munit.FunSuite:
     assertEquals(Ref.run(p), Left("one"))
     assertEquals(okay.core.Cps0.run(p), Left("one"))
     assertEquals(run(p), Right(3 + 20))
+
+  // a raw shift moving the answer, directly under a handler: on Cont0 no proof it keeps it — the machine's fallback,
+  // the delimiter's definition (`bail`); the same answer on each
+  def moved(using c: Effects { type S = Int }): c.Prog[Int] =
+    c.shift[String, Int, Int](k => k(1).map(_.length), null)
+      .flatMap(x => c.shift[Int, String, Int](k2 => k2(x + 1).map(n => "x" * n), null))
+  test("a shift moving the answer and one moving it back, directly under a handler: the same on each"):
+    def p(using c: Effects): c.Prog[Int] = reader[Int](5)(moved.flatMap(x => ask[Int].map(_ + x)))
+    assertEquals(okay.cont.run(p), 7)
+    assertEquals(run(p), 7)
+    assertEquals(Ref.run(p), 7)
+    assertEquals(okay.core.Cps0.run(p), 7)
