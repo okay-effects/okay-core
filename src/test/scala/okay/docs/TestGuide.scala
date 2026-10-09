@@ -4,7 +4,7 @@ import okay.core.*
 import okay.core.Control.{reset, shift}
 import okay.std.*
 
-/** THE EXAMPLES OF docs/guide.md, as they are written there: each compiles and gives the answer the guide says, on
+/** THE EXAMPLES OF docs/guide.md and README.md, as they are written there: each compiles and gives the answer the guide says, on
  * Cont and on Cont0 */
 class TestGuide extends munit.FunSuite:
 
@@ -68,6 +68,7 @@ class TestGuide extends munit.FunSuite:
 
   test("guide: shift and reset, the answer type modified"):
     assertEquals(okay.cont.run(twice), 12)
+    assertEquals(okay.zero.run(twice), 12)
     assertEquals(okay.zero.run(modified), "10")
 
   test("guide: choose, multi-shot"):
