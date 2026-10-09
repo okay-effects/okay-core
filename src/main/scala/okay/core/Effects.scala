@@ -75,14 +75,9 @@ object Effects:
                (body: c.Reset[Ans] ?=> c.Inner[c.Effs, Ans, Ans, A]): c.Prog[Ans] =
     c.intercept(in, h)(body)
 
-/** a handler of the effect `E`, over the row `E +: T`, leaving `T`, written at the answer `Q` outside its
- * delimiter: the body's value `A` to the answer `Ans`; each operation with the rest of the body up to the
- * delimiter, `k`, deep — the handler stays in force through a resumption. Not a node: `handle` folds the tree
- * with it; an operation of another effect goes on outside, its path one shorter */
-
-/** A HANDLER'S CLAUSES over the programs `P` outside it, whatever the monad: the body's value to `Ans`, each
- * operation with the rest — what a handler is to a monad that runs it. `Handler` is them over `M` at the row `T`
- * and the answer `Q`; a monad of its own (`okay.zero`'s) takes them as they are */
+/** A HANDLER of the effect `E`, its clauses over the programs `P` outside it, whatever the monad: the body's value
+ * `A` to the answer `Ans`; each operation with the rest of the body up to the delimiter, `k`, deep — the handler
+ * stays in force through a resumption. An operation of another effect goes on outside, its path one shorter */
 trait Handler[P[_], E[_], A, Ans]:
   def ret(a: A): Ans
   def apply[X](op: E[X], k: X => P[Ans]): P[Ans]
@@ -91,13 +86,11 @@ trait Handler[P[_], E[_], A, Ans]:
 trait Value[E[_]]:
   def value[X](op: E[X]): X
 
-/** clauses each `k(value(op))`: an operation answered in place, by its value alone */
+/** a TAIL-RESUMPTIVE handler: each clause is `k(value(op))`, the value of the operation alone — so the operation is
+ * ANSWERED IN PLACE: the run goes on with the rest of the body at once, no resumption built, nothing handed out
+ * (Koka's, Effekt's optimisation; here by the handler's declaration) */
 trait Answering[P[_], E[_], A, Ans] extends Handler[P, E, A, Ans] with Value[E]:
   final def apply[X](op: E[X], k: X => P[Ans]): P[Ans] = k(value(op))
-
-/** a TAIL-RESUMPTIVE handler: each clause is `k(value(op))`, the value of the operation alone — so the operation is
- * ANSWERED IN PLACE: the fold goes on with the rest of the body at once, in its own loop, no resumption built,
- * nothing handed out (Koka's, Effekt's optimisation; here by the handler's declaration) */
 
 /** `perform(op)`: an operation of `E`, in the context — its row has `E`, its answer is the operation's */
 def perform[E[_], X](op: E[X])(using c: Effects, in: In[E, c.Effs]): c.Prog[X] = c.perform(op, in)
