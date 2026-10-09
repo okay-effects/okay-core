@@ -58,17 +58,18 @@ The same program gives the same answer on both, but for one case by design: a `s
 with no `reset` between — on `Cont0` its `k` holds the handler (a `raise` in `k` is that `k`'s `Left`), on `Cont`
 only the handler's `ret` (a `raise` in `k` aborts the shift's body). `shift0` is `Cont0`'s alone.
 
-`MonadsBenchmark`, the same programs on each (bench.d, 2026-10-09), ns an operation:
+`MonadsBenchmark`, the same programs on each (bench.d, 2026-10-09T11-37), ns an operation:
 
 | | `Cont` | `Cont0` |
 |---|---|---|
-| an operation across 1 / 4 / 16 handlers | 11.7 / 22.8 / 90.4 | 5.7 / 6.8 / 17.2 |
-| answered in place / by a general clause | 6.50 / 8.99 | 5.43 / 7.72 |
-| state, writer, collect | 15.5, 20.0, 13.1 | 14.1, 17.3, 10.5 |
-| 8 queens (a run) | 255 µs | 191 µs |
-| a shift under a reset, 16 maps, `k` 8 times (a run) | 439 ns | 323 ns |
-| choose, throws | 29.1, 13.6 | 33.9, 14.6 |
-| pure binds | 3.27 | 3.24 |
+| an operation across 1 / 4 / 16 handlers | 11.6 / 23.4 / 91.7 | 5.7 / 6.7 / 17.1 |
+| answered in place / by a general clause | 6.43 / 8.92 | 5.41 / 7.79 |
+| state, writer, collect | 16.1, 20.0, 13.1 | 14.7, 17.3, 10.5 |
+| a generator, an element pulled (`stream`, measured at 849d321) | 14.8 | 13.8 |
+| 8 queens (a run) | 256 µs | 190 µs |
+| a shift under a reset, 16 maps, `k` 8 times (a run) | 438 ns | 324 ns |
+| choose, throws | 29.2, 13.6 | 34.3, 14.3 |
+| pure binds | 3.36 | 3.42 |
 
 `Cont0` is 2–5× faster where handlers are layered and faster in most of the rest; `Cont` is ahead by 3–17% in
 `choose`, `throws` and a shallow shift directly under a handler.
