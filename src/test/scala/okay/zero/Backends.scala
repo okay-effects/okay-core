@@ -49,5 +49,5 @@ class TestAsyncOnRef extends okay.core.TestAsyncOn:
     Ref.run(okay.std.throws[Throwable, A](okay.std.Async.run(body)))
 class TestInterceptOnZero extends okay.core.TestInterceptOn(ZeroBackend)
 class TestInterceptOnRef extends okay.core.TestInterceptOn(RefBackend)
-class TestNestingOnZero extends okay.core.TestNestingOn(ZeroBackend)
+class TestNestingOnZero extends okay.core.TestNestingOn(ZeroBackend, deep = true)
 class TestNestingOnRef extends okay.core.TestNestingOn(RefBackend)
