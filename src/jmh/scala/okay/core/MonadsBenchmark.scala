@@ -125,6 +125,10 @@ class MonadsBenchmark:
 
   @Benchmark
   def choose(): Int = run(okay.std.choose[Int](among(0 until n).map(_ + 1))).length
+  /** the same under one more handler: the clauses' programs run in the machine's loop, not the kernel's at the top —
+   * on Cont0 the difference is what running the top in the kernel costs */
+  @Benchmark
+  def chooseNested(): Int = run(Effects.handle(ticking[Int])(okay.std.choose[Int](among(0 until n).map(_ + 1)).map(_.length)))
 
   def fibs(i: Int, a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
     if i == 0 then c.pure(()) else yield_(a).flatMap(_ => fibs(i - 1, b, a + b))
