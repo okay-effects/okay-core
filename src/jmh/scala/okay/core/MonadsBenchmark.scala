@@ -32,7 +32,7 @@ class MonadsBenchmark:
   @Param(Array("1000"))
   var n: Int = 0
 
-  def run[A](body: (c: Delimited { type R = Pure; type S = A }) ?=> c.M[Pure, A, A, A]): A =
+  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.M[Pure, A, A, A]): A =
     backend match
       case "cont" => Effects.run(body(using summon[Effects.At[Pure, A]]))
       case "zero" => Fx.run(body(using summon[Fx[Pure, A, A]]))

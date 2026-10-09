@@ -28,11 +28,14 @@ abstract class Context extends IxMonad:
   /** the monad of the bodies of the delimiters here: a handler's, a reset's */
   type Inner[X <: Row, I, O, A]
 
-/** EFFECTS over the monad: an operation at its path in the row, and a handler folding a body over `E +: T` to one
- * over `T` */
-abstract class Effects extends Context:
+/** EFFECTS over the monad: an operation at its path in the row, and a handler — a delimiter that answers the
+ * operations of its effect; a reset is one that answers none. So effects are control with handlers: every context
+ * with effects has `shift` and `reset`, and its delimiters' contexts are so too */
+abstract class Effects extends Control:
   /** the context under a handler of `E` here, at its answer `S2`: the row `E +: R`, the monad `Inner` */
   type Handled[E[_], S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.Inner[X, I, O, A]; type R = E +: Effects.this.R; type S = S2 }
+  type Reset[S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.Inner[X, I, O, A]; type R = Effects.this.R; type S = S2 }
+  type Answer[S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.M[X, I, O, A]; type R = Effects.this.R; type S = S2 }
   def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X]
   /** a handler of `E` here: the body in its context, over `E +: R` at the answer `Ans`; its answers read by `h` */
   def handle[E[_], A, Ans](h: Handler[M, E, R, S, A, Ans])(body: Handled[E, Ans] ?=> Inner[E +: R, Ans, Ans, A]): M[R, S, S, Ans]
@@ -99,24 +102,6 @@ object Needs:
   /** an effect needed: its path in the context's row */
   given found[E[_], Es <: AnyKind](using n: Needs[Es], r: Req[E, Es]): In[E, n.R] = n.find(r)
 
-  /** a `Needs` for an instance that has no way of its own: every operation the context's `c`, forwarded */
-  abstract class Forward[Es <: AnyKind, C <: Effects & Singleton](val c: C) extends Needs[Es]:
-    type M[X <: Row, I, O, A] = c.M[X, I, O, A]
-    type R = c.R
-    type S = c.S
-    type Inner[X <: Row, I, O, A] = c.Inner[X, I, O, A]
-    type Handled[E[_], S2] = c.Handled[E, S2]
-    def pure[X <: Row, S2, A](a: A): M[X, S2, S2, A] = c.pure(a)
-    def delay[X <: Row, I, O, A](m: => M[X, I, O, A]): M[X, I, O, A] = c.delay(m)
-    extension [X <: Row, I, O, A](m: M[X, I, O, A])
-      def flatMap[I2, B](f: A => M[X, I2, I, B]): M[X, I2, O, B] = c.flatMap(m)(f)
-      def map[B](f: A => B): M[X, I, O, B] = c.map(m)(f)
-    def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = c.perform(op, in)
-    def handle[E[_], A, Ans](h: Handler[M, E, R, S, A, Ans])(body: Handled[E, Ans] ?=> Inner[E +: R, Ans, Ans, A]): M[R, S, S, Ans] =
-      c.handle(h)(body)
-    type Needing[Es2 <: AnyKind] = c.Needing[Es2]
-    def needing[Es2 <: AnyKind](p: Paths[Es2, R]): Needing[Es2] = c.needing(p)
-
 /** `A ! Es`: a program of value `A`, in any context whose row has every effect of `Es` — one, `Int ! Reader % Int`,
  * or a row of them, `Int ! Reader % Int +: Writer % String +: Pure`; their order the program's own, the context's
  * row any. At the context's answer, not `Free`'s `Unit`: under a handler the answer is the handler's
@@ -125,7 +110,7 @@ infix type ![A, Es <: AnyKind] = (c: Needs[Es]) ?=> c.M[c.R, c.S, c.S, A]
 
 object Effects:
   /** THE INSTANCE over `Cont`, the context at the row `R0`, the answer `S0`: effects and control both */
-  class At[R0 <: Row, S0] extends Delimited:
+  class At[R0 <: Row, S0] extends Effects:
     type M[R <: Row, I, O, A] = Cont[R, I, O, A]
     type R = R0
     type S = S0

@@ -1,6 +1,6 @@
 package okay.zero
 
-import okay.core.{Effects, Control, Delimited, Cps}
+import okay.core.{Effects, Control, Cps}
 import okay.core.Control.{reset, shift}
 import okay.std.*
 
@@ -50,7 +50,7 @@ class TestFx extends munit.FunSuite:
     all(Effects.run(stateful), Fx.run(stateful), ("xxxxxxx", 7))
     assertEquals(Cps.run(stateful), ("xxxxxxx", 7))
 
-  def shiftUnderReader(using c: Delimited, r: Reader % Int :? c.R): c.M[c.R, c.S, c.S, Int] =
+  def shiftUnderReader(using c: Effects, r: Reader % Int :? c.R): c.M[c.R, c.S, c.S, Int] =
     reset[Int](shift[Int, Int](k => k(1).flatMap(k)).flatMap(x => ask[Int].map(_ + x)))
   test("control under an effect: a reset in a handler's body, ask in k"):
     all(Effects.run(reader(5)(shiftUnderReader)), Fx.run(reader(5)(shiftUnderReader)), 11)
@@ -58,12 +58,12 @@ class TestFx extends munit.FunSuite:
   // WHERE THEY DIFFER, by design: a shift directly under a general handler. On Cont and on the reference `k` is the
   // rest under the handler's `ret` only, an operation in it the shift body's handler's — a raise in k aborts the
   // body; on Cont0's machine `k` is the rest WITH the handler, a raise in k that k's Left
-  def kRaising(using c: Effects & Control { type S = Either[String, Int] }, t: Throws % String :? c.R): c.M[c.R, Either[String, Int], Either[String, Int], Int] =
+  def kRaising(using c: Effects { type S = Either[String, Int] }, t: Throws % String :? c.R): c.M[c.R, Either[String, Int], Either[String, Int], Int] =
     shift[Int, Either[String, Int]](k =>
       k(1).flatMap(r1 => k(2).map(r2 => Right(List(r1, r2).map(_.fold(_.length, identity)).sum))))
       .flatMap(x => if x == 1 then raise[String, Int]("one") else c.pure(x * 10))
   test("a raise in k directly under throws: Cont and the reference abort the body; Cont0's k gets its Left"):
-    def p(using c: Delimited): c.M[c.R, c.S, c.S, Either[String, Int]] = okay.std.throws[String, Int](kRaising)
+    def p(using c: Effects): c.M[c.R, c.S, c.S, Either[String, Int]] = okay.std.throws[String, Int](kRaising)
     assertEquals(Effects.run(p), Left("one"))
     assertEquals(FxRef.run(p), Left("one"))
     assertEquals(Fx.run(p), Right(3 + 20))

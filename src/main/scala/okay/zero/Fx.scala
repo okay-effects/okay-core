@@ -2,10 +2,10 @@ package okay.zero
 
 import okay.core
 
-/** OKAY.ZERO AS AN INSTANCE of master's `Delimited`: a context of `okay.core` whose programs are `Eff` — the
+/** OKAY.ZERO AS AN INSTANCE of master's `Effects`: a context of `okay.core` whose programs are `Eff` — the
  * programs written over master's `Effects` and `Control`, `okay.std` among them, run on `Cont0`. Its monad is `Eff`
  * at its level `J0`; a delimiter's body is one level in, `Inner`, the level `Level[R0, J0, T0]` */
-class Fx[R0 <: Row, J0, T0] private[zero] () extends core.Delimited:
+class Fx[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   type M[X <: Row, I, O, A] = Eff[X, J0, I, O, A]
   type Inner[X <: Row, I, O, A] = Eff[X, Level[R0, J0, T0], I, O, A]
   type R = R0
@@ -44,7 +44,7 @@ object Fx:
  * are read (`readHand`, `passAll`), an operation and a shift requests to them; no machine, nothing answered in
  * place. Slow, and the definition: what `Fx` runs fast. A shift up to a handler is master's there, `k` the rest
  * under the handler's `ret`, its operations the body's handler's */
-class FxRef[R0 <: Row, J0, T0] private[zero] () extends core.Delimited:
+class FxRef[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   type M[X <: Row, I, O, A] = Eff[X, J0, I, O, A]
   type Inner[X <: Row, I, O, A] = Eff[X, Level[R0, J0, T0], I, O, A]
   type R = R0

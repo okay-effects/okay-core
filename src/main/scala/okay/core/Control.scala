@@ -16,13 +16,6 @@ trait Control extends Context:
    * delimiter's value here */
   def reset[S2, O](body: Reset[S2] ?=> Inner[R, S2, O, S2]): M[R, S, S, O]
 
-/** a context with effects and control both: what `Effects.At`, the instance over `Cont`, is — its delimiters'
- * contexts so too */
-trait Delimited extends Effects with Control:
-  type Handled[E[_], S2] <: Delimited { type M[X <: Row, I, O, A] = Delimited.this.Inner[X, I, O, A]; type R = E +: Delimited.this.R; type S = S2 }
-  type Reset[S2] <: Delimited { type M[X <: Row, I, O, A] = Delimited.this.Inner[X, I, O, A]; type R = Delimited.this.R; type S = S2 }
-  type Answer[S2] <: Delimited { type M[X <: Row, I, O, A] = Delimited.this.M[X, I, O, A]; type R = Delimited.this.R; type S = S2 }
-
 /** whether a shift keeps the answer, `T` to `O`: the proof, if the types say so; else nothing known */
 opaque type Keeps[T, O] = (T =:= O) | Null
 object Keeps extends KeepsLow:

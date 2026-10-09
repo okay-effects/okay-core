@@ -5,10 +5,10 @@ import Control.*
 import okay.std.*
 
 /** the effects in context: the syntax and the answer never named — the handlers build the syntax, outside in */
-/** the effects in context, on any monad of master's `Delimited` — `on`'s run: the syntax and the answer never named,
+/** the effects in context, on any monad of master's `Effects` — `on`'s run: the syntax and the answer never named,
  * the handlers build the syntax, outside in */
 abstract class TestEffectsOn(on: Backend) extends munit.FunSuite:
-  def run[A](body: (c: Delimited { type R = Pure; type S = A }) ?=> c.M[Pure, A, A, A]): A = on.run(body)
+  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.M[Pure, A, A, A]): A = on.run(body)
 
   test("reader: ask answered in place"):
     assertEquals(run(reader[Int](41)(ask[Int].map(_ + 1))), 42)
