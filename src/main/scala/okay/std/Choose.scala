@@ -10,7 +10,7 @@ enum Choose[+A]:
 def among[A](as: Seq[A])(using c: Effects, has: Choose :? c.R): c.P[A] = perform[Choose, A](Choose.Among(as))
 /** `choose[A](body)`: every value of the body, one per path through its choices */
 def choose[A](using c: Effects)(body: c.Body[Choose, Seq[A], A]): c.P[Seq[A]] =
-  Effects.handle(new Handler[c.M, Choose, c.R, c.S, A, Seq[A]]:
+  Effects.handle(new Handler[c.P, Choose, A, Seq[A]]:
     def ret(a: A): Seq[A] = Vector(a)
     // the paths' values joined in a Vector: appending a path's to the ones before copies nothing of them — a
     // List or a Seq's `++` copied all the values so far for each path, quadratic in their number

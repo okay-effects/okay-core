@@ -50,17 +50,17 @@ class ContBenchmark:
     if n == 0 then c.pure(false) else perform(Tick.Value(n)).flatMap(_ => isEvenT(n - 1))
 
   /** `Tick` answered with its value: answered in place, its clause `k(a)` */
-  def ticking[Q, A](using c: Effects): Handler[c.M, Tick, c.R, c.S, A, A] = new Answering[c.M, Tick, c.R, c.S, A, A]:
+  def ticking[Q, A](using c: Effects): Handler[c.P, Tick, A, A] = new Answering[c.P, Tick, A, A]:
     def ret(a: A): A = a
     def value[X](op: Tick[X]): X = op match
       case Tick.Value(a) => a
   /** the same handler with its clause written out, `k(a)`: the general road, a resumption built per operation */
-  def tickingK[Q, A](using c: Effects): Handler[c.M, Tick, c.R, c.S, A, A] = new Handler[c.M, Tick, c.R, c.S, A, A]:
+  def tickingK[Q, A](using c: Effects): Handler[c.P, Tick, A, A] = new Handler[c.P, Tick, A, A]:
     def ret(a: A): A = a
     def apply[X](op: Tick[X], k: X => c.P[A]): c.P[A] = op match
       case Tick.Value(a) => k(a)
   /** the inner handler, of `Skip`: crossed by every `Tick` */
-  def skipping[A](using c: Effects): Handler[c.M, Skip, c.R, c.S, A, A] = new Answering[c.M, Skip, c.R, c.S, A, A]:
+  def skipping[A](using c: Effects): Handler[c.P, Skip, A, A] = new Answering[c.P, Skip, A, A]:
     def ret(a: A): A = a
     def value[X](op: Skip[X]): X = op match
       case Skip.Value(a) => a
@@ -74,7 +74,7 @@ class ContBenchmark:
     if n == 0 then pure(true) else inject[Tick +: Pure, Boolean, Tick, Int](Tick.Value(n)).flatMap(_ => isOddC(n - 1))
   def isOddC(n: Int): Cont[Tick +: Pure, Boolean, Boolean, Boolean] =
     if n == 0 then pure(false) else inject[Tick +: Pure, Boolean, Tick, Int](Tick.Value(n)).flatMap(_ => isEvenC(n - 1))
-  val tickingC: Handler[Cont, Tick, Pure, Boolean, Boolean, Boolean] = new Answering[Cont, Tick, Pure, Boolean, Boolean, Boolean]:
+  val tickingC: Handler[[Z] =>> Cont[Pure, Boolean, Boolean, Z], Tick, Boolean, Boolean] = new Answering[[Z] =>> Cont[Pure, Boolean, Boolean, Z], Tick, Boolean, Boolean]:
     def ret(a: Boolean): Boolean = a
     def value[X](op: Tick[X]): X = op match
       case Tick.Value(a) => a

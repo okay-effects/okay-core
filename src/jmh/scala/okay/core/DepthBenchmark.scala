@@ -32,11 +32,11 @@ class DepthBenchmark:
   @Param(Array("0", "1", "4", "16"))
   var depth: Int = 0
 
-  def far[A](using c: Effects): Handler[c.M, Far, c.R, c.S, A, A] = new Answering[c.M, Far, c.R, c.S, A, A]:
+  def far[A](using c: Effects): Handler[c.P, Far, A, A] = new Answering[c.P, Far, A, A]:
     def ret(a: A): A = a
     def value[X](op: Far[X]): X = op match
       case Far.Value(a) => a
-  def near[A](using c: Effects): Handler[c.M, Near, c.R, c.S, A, A] = new Answering[c.M, Near, c.R, c.S, A, A]:
+  def near[A](using c: Effects): Handler[c.P, Near, A, A] = new Answering[c.P, Near, A, A]:
     def ret(a: A): A = a
     def value[X](op: Near[X]): X = op match
       case Near.Value(a) => a

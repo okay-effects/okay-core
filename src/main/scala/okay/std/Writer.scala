@@ -11,7 +11,7 @@ def tell[W](w: W)(using c: Effects, has: Writer % W :? c.R): c.P[Unit] = perform
 def writer[W, A](using c: Effects)(body: c.Body[Writer % W, (List[W], A), A])
     : c.P[(List[W], A)] =
   type Ans = (List[W], A)
-  Effects.handle(new Handler[c.M, Writer % W, c.R, c.S, A, Ans]:
+  Effects.handle(new Handler[c.P, Writer % W, A, Ans]:
     def ret(a: A): Ans = (Nil, a)
     def apply[X](op: Writer[W, X], k: X => c.P[Ans]): c.P[Ans] = op match
       case Writer.Tell(w) => k(()).map((log, a) => (w :: log, a)))(body)

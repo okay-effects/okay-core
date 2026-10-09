@@ -51,15 +51,15 @@ class MonadsBenchmark:
   def isOddT(i: Int)(using c: Effects, t: Tick :? c.R): c.P[Boolean] =
     if i == 0 then c.pure(false) else perform(Tick.Value(i)).flatMap(_ => isEvenT(i - 1))
 
-  def ticking[A](using c: Effects): Handler[c.M, Tick, c.R, c.S, A, A] = new Answering[c.M, Tick, c.R, c.S, A, A]:
+  def ticking[A](using c: Effects): Handler[c.P, Tick, A, A] = new Answering[c.P, Tick, A, A]:
     def ret(a: A): A = a
     def value[X](op: Tick[X]): X = op match
       case Tick.Value(a) => a
-  def tickingK[A](using c: Effects): Handler[c.M, Tick, c.R, c.S, A, A] = new Handler[c.M, Tick, c.R, c.S, A, A]:
+  def tickingK[A](using c: Effects): Handler[c.P, Tick, A, A] = new Handler[c.P, Tick, A, A]:
     def ret(a: A): A = a
     def apply[X](op: Tick[X], k: X => c.P[A]): c.P[A] = op match
       case Tick.Value(a) => k(a)
-  def skipping[A](using c: Effects): Handler[c.M, Skip, c.R, c.S, A, A] = new Answering[c.M, Skip, c.R, c.S, A, A]:
+  def skipping[A](using c: Effects): Handler[c.P, Skip, A, A] = new Answering[c.P, Skip, A, A]:
     def ret(a: A): A = a
     def value[X](op: Skip[X]): X = op match
       case Skip.Value(a) => a

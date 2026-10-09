@@ -30,7 +30,7 @@ class DispatchBenchmark:
   type T = Tick +: Pure
   type At0 = Effects.At[T, Boolean]
 
-  val ticking: Handler[Cont, Tick, Pure, Boolean, Boolean, Boolean] = new Answering[Cont, Tick, Pure, Boolean, Boolean, Boolean]:
+  val ticking: Handler[[Z] =>> Cont[Pure, Boolean, Boolean, Z], Tick, Boolean, Boolean] = new Answering[[Z] =>> Cont[Pure, Boolean, Boolean, Z], Tick, Boolean, Boolean]:
     def ret(a: Boolean): Boolean = a
     def value[X](op: Tick[X]): X = op match
       case Tick.Value(a) => a

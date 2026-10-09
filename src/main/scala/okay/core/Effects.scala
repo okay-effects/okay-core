@@ -42,7 +42,7 @@ abstract class Effects extends Control:
   type Body[E[_], Ans, A] = Handled[E, Ans] ?=> Inner[E +: R, Ans, Ans, A]
   def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X]
   /** a handler of `E` here: the body in its context, over `E +: R` at the answer `Ans`; its answers read by `h` */
-  def handle[E[_], A, Ans](h: Handler[M, E, R, S, A, Ans])(body: Handled[E, Ans] ?=> Inner[E +: R, Ans, Ans, A]): M[R, S, S, Ans]
+  def handle[E[_], A, Ans](h: Handler[P, E, A, Ans])(body: Handled[E, Ans] ?=> Inner[E +: R, Ans, Ans, A]): M[R, S, S, Ans]
   /** this context with the paths of the effects a program needs: the context of an `A ! Es` */
   type Needing[Es <: AnyKind] <: Needs[Es] { type M[X <: Row, I, O, A] = Effects.this.M[X, I, O, A]; type R = Effects.this.R; type S = Effects.this.S }
   def needing[Es <: AnyKind](p: Paths[Es, R]): Needing[Es]
@@ -128,7 +128,7 @@ object Effects:
       def flatMap[I2, B](f: A => Cont[X, I2, I, B]): Cont[X, I2, O, B] = m.flatMap(f)
       def map[B](f: A => B): Cont[X, I, O, B] = m.map(f)
     def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): Cont[R2, S2, S2, X] = Inject(op, in)
-    def handle[E[_], A, Ans](h: Handler[Cont, E, R0, S0, A, Ans])(body: At[E +: R0, Ans] ?=> Cont[E +: R0, Ans, Ans, A]): Cont[R0, S0, S0, Ans] =
+    def handle[E[_], A, Ans](h: Handler[[Z] =>> Cont[R0, S0, S0, Z], E, A, Ans])(body: At[E +: R0, Ans] ?=> Cont[E +: R0, Ans, Ans, A]): Cont[R0, S0, S0, Ans] =
       body(using At()).handle(h)
     // an `At` itself: `perform` and the rest the one implementation there is, called straight
     type Needing[Es <: AnyKind] = At[R0, S0] & Needs[Es]
@@ -153,7 +153,7 @@ object Effects:
   def run[A](body: At[Pure, A] ?=> Cont[Pure, A, A, A]): A = body(using At()).value
 
   /** `handle(h)(body)` in context: the body written in the handler's context, over `E +: c.R`, at its answer */
-  def handle[E[_], A, Ans](using c: Effects)(h: Handler[c.M, E, c.R, c.S, A, Ans])
+  def handle[E[_], A, Ans](using c: Effects)(h: Handler[c.P, E, A, Ans])
             (body: c.Body[E, Ans, A]): c.P[Ans] =
     c.handle(h)(body)
 
@@ -161,12 +161,11 @@ object Effects:
  * delimiter: the body's value `A` to the answer `Ans`; each operation with the rest of the body up to the
  * delimiter, `k`, deep — the handler stays in force through a resumption. Not a node: `handle` folds the tree
  * with it; an operation of another effect goes on outside, its path one shorter */
-trait Handler[M[_ <: Row, _, _, _], E[_], T <: Row, Q, A, Ans] extends Clauses[[Z] =>> M[T, Q, Q, Z], E, A, Ans]
 
 /** A HANDLER'S CLAUSES over the programs `P` outside it, whatever the monad: the body's value to `Ans`, each
  * operation with the rest — what a handler is to a monad that runs it. `Handler` is them over `M` at the row `T`
  * and the answer `Q`; a monad of its own (`okay.zero`'s) takes them as they are */
-trait Clauses[P[_], E[_], A, Ans]:
+trait Handler[P[_], E[_], A, Ans]:
   def ret(a: A): Ans
   def apply[X](op: E[X], k: X => P[Ans]): P[Ans]
 
@@ -175,32 +174,30 @@ trait Value[E[_]]:
   def value[X](op: E[X]): X
 
 /** clauses each `k(value(op))`: an operation answered in place, by its value alone */
-trait Answers[P[_], E[_], A, Ans] extends Clauses[P, E, A, Ans] with Value[E]:
+trait Answering[P[_], E[_], A, Ans] extends Handler[P, E, A, Ans] with Value[E]:
   final def apply[X](op: E[X], k: X => P[Ans]): P[Ans] = k(value(op))
 
 /** a TAIL-RESUMPTIVE handler: each clause is `k(value(op))`, the value of the operation alone — so the operation is
  * ANSWERED IN PLACE: the fold goes on with the rest of the body at once, in its own loop, no resumption built,
  * nothing handed out (Koka's, Effekt's optimisation; here by the handler's declaration) */
-trait Answering[M[_ <: Row, _, _, _], E[_], T <: Row, Q, A, Ans] extends Handler[M, E, T, Q, A, Ans]
-  with Answers[[Z] =>> M[T, Q, Q, Z], E, A, Ans]
 
 extension [E[_], T <: Row, A, Ans](body: Cont[E +: T, Ans, Ans, A])
   /** `body.handle(h)`: the tree folded at its head — a value answered by `ret`, an operation of `E` by its
    * clause with the rest of the body folded the same way, lazily, another effect's forwarded; a capture's body
    * folded in place of the rest, the rest under a delimiter of its own as `k`. The body is read up to its first
    * operation here, the rest when resumed */
-  def handle[Q](h: Handler[Cont, E, T, Q, A, Ans]): Cont[T, Q, Q, Ans] = fold0(body, h.ret, h)
+  def handle[Q](h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, A, Ans]): Cont[T, Q, Q, Ans] = fold0(body, h.ret, h)
 
 /** the fold while nothing is bound under the body — a tail call's, a resumption's — the common heads taken here
  * with no stack made; `fold` from the first bind or map on, with its stack. One method each, every loop a tail
  * call: a helper (an inline one too, through its accessor) would make the answered operation's fold a call, a
  * frame each */
 @scala.annotation.tailrec
-private def fold0[E[_], T <: Row, Q, S, Ans, A](body: Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[Cont, E, T, Q, ?, Ans]): Cont[T, Q, Q, Ans] =
+private def fold0[E[_], T <: Row, Q, S, Ans, A](body: Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans]): Cont[T, Q, Q, Ans] =
   body match
     case o: Suspend[e1, r, i, so, x, a] => o.in match
       case In.Here() => h match
-        case an: Answering[Cont, E, T, Q, ?, Ans] => fold0(o.k(an.value(o.op)), ret, h)
+        case an: Answering[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans] => fold0(o.k(an.value(o.op)), ret, h)
         case _ => clause(o.op, o.k, ret, h)
       case In.There(out) => out.bind(o.op, Refold(o.k, ret, h))
     case Return(a) => Return(ret(a))
@@ -214,11 +211,11 @@ private def fold0[E[_], T <: Row, Q, S, Ans, A](body: Cont[E +: T, S, Ans, A], r
  * operation, a capture get the stack as the rest */
 @scala.annotation.tailrec
 private def fold[E[_], T <: Row, Q, S, Ans, A, T1, X](c: Cont[E +: T, T1, Ans, X], k: Frames[E +: T, X, S, T1, A], ret: A => S,
-                                                    h: Handler[Cont, E, T, Q, ?, Ans]): Cont[T, Q, Q, Ans] =
+                                                    h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans]): Cont[T, Q, Q, Ans] =
   c match
     case o: Suspend[e1, r, i, so, x, a] => o.in match
       case In.Here() => h match
-        case an: Answering[Cont, E, T, Q, ?, Ans] => fold(o.k(an.value(o.op)), k, ret, h)
+        case an: Answering[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans] => fold(o.k(an.value(o.op)), k, ret, h)
         case _ => k match
           case Frames.End() => clause(o.op, o.k, ret, h)
           case _ => clause(o.op, Frames.Then(o.k, k), ret, h)
@@ -234,7 +231,7 @@ private def fold[E[_], T <: Row, Q, S, Ans, A, T1, X](c: Cont[E +: T, T1, Ans, X
         case Frames.Mapped(g, rest) => fold(Return(g(f(a))), rest, ret, h)
     case i: Inject[e1, r, s, x] => i.in match
       case In.Here() => h match
-        case an: Answering[Cont, E, T, Q, ?, Ans] => fold(Return(an.value(i.op)), k, ret, h)
+        case an: Answering[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans] => fold(Return(an.value(i.op)), k, ret, h)
         case _ => clause(i.op, k, ret, h)
       case In.There(out) => out.bind(i.op, Refold(k, ret, h))
     case Bind(m, g) => m match
@@ -249,19 +246,19 @@ private def fold[E[_], T <: Row, Q, S, Ans, A, T1, X](c: Cont[E +: T, T1, Ans, X
     case Reset(b, r) => fold(delimited(b, r), k, ret, h)
 
 /** this handler's operation given to its clause, with the rest as `k`, resumed lazily */
-private def clause[E[_], T <: Row, Q, S, Ans, A, X](op: E[X], k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[Cont, E, T, Q, ?, Ans]): Cont[T, Q, Q, Ans] =
+private def clause[E[_], T <: Row, Q, S, Ans, A, X](op: E[X], k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans]): Cont[T, Q, Q, Ans] =
   h(op, Resume(k, ret, h))
 
 /** the rest of a body folded again by its handler, once the operation it waits on is answered outside: the
  * continuation a forwarded operation goes out with. One object, where a closure over a closure was two. Applied
  * by whoever answers the operation outside — while folding, or inside a resumption of its own, lazy already */
-private final class Refold[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[Cont, E, T, Q, ?, Ans])
+private final class Refold[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans])
   extends (X => Cont[T, Q, Q, Ans]):
   def apply(x: X): Cont[T, Q, Q, Ans] = fold0(k(x), ret, h)
 
 /** a clause's `k`: the rest of the body, folded again by the handler, LAZILY — a `Delay`, built when stepped, so a
  * clause that keeps `k` (a generator's next step) runs nothing by making it. One object and its delay */
-private final class Resume[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[Cont, E, T, Q, ?, Ans])
+private final class Resume[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans])
   extends (X => Cont[T, Q, Q, Ans]):
   def apply(x: X): Cont[T, Q, Q, Ans] = Delay(() => fold0(k(x), ret, h))
 

@@ -17,7 +17,7 @@ def collect[W, A](using c: Effects)(body: c.Body[Emit % W, (List[W], A), A])
     : c.P[(List[W], A)] =
   type Ans = (List[W], A)
   c.delay:
-    Effects.handle(new Answering[c.M, Emit % W, c.R, c.S, A, Ans]:
+    Effects.handle(new Answering[c.P, Emit % W, A, Ans]:
       private val out = List.newBuilder[W]
       def ret(a: A): Ans = (out.result(), a)
       def value[X](op: Emit[W, X]): X = op match
@@ -35,7 +35,7 @@ def generate[W](using c: Effects)(body: c.Body[Emit % W, Gen[c.M, W, c.R], Unit]
          (using c.S =:= Gen[c.M, W, c.R]): c.P[Gen[c.M, W, c.R]] =
   type G = Gen[c.M, W, c.R]
   val same = summon[c.S =:= G]
-  c.handle(new Handler[c.M, Emit % W, c.R, c.S, Unit, G]:
+  c.handle(new Handler[c.P, Emit % W, Unit, G]:
     def ret(a: Unit): G = Gen.Done()
     def apply[X](op: Emit[W, X], k: X => c.P[G]): c.P[G] = op match
       case Emit.Yield(w) => c.pure(Gen.Next(w, same.substituteCo[[Q] =>> c.M[c.R, Q, Q, G]](k(())))))(body)

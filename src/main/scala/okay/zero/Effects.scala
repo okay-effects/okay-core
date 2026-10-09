@@ -5,11 +5,11 @@ package okay.zero
  * outside, one handler shorter — so the handler is the one the program RUNS under, and a reset between passes it */
 
 /** a handler of `E` over programs `P` outside it: the body's value to `Ans`, each operation with the rest — deep.
- * Master's clauses, `okay.core.Clauses`: a master's handler in a context of `Fx` is one as it is */
-type Handler[P[_], E[_], A, Ans] = okay.core.Clauses[P, E, A, Ans]
+ * Master's clauses, `okay.core.Handler`: a master's handler in a context of `Fx` is one as it is */
+type Handler[P[_], E[_], A, Ans] = okay.core.Handler[P, E, A, Ans]
 
-/** a TAIL-RESUMPTIVE handler: each clause `k(value(op))`, the value of the operation alone — `okay.core.Answers` */
-type Answering[P[_], E[_], A, Ans] = okay.core.Answers[P, E, A, Ans]
+/** a TAIL-RESUMPTIVE handler: each clause `k(value(op))`, the value of the operation alone — `okay.core.Answering` */
+type Answering[P[_], E[_], A, Ans] = okay.core.Answering[P, E, A, Ans]
 
 /** `perform(op)`: an operation of `E`, in the context — its row has `E` */
 def perform[E[_], X](op: E[X])(using c: Ctx, in: In[E, c.R]): c.P[X] = request(op, in)

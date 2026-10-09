@@ -37,11 +37,11 @@ object Async:
     given Effects.At[Fails, Unit] = Effects.At()
     // the run up to its end or to a wait, a failure raised in it `done`'s, the rest of the run aborted
     def go(c: Free[Fails, Unit]): Unit =
-      c.handle(new Handler[Cont, Throws % Throwable, Pure, Unit, Unit, Unit]:
+      c.handle(new Handler[[Z] =>> Cont[Pure, Unit, Unit, Z], Throws % Throwable, Unit, Unit]:
         def ret(u: Unit): Unit = ()
         def apply[X](op: Throws[Throwable, X], k: X => Free[Pure, Unit]): Free[Pure, Unit] = op match
           case Throws.Raise(e) => done(Left(e)); Cont.pure(())).value
-    val h = new Handler[Cont, Async, Fails, Unit, A, Unit]:
+    val h = new Handler[[Z] =>> Cont[Fails, Unit, Unit, Z], Async, A, Unit]:
       def ret(a: A): Unit = done(Right(a))
       def apply[X](op: Async[X], k: X => Free[Fails, Unit]): Free[Fails, Unit] =
         def resume(r: Either[Throwable, X]): Free[Fails, Unit] = r.fold(raise[Throwable, Unit], k)
