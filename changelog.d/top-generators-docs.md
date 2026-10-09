@@ -15,3 +15,6 @@
   `Stream[W]` in okay.std, `Next(w, rest: () => Stream[W])` or `Done()`: the rest closed over its top's run, so
   the type names no monad; `stream(top)(body)` makes one, `take(n)` pulls in a loop. `okay.cont.Gen`
   and `okay.zero.Gen` gone; `TestStreamOn` on Cont, Cont0, Ref and Cps0.
+- Measured (`MonadsBenchmark.generate`, 1000 elements summed in a loop): through `Stream` 16.6 µs on Cont, 15.2 on
+  Cont0, against 14.5 and 14.1 with a consumer type of the monad's own — +7–14%, +24 B an element: the closure over
+  the top's run. The full run at 178f6da shows +50–78%: its consumer built a `List` (`take(n).sum`), not the stream.

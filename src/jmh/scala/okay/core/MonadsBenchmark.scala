@@ -219,11 +219,22 @@ class MonadsBenchmark:
   def forever(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
     yield_(a).flatMap(_ => forever(b, a + b))
 
-  /** `n` elements of an infinite generator pulled, each a run of the rest: the consumer's type the monad's own */
+  /** `n` elements of an infinite generator pulled, each a run of the rest: one `Stream` on either monad */
   @Benchmark
   def generate(): Long = backend match
-    case "cont" => okay.std.stream[Long](okay.cont.top)(forever(0, 1)).take(n).sum
-    case _ => okay.std.stream[Long](okay.zero.top)(forever(0, 1)).take(n).sum
+    case "cont" => sum(okay.std.stream[Long](okay.cont.top)(forever(0, 1)))
+    case _ => sum(okay.std.stream[Long](okay.zero.top)(forever(0, 1)))
+
+  /** the first `n` elements summed, each pulled by a run of the rest: no list made */
+  private def sum(s0: okay.std.Stream[Long]): Long =
+    var s = s0
+    var i = 0
+    var sum = 0L
+    while i < n do
+      s match
+        case okay.std.Stream.Next(w, rest) => sum += w; i += 1; if i < n then s = rest()
+        case okay.std.Stream.Done() => i = n
+    sum
 
   /** a shift under a reset: the rest 256 maps, `k` 8 times; the rest one map, `k` once */
   @Benchmark
