@@ -60,7 +60,8 @@ The same programs, `MonadsBenchmark` (bench.d, 2026-10-09), ns an operation unle
 | across 16 handlers | 90.4 | 5.5 | 16× |
 | answered in place / by a general clause | 6.50 / 8.99 | 5.43 / 7.72 | 1.2× |
 | state / writer / collect | 15.5 / 20.0 / 13.1 | 14.1 / 17.3 / 10.5 | 1.1–1.25× |
-| 8 queens (a run) | 255 µs | 191 µs | 1.3× |
+| 8 queens (a run) | 231 µs | 145 µs | 1.6× |
+| choose | 24.4 | 22.6 | 1.1× |
 | a shift under a reset, 16 / 256 maps, `k` 8 times (a run) | 439 / 6050 ns | 323 / 4740 ns | 1.3× |
 | a shift under a handler, 16 maps, `k` 8 times (a run) | 411 ns | 366 ns | 1.1× |
 
@@ -77,7 +78,7 @@ executable definition beside it.
 
 ## Where `Cont` is better
 
-- **Speed in three places**, by 3–17%: `choose` (29.2 against 34.3 ns), `throws` (13.7 against 14.4 ns), a shallow
+- **Speed in two places**, by 5–12%: `throws` (13.7 against 14.4 ns), a shallow
   shift directly under a handler (122 against 139 ns a run). `Cont` folds a handler when the program is built;
   `Cont0` makes a delimiter node the machine enters — an entry, a frame stack, a resumption a little larger.
 - **Simpler types.** No levels: a `Cont` program's type does not depend on how many delimiters it is under.

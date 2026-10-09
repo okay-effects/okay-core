@@ -70,13 +70,13 @@ only the handler's `ret` (a `raise` in `k` aborts the shift's body). `shift0` is
 | a generator, an element pulled / pushed | 15.2 / 9.3 | 14.6 / 7.8 |
 | an ask under `local` (an interceptor) / under the reader alone | 16.6 / 4.6 | 15.0 / 4.9 |
 | `state` as a `Program`: the state first in the row / third | 23.0 / 38.9 | 23.9 / 39.7 |
-| 8 queens (a run) | 282 µs | 184 µs |
+| 8 queens (a run) | 231 µs | 145 µs |
 | a shift under a reset, 16 maps, `k` 8 times (a run) | 453 ns | 338 ns |
-| choose, throws | 29.5, 14.3 | 34.6, 15.8 |
+| choose, throws | 24.4, 14.3 | 22.6, 15.8 |
 | pure binds | 3.33 | 3.32 |
 
-`Cont0` is 2–16× faster where handlers are layered and faster in most of the rest; `Cont` is ahead by 3–17% in
-`choose`, `throws` and a shallow shift directly under a handler.
+`Cont0` is 2–16× faster where handlers are layered and faster in most of the rest; `Cont` is ahead by 5–12% in
+`throws` and a shallow shift directly under a handler.
 
 ## Tests
 
