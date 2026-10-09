@@ -9,6 +9,9 @@ Final tagless: a program is written against the context, `(using c: Effects)`, w
 program here, `c.Effs` the row of effects, `c.S` the answer. A handler is a delimiter that answers its effect's
 operations, a reset one that answers none — so `Effects` is `Control` with handlers.
 
+Documentation: [docs/](docs/README.md) — a [guide](docs/guide.md), [what `Cont0` does better than
+`Cont`](docs/cont0-vs-cont.md), the [architecture](docs/architecture.md).
+
 ## Layout
 
 | Package | What is in it |
