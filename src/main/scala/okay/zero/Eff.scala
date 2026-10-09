@@ -98,38 +98,29 @@ private[zero] def bail[RB <: Row, L, I0, V, A, T, X](c: Cont0[T, Cont0[L, L, Res
 
 // THE DELIMITERS' READING of their answers as values — for what the machine does not take, and for shift0
 
-/** what a delimiter does with an operation reaching it: `again` reads the rest's answers as it reads these */
-private[zero] trait Requests[RB <: Row, R <: Row, J, T, V]:
-  def apply[E[_], X](op: E[X], in: In[E, RB], k: X => Eff[R, J, T, T, Res[RB, Level[R, J, T], V]],
-                     again: Eff[R, J, T, T, Res[RB, Level[R, J, T], V]] => Eff[R, J, T, T, V]): Eff[R, J, T, T, V]
-
-/** a delimiter's reading of its body's answers: its answer, its own; an operation, by `on`; a `shift` up to it —
- * Danvy–Filinski's, the same for every delimiter: the shift's body under this delimiter again, `k` the rest
- * resumed inside it */
-private[zero] def read[RB <: Row, R <: Row, J, T, V](out: Eff[R, J, T, T, Res[RB, Level[R, J, T], V]], on: Requests[RB, R, J, T, V])
-    : Eff[R, J, T, T, V] =
+/** a delimiter's reading of its body's answers: its answer, its own; an operation, by `on` — the rest read again
+ * by it; a `shift` up to it — Danvy–Filinski's, the same for every delimiter: the shift's body under this delimiter
+ * again, `k` the rest resumed inside it */
+private[zero] def read[RB <: Row, R <: Row, J, T, V](out: Eff[R, J, T, T, Res[RB, Level[R, J, T], V]],
+    on: [E[_], X] => (E[X], In[E, RB], X => Eff[R, J, T, T, Res[RB, Level[R, J, T], V]]) => Eff[R, J, T, T, V]): Eff[R, J, T, T, V] =
   Bind(out, (res: Res[RB, Level[R, J, T], V]) => res match
     case Res.Done(v) => Return(v)
-    case r: Res.Req[rb, j, v, e, x] => on(r.op, r.in, r.k, read(_, on))
+    case r: Res.Req[rb, j, v, e, x] => on[e, x](r.op, r.in, r.k)
     case c: Res.Ctl[rb, j, v, a, i] => read(again(c), on))
 
 /** a handler's reading: its own by the clause, `k` the rest read again — deep; another's asked again outside, its
  * path one shorter */
 private[zero] def readHand[E[_], R <: Row, J, T, Ans](out: Eff[R, J, T, T, Res[E +: R, Level[R, J, T], Ans]],
     h: Handler[[X] =>> Eff[R, J, T, T, X], E, ?, Ans]): Eff[R, J, T, T, Ans] =
-  read(out, new Requests[E +: R, R, J, T, Ans]:
-    def apply[E2[_], X](op: E2[X], in: In[E2, E +: R], k: X => Eff[R, J, T, T, Res[E +: R, Level[R, J, T], Ans]],
-                        again: Eff[R, J, T, T, Res[E +: R, Level[R, J, T], Ans]] => Eff[R, J, T, T, Ans]): Eff[R, J, T, T, Ans] =
-      in match
-        case In.Here() => h(op, x => again(k(x)))
-        case In.There(o) => request[E2, R, J, T, X](op, o).flatMap(x => again(k(x))))
+  read[E +: R, R, J, T, Ans](out, [E2[_], X] => (op: E2[X], in: In[E2, E +: R], k: X => Eff[R, J, T, T, Res[E +: R, Level[R, J, T], Ans]]) =>
+    in match
+      case In.Here() => h(op, x => readHand(k(x), h))
+      case In.There(o) => request[E2, R, J, T, X](op, o).flatMap(x => readHand(k(x), h)))
 
 /** a reset's reading: every operation asked again outside — its path the same, the row is — the rest under it again */
 private[zero] def passAll[R <: Row, J, T, O](out: Eff[R, J, T, T, Res[R, Level[R, J, T], O]]): Eff[R, J, T, T, O] =
-  read(out, new Requests[R, R, J, T, O]:
-    def apply[E[_], X](op: E[X], in: In[E, R], k: X => Eff[R, J, T, T, Res[R, Level[R, J, T], O]],
-                       again: Eff[R, J, T, T, Res[R, Level[R, J, T], O]] => Eff[R, J, T, T, O]): Eff[R, J, T, T, O] =
-      request[E, R, J, T, X](op, in).flatMap(x => again(k(x))))
+  read[R, R, J, T, O](out, [E[_], X] => (op: E[X], in: In[E, R], k: X => Eff[R, J, T, T, Res[R, Level[R, J, T], O]]) =>
+    request[E, R, J, T, X](op, in).flatMap(x => passAll(k(x))))
 
 /** a `shift`'s body under its delimiter again, its value the delimiter's answer, `k` the rest resumed inside */
 private def again[RB <: Row, J, V, A, I](c: Res.Ctl[RB, J, V, A, I]): Cont0[J, J, Res[RB, J, V]] =
