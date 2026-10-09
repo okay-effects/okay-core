@@ -24,3 +24,12 @@ over `F[_]` (tofu). They meet in two additions:
   proper type, so an effect of two parameters is a Scala 2 type lambda; infix types of one precedence; okay.zero's
   `export` of the rows crashed the reader (`addChild inapplicable for type Row`) — imported instead. `sbt test`
   runs both.
+- Then measured and made faster (MonadsBenchmark, ns an operation, Cont / Cont0):
+  - an interceptor on Cont0 a node of the machine (`Icpt`, `ByIntercept`): `n` asks under `local` 47.6 → 14.6
+    (Cont 15.9–17.9; asks under the reader alone 4.4 / 4.6). At its path its clause; another operation on as a
+    reset's; the handler at its path masked in `Ev`, so not answered in place past it; a shift up to it by the
+    definition. `TestAgree` makes interceptors too — over 300 in its 1 000 programs — and the four monads agree.
+  - `Program`: a leaf (a value, an operation) built at once, not delayed; a bind on a bind reassociated as it is
+    made, up to 64 deep (`Program.Fused` — past it the closures composed would call each other a frame each: a
+    left-nested chain of 100 000 overflowed without the bound). `state`'s loop as a `Program` 32.3 → 22.7 / 23.0,
+    502 → 342 B, against 15.4 / 14.1 written in context.
