@@ -1,8 +1,8 @@
 # okay-core
 
 Algebraic effects and handlers for Scala 3, with delimited control — Danvy–Filinski shift/reset, Asai–Kameyama
-answer types — written ONCE over an interface and run on SEVERAL MONADS: `Cont` (shift/reset), `Cont0`
-(Materzok–Biernacki's shift0 and `$`, with a machine) and a reference on `Cont0` (its definition, run as it is). No
+answer types — written ONCE over an interface and run on SEVERAL MONADS: `Cont` (shift/reset) and `Cont0`
+(Materzok–Biernacki's shift0 and `$`, with a machine) — and, in the tests, two references. No
 macros, no casts, no runtime class tests: an operation carries a path to its effect in the row, a handler follows it.
 
 Final tagless: a program is written against the context, `(using c: Effects)`, which is the instance: `c.Prog[A]` a
@@ -16,7 +16,7 @@ operations, a reset one that answers none — so `Effects` is `Control` with han
 | `okay.core` | the interface: `Row`, `+:`, `Pure`, `In` and `E :? R`, `%`, `Paths` (`Rows.scala`); `Context` (`Effs`, `S`, `Inner`, `Prog`), `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`, `Body`), `Handler`, `Answering`, `Needs`, `A ! Es`, `perform`, `pure` |
 | `okay.std` | the effects, written once over the interface |
 | `okay.cont` | `Cont[R, I, O, A]`, its loop and fold; `At`, the instance; `run`; `Async.run` |
-| `okay.zero` | `Cont0[I, O, A]` (the kernel, open), the machine; `At`, the instance, `run`; `Ref`, the reference, `Ref.run`; `shift0`; `Async.run` |
+| `okay.zero` | `Cont0[I, O, A]` (the kernel, open), the machine; `At`, the instance, `run`; `shift0`; `Async.run` |
 
 A context's delimiters have contexts of their own, members of it: `Handled[E, S]` (a handler's body), `Reset[S]` (a
 reset's), `Answer[S]` (a shift's); a handler's and a reset's body is in `Inner`, the monad ONE LEVEL IN — `Cont`'s
@@ -67,7 +67,6 @@ Run on a monad of your choice — the same program, the same answer:
 ```scala
 okay.cont.run(state[Int](0)(counting(10)))      // (10, 10), on Cont
 okay.zero.run(state[Int](0)(counting(10)))   // (10, 10), on Cont0
-okay.zero.Ref.run(state[Int](0)(counting(10))) // (10, 10), on the reference
 ```
 
 A handler that only answers — each clause `k(value(op))` — is an `Answering`: its operations answered in place,
@@ -85,7 +84,9 @@ on `Cont0` across any handlers and resets between.
 Written once: `TestEffectsOn`, `TestContextOn`, `TestControlOn`, `TestTogetherOn`, `TestDynamicOn`, `TestPStateOn`
 take a `Backend` (a monad's run) and run on `Cont`, on `Cont0`, on the reference and on `Cps0` — shift0 and `$` in
 CPS from the textbook, functions `(A => I) => O`, no code of `Cont` nor of `Cont0`: the four agree (`Cps0`, not stack
-safe, skips the tests of thousands of steps); `TestAsyncOn` on `Cont` and `Cont0`. `MonadsBenchmark` runs the same programs, `backend=cont|zero|ref` (ns an operation; the captures a run):
+safe, runs its tests on a thread of a large stack); `TestAsyncOn` on `Cont` and `Cont0`. The references are in the tests: `Ref` (`Cont0` by the kernel alone, its delimiters their shift0 programs read) and
+`Cps0`. `MonadsBenchmark` runs the same programs, `backend=cont|zero`; `ref` measured when it was a backend there (ns
+an operation; the captures a run):
 
 | | cont | zero | ref |
 |---|---|---|---|

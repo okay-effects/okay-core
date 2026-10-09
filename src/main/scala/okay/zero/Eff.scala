@@ -74,7 +74,8 @@ private[zero] def shift0Program[R <: Row, J, T, A, S, O](c: Ctl0[R, J, T, A, S, 
   Shift0[Level[R, J, T], Level[R, J, T], Res[R, Level[R, J, T], S], Level[R, Level[R, J, T], O], A](
     k => c.f(a => passAll(k(a))).map(o => Res.Done(o)))
 
-// THE DELIMITERS AS THEIR shift0 PROGRAMS, no machine: a handler, a reset, a `$` whose answers are read
+// THE DELIMITERS AS THEIR shift0 PROGRAMS, no machine: a handler, a reset, a `$` whose answers are read — their
+// definitions, what the machine runs fast; the reference in the tests (`Ref`) is made of them
 
 /** a handler of `E`: `Done∘h.ret $ body`, its answers read by `h` */
 private[zero] def handleRead[E[_], R <: Row, J, T, A, Ans](h: Handler[[X] =>> Eff[R, J, T, T, X], E, A, Ans],

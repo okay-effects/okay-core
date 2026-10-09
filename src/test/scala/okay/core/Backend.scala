@@ -8,14 +8,21 @@ trait Backend:
   /** whether a run of thousands of steps keeps its stack: the textbook CPS does not */
   def stackSafe: Boolean = true
 
-/** a suite written once, run on the monad `on`: its tests of thousands of steps skipped where the stack would not
- * keep */
+/** a suite written once, run on the monad `on`: on one that is not stack safe, each test on a thread of a stack of
+ * its own, a large one — the CPS of a program as deep as its run */
 abstract class BackendSuite(on: Backend) extends munit.FunSuite:
   def run[A](body: (c: Effects { type Effs = Pure; type S = A }) ?=> c.Prog[A]): A = on.run(body)
-  private val thousands = """\d+ 000""".r
   override def munitTestTransforms: List[TestTransform] = super.munitTestTransforms :+ TestTransform("stack", t =>
-    if on.stackSafe || thousands.findFirstIn(t.name).isEmpty then t
-    else t.withBody(() => { assume(false, "thousands of steps: this monad is not stack safe"); t.body() }))
+    if on.stackSafe then t else t.withBody(() => BackendSuite.onLargeStack(t.body())))
+
+object BackendSuite:
+  /** `a` on a thread of a 2 GB stack, its value or its failure here */
+  def onLargeStack[A](a: => A): A =
+    var result: Option[Either[Throwable, A]] = None
+    val thread = Thread(null, () => result = Some(try Right(a) catch case e: Throwable => Left(e)), "large-stack", 2L << 30)
+    thread.start()
+    thread.join()
+    result.get.fold(e => throw e, identity)
 
 object Backend:
   /** `Cont`: `Effects.At` the context */
