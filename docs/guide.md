@@ -211,8 +211,9 @@ pstate(7)(st => st.get[Int].flatMap(n => st.put[Int]("x" * n)).flatMap(_ => st.g
 ## Generators
 
 `stream(top)(body)` makes the body a `Stream[W]` of its elements, on the monad of the top given — `okay.zero.top`,
-`okay.cont.top`, or a context's own `c.top`. `Stream` is one type whatever the monad: `Next(w, rest)` or `Done()`,
-`rest: () => Stream[W]` the rest of the body closed over its top's run (`Top.run`), so nothing names the monad.
+`okay.cont.top`, or a context's own `c.top`. `Stream` is one type whatever the monad: a `Next` — the element `w` and
+`rest()`, the rest of the body run by its top's run (`Top.run`), kept in the `Next` — or `Done`; nothing names the
+monad.
 Nothing runs past an element until the rest is pulled; `take(n)` pulls in a loop.
 
 ```scala

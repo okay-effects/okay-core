@@ -18,3 +18,6 @@
 - Measured (`MonadsBenchmark.generate`, 1000 elements summed in a loop): through `Stream` 16.6 µs on Cont, 15.2 on
   Cont0, against 14.5 and 14.1 with a consumer type of the monad's own — +7–14%, +24 B an element: the closure over
   the top's run. The full run at 178f6da shows +50–78%: its consumer built a `List` (`take(n).sum`), not the stream.
+- Then `Stream` one object an element: `Next` an abstract class, `w` and `rest()`; `stream` makes one that keeps the
+  rest and its top, no closure. `generate` 14.6 µs on Cont, 13.8 on Cont0, 224 and 208 B an element — as the monads'
+  own consumer types (14.5, 14.1; 224, 208 B): one type for every monad at no cost.
