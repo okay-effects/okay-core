@@ -46,3 +46,6 @@
   source cancelled by `take` or `close()`, the run aborted where it waits (`Async.Cancelled`). `Generator.take` drops
   the rest in the handler — no `Stream` an element: 216 / 184 B an element against 296 / 280 B pulled into a list;
   times on a loaded machine (load 9.5) only roughly: 15.4 / 14.8 ns against 25.9 / 21.1 before.
+- Then the names of okay's okay-stream: `Source[W]` the program that yields (was `Yields`; `Async.Source` with
+  `Async`), `Stream[W]` what is consumed (was `Source`), `Step[W]` where a started one stands (was `Stream`, as
+  okay's `StreamCont.Step`); `stream(top)(source)` and `Async.stream` make a `Generator` (were `source`).

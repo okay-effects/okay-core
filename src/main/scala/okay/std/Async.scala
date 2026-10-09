@@ -61,21 +61,21 @@ object Async:
                 case _ => f.pure(()))(body)
     go(handled)
 
-  /** a stream's body over `Async`: a program yielding `W`, waiting when it will */
-  type Yields[W] = (c: Effects { type Effs = Emit % W +: Async +: Fails; type S = Unit }) ?=> c.Prog[Unit]
+  /** a source over `Async`: a program yielding `W`, waiting when it will — run by `Async.stream` */
+  type Source[W] = (c: Effects { type Effs = Emit % W +: Async +: Fails; type S = Unit }) ?=> c.Prog[Unit]
 
   /** a context of `runAsync`'s body */
   type In = Effects { type Effs = Async +: Fails; type S = Unit }
 
   /** the end of a stream's run asked by its consumer: the failure of the `yield_` it waits at, the run aborted
    * there as by any failure; a run ended by it is a stream ended */
-  object Cancelled extends RuntimeException("Async source cancelled", null, false, false)
+  object Cancelled extends RuntimeException("Async stream cancelled", null, false, false)
 
   /** AN ASYNCHRONOUS GENERATOR, NOT STARTED: a body that yields and waits, on the monad of `top`. `map` and `filter`
    * fused into what its handler does with an element. Pulled (`iterator`, `take`): a `yield_` waits until the next
    * element is asked for — never ahead of its consumer — and `close()` cancels the rest. Pushed (`subscribe`, not
    * waiting; `foreach`, `fold`, `toList`, waiting for the end) */
-  abstract class Generator[W] extends Source[W]:
+  abstract class Generator[W] extends Stream[W]:
     val top: Top
     /** the body under its `Emit` handler, each element and the rest through `out` */
     def handled(out: (c: In) ?=> (W, c.Prog[Unit]) => c.Prog[Unit])(using c: In): c.Prog[Unit]
@@ -88,43 +88,43 @@ object Async:
       subscribe(f)(result.complete)
       result.get().fold(e => throw e, identity)
 
-    def iterator: Source.Iter[W] = new Source.Iter[W]:
-      private enum Step:
+    def iterator: Stream.Iter[W] = new Stream.Iter[W]:
+      private enum Pulled:
         case Next(w: W, resume: Either[Throwable, Unit] => Unit)
         case End(r: Either[Throwable, Unit])
-      private val steps = java.util.concurrent.LinkedBlockingQueue[Step]()
+      private val steps = java.util.concurrent.LinkedBlockingQueue[Pulled]()
       @volatile private var cancelled = false
       private var started = false
-      private var current: Step | Null = null
+      private var current: Pulled | Null = null
       private var resume: Either[Throwable, Unit] => Unit = _ => ()
       private def ask(): Unit =
         if !started then
           started = true
           runAsync(using top)(handled((w, rest) =>
-            await[Unit](cb => if cancelled then cb(Left(Cancelled)) else steps.put(Step.Next(w, cb))).flatMap(_ => rest)))(r =>
-            steps.put(Step.End(r)))
+            await[Unit](cb => if cancelled then cb(Left(Cancelled)) else steps.put(Pulled.Next(w, cb))).flatMap(_ => rest)))(r =>
+            steps.put(Pulled.End(r)))
         else resume(Right(()))
         current = steps.take()
       def hasNext: Boolean =
         if current == null then ask()
         current match
-          case Step.Next(_, cb) => resume = cb; true
-          case Step.End(Left(e)) if e ne Cancelled => throw e
+          case Pulled.Next(_, cb) => resume = cb; true
+          case Pulled.End(Left(e)) if e ne Cancelled => throw e
           case _ => false
       def next(): W =
         if !hasNext then throw java.util.NoSuchElementException("Async.Generator")
         current match
-          case Step.Next(w, _) => current = null; w
+          case Pulled.Next(w, _) => current = null; w
           case _ => throw java.util.NoSuchElementException("Async.Generator")
       /** the run cancelled where it waits, and waited for to its end */
       override def close(): Unit =
         if started && !cancelled then
           cancelled = true
-          var step: Step = current match
+          var step: Pulled = current match
             case null => resume(Left(Cancelled)); steps.take()
-            case s: Step => s
+            case s: Pulled => s
           while step match
-              case Step.Next(_, cb) => cb(Left(Cancelled)); step = steps.take(); true
+              case Pulled.Next(_, cb) => cb(Left(Cancelled)); step = steps.take(); true
               case _ => false
           do ()
           current = step
@@ -143,8 +143,8 @@ object Async:
           src.handled((w, rest) => if p(w) then out(w, rest) else rest)
     override def withFilter(p: W => Boolean): Generator[W] = filter(p)
 
-  /** `source(t)(body)`: the body, yielding and waiting, as an asynchronous `Generator` on the monad of `t` */
-  def source[W](t: Top)(body: Yields[W]): Generator[W] = new Generator[W]:
+  /** `stream(t)(body)`: the body, yielding and waiting, as an asynchronous `Generator` on the monad of `t` */
+  def stream[W](t: Top)(body: Source[W]): Generator[W] = new Generator[W]:
     val top: t.type = t
     def handled(out: (c: In) ?=> (W, c.Prog[Unit]) => c.Prog[Unit])(using c: In): c.Prog[Unit] =
       Effects.handle(new Handler[c.Prog, Emit % W, Unit, Unit]:

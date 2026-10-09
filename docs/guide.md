@@ -87,9 +87,9 @@ At the top `run` sometimes needs the answer named: `okay.cont.run[Int](...)`.
 | `Writer[W]` | `tell(w)` | `writer[W, A](body)` → `(List[W], A)` |
 | `Throws[E]` | `raise[E, A](e)` | `throws[E, A](body)` → `Either[E, A]` |
 | `Choose` | `among(as)` — multi-shot | `choose[A](body)` → `Seq[A]`, every path |
-| `Emit[W]` | `yield_(w)` | `collect(body)` → `(List[W], A)`; `source(top)(body)` → `Generator[W]`, pushed or pulled; `generate(next, done)(body)` — lazy |
+| `Emit[W]` | `yield_(w)` | `collect(body)` → `(List[W], A)`; `stream(top)(source)` → `Generator[W]`, pushed or pulled; `generate(next, done)(body)` — lazy |
 | `PState` | `st.get[S]`, `st.put[S](s2)` | `pstate(s0)(st => body)` — the state's *type* may change |
-| `Async` | `async(a)`, `await(register)` | `Async.run(body)` on the context's own monad; `Async.source(top)(body)` |
+| `Async` | `async(a)`, `await(register)` | `Async.run(body)` on the context's own monad; `Async.stream(top)(source)` |
 
 The order of handlers is the semantics: `state(throws(body))` keeps the state of a failed body,
 `throws(state(body))` loses it.
@@ -211,40 +211,40 @@ a `get` of the wrong type does not compile.
 okay.zero.run[(String, Int)](pstate(7)(st => st.get[Int].flatMap(n => st.put[Int]("x" * n)).flatMap(_ => st.get[String]).map(_.length)))   // ("xxxxxxx", 7)
 ```
 
-## Generators
+## Streams
 
-`source(top)(body)` makes the body a `Generator[W]`: a source of its elements, not started, on the monad of the top
-given — `okay.zero.top`, `okay.cont.top`, or a context's own `c.top`. A value: each consumption runs it from the
+A **source** is a program that yields: `Source[W]`, under `Emit % W`. `stream(top)(source)` makes it a
+`Generator[W]` — a `Stream[W]` of its elements, not started, on the monad of the top given — `okay.zero.top`, `okay.cont.top`, or a context's own `c.top`. A value: each consumption runs it from the
 beginning.
 
 ```scala
 def fibs(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
   yield_(a).flatMap(_ => fibs(b, a + b))
 
-source[Long](okay.zero.top)(fibs(0, 1)).take(8)   // List(0, 1, 1, 2, 3, 5, 8, 13)
-source[Long](okay.cont.top)(fibs(0, 1)).take(8)   // the same, on Cont
+stream[Long](okay.zero.top)(fibs(0, 1)).take(8)   // List(0, 1, 1, 2, 3, 5, 8, 13)
+stream[Long](okay.cont.top)(fibs(0, 1)).take(8)   // the same, on Cont
 ```
 
-Every `Source[W]` is consumed the same way:
+Every `Stream[W]` is consumed the same way:
 
 - **pushed** — `foreach`, `fold`, `toList`: the body run to its end, each element handed on where it is yielded.
-  For a source that ends; the fastest pass.
+  For a stream that ends; the fastest pass.
 - **pulled** — `take(n)`, `iterator`: as far as asked; the rest never runs. `iterator` is closeable: `close()`
   ends the run where it is.
-- `map`, `filter`, `flatMap`, for-comprehensions; `Source.of(ws*)`.
+- `map`, `filter`, `flatMap`, for-comprehensions; `Stream.of(ws*)`.
 
 ```scala
-(for n <- source[Long](okay.zero.top)(fibs(0, 1)) if n % 2 == 0; s <- Source.of(n, -n) yield s).take(6)   // List(0, 0, 2, -2, 8, -8)
+(for n <- stream[Long](okay.zero.top)(fibs(0, 1)) if n % 2 == 0; s <- Stream.of(n, -n) yield s).take(6)   // List(0, 0, 2, -2, 8, -8)
 ```
 
 A generator's `map` and `filter` are fused: composed into what its handler does with an element, no object an
-element of their own. `start` runs a generator to its first element, a `Stream[W]` — one type whatever the monad:
+element of their own. `start` runs a generator to its first element, a `Step[W]` — one type whatever the monad:
 an enum, `Next(w, top, rest)` (the rest a program of `top`'s monad, its type `top`'s) or `Done()`; `pull()` runs the
-rest, as often as asked. A `Stream` made from another (`map`, `flatMap`, `++`, `Stream.of`) has a third case,
+rest, as often as asked. A `Step` made from another (`map`, `flatMap`, `++`, `Step.of`) has a third case,
 `Later(w, rest)`, its rest a function: the rest of a started generator is a program already made, its answer
-fixed, so mapping it wraps each element; mapping a `Source` changes what the handler makes.
+fixed, so mapping it wraps each element; mapping a `Stream` changes what the handler makes.
 
-Effects the body handles itself are in the source: `source(top)(reader(5)(body))`. A `state` there is one cell a
+Effects the source handles itself are in the stream: `stream(top)(reader(5)(body))`. A `state` there is one cell a
 run. Under effects still to be handled, `generate(next, done)(body)`: a generator of the consumer's own type.
 
 ## Async
@@ -258,9 +258,9 @@ def io(using c: Effects, a: Async :? c.Effs): c.Prog[Int] = async(20).flatMap(x 
 okay.zero.run(throws[Throwable, Int](Async.run(io)))   // Right(21)
 ```
 
-### Asynchronous sources
+### Asynchronous streams
 
-A body may yield and wait: `Emit` and `Async` together. `Async.source(top)(body)` is a `Source` as above, its
+A source may yield and wait — `Async.Source[W]`, `Emit` and `Async` together. `Async.stream(top)(source)` is a `Stream` as above, its
 `map` and `filter` fused. Pulled, a `yield_` waits until the next element is asked for — the body never runs
 ahead of its consumer — and `take` or `close()` cancels the rest: the run aborted where it waits. Pushed,
 `subscribe(f)(done)` runs it without waiting, `f` of each element in the thread the run is in; `foreach`, `fold`,
@@ -270,7 +270,7 @@ ahead of its consumer — and `take` or `close()` cancels the rest: the run abor
 def ticks(using c: Effects, e: Emit % Int :? c.Effs, a: Async :? c.Effs): c.Prog[Unit] =
   async(1).flatMap(yield_(_)).flatMap(_ => async(2).flatMap(yield_(_)))
 
-Async.source[Int](okay.zero.top)(ticks).toList   // List(1, 2)
+Async.stream[Int](okay.zero.top)(ticks).toList   // List(1, 2)
 ```
 
 ## Notes

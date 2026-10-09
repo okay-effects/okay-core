@@ -37,7 +37,7 @@ outside in; a program names only the effects it needs. These examples are compil
 ## Documentation
 
 - [Guide](docs/guide.md) — programs, rows, `A ! Es`, the standard effects, your own effects and handlers, answering
-  in place, `shift`/`reset`/`shift0`, `PState`, generators, `Async`.
+  in place, `shift`/`reset`/`shift0`, `PState`, streams, `Async`.
 - [What `Cont0` does better than `Cont`](docs/cont0-vs-cont.md) — and where it does not.
 - [Architecture](docs/architecture.md) — the interface, `Cont`, `Cont0` and its machine, the references, tests,
   benchmarks.
@@ -48,7 +48,7 @@ outside in; a program names only the effects it needs. These examples are compil
 | Package | What is in it |
 |---|---|
 | `okay.core` | the interface: rows (`Row`, `+:`, `Pure`, `E :? R`, `%`), `Context`, `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`), `Handler`, `Answering`, `A ! Es`, `Top` |
-| `okay.std` | the effects, written once: `Reader`, `State`, `Writer`, `Throws`, `Choose`, `Emit` (`collect`, `source`, `generate`), `PState`, `Async` |
+| `okay.std` | the effects, written once: `Reader`, `State`, `Writer`, `Throws`, `Choose`, `Emit` (`collect`, `stream`, `generate`), `PState`, `Async` |
 | `okay.cont` | `Cont`, its loop and fold; the instance `At`; `run`; `top` |
 | `okay.zero` | `Cont0` (the kernel, open as a monad of its own), the machine; the instance `At`; `run`; `top`; `shift0` |
 
@@ -65,7 +65,7 @@ only the handler's `ret` (a `raise` in `k` aborts the shift's body). `shift0` is
 | an operation across 1 / 4 / 16 handlers | 11.6 / 23.4 / 91.7 | 5.7 / 6.7 / 17.1 |
 | answered in place / by a general clause | 6.43 / 8.92 | 5.41 / 7.79 |
 | state, writer, collect | 16.1, 20.0, 13.1 | 14.7, 17.3, 10.5 |
-| a generator, an element pulled / pushed (`source`, measured apart) | 14.9 / 10.3 | 14.5 / 7.6 |
+| a generator, an element pulled / pushed (`stream`, measured apart) | 14.9 / 10.3 | 14.5 / 7.6 |
 | 8 queens (a run) | 256 µs | 190 µs |
 | a shift under a reset, 16 maps, `k` 8 times (a run) | 438 ns | 324 ns |
 | choose, throws | 29.2, 13.6 | 34.3, 14.3 |

@@ -96,7 +96,7 @@ def perform[E[_], X](op: E[X])(using c: Effects, in: In[E, c.Effs]): c.Prog[X] =
 def pure[A](a: A)(using c: Context): c.Prog[A] = c.pure(a)
 
 /** A MONAD'S TOP: its context there, over `Pure` at an answer `J`, and a run of a program of it — what a library
- * re-entering the top takes (`Async`, a run going on in a callback's thread; `source`, a run of a generator); every
+ * re-entering the top takes (`Async`, a run going on in a callback's thread; `stream`, a run of a generator); every
  * context has its monad's, `c.top`. `M[J, I, O, A]`: the monad at the top answering `J` */
 trait Top:
   type M[J, I, O, A]

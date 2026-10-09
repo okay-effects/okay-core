@@ -82,7 +82,7 @@ executable definition beside it.
 - **Simpler types.** No levels: a `Cont` program's type does not depend on how many delimiters it is under.
   Under effects still to be handled, `generate`'s consumer type can be generic over the monad for `Cont`; for
   `Cont0` a generic one would be recursive through the level, so the consumer names its own. At the top both give
-  one `Source` (`source`).
+  one `Stream` (`stream`).
 - **A smaller implementation.** `okay.cont` is about 350 lines; `okay.zero` about 600 — the kernel, the machine,
   the levels.
 - **Master's semantics** for a `shift` directly under a handler, if that is the one wanted.

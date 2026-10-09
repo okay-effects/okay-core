@@ -23,12 +23,12 @@ def collect[W, A](using c: Effects)(body: c.Body[Emit % W, (List[W], A), A])
       def value[X](op: Emit[W, X]): X = op match
         case Emit.Yield(w) => out += w; ())(body)
 
-/** a stream's body: a program yielding `W`, under `Emit % W` alone */
-type Yields[W] = (c: Effects { type Effs = Emit % W +: Pure }) ?=> c.Prog[Unit]
+/** A SOURCE: a program yielding `W`, under `Emit % W` alone — a stream's body, run by `stream` */
+type Source[W] = (c: Effects { type Effs = Emit % W +: Pure }) ?=> c.Prog[Unit]
 
 /** `generate[W, G](next, done)(body)`: the body as a lazy generator — nothing runs until the consumer pulls — of
  * the consumer's own type `G`: each element with the rest, a program here of `G`, by `next`; the end, `done`. Any
- * type will do. At the top, `source` */
+ * type will do. At the top, `stream` */
 def generate[W, G](using c: Effects)(next: (W, c.Prog[G]) => G, done: G)(body: c.Body[Emit % W, G, Unit]): c.Prog[G] =
   c.handle(new Handler[c.Prog, Emit % W, Unit, G]:
     def ret(u: Unit): G = done

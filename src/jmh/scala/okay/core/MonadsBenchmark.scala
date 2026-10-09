@@ -219,41 +219,41 @@ class MonadsBenchmark:
   def forever(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
     yield_(a).flatMap(_ => forever(b, a + b))
 
-  /** `n` elements of an infinite generator pulled, each a run of the rest: one `Stream` on either monad */
+  /** `n` elements of an infinite generator pulled, each a run of the rest: one `Step` on either monad */
   @Benchmark
   def generate(): Long = backend match
-    case "cont" => sum(okay.std.source[Long](okay.cont.top)(forever(0, 1)).start)
-    case _ => sum(okay.std.source[Long](okay.zero.top)(forever(0, 1)).start)
+    case "cont" => sum(okay.std.stream[Long](okay.cont.top)(forever(0, 1)).start)
+    case _ => sum(okay.std.stream[Long](okay.zero.top)(forever(0, 1)).start)
 
-  /** the same, each element mapped in the generator's handler: `Source.map`, fused */
+  /** the same, each element mapped in the generator's handler: `Stream.map`, fused */
   @Benchmark
   def generateMapped(): Long = backend match
-    case "cont" => sum(okay.std.source[Long](okay.cont.top)(forever(0, 1)).map(_ + 1).start)
-    case _ => sum(okay.std.source[Long](okay.zero.top)(forever(0, 1)).map(_ + 1).start)
+    case "cont" => sum(okay.std.stream[Long](okay.cont.top)(forever(0, 1)).map(_ + 1).start)
+    case _ => sum(okay.std.stream[Long](okay.zero.top)(forever(0, 1)).map(_ + 1).start)
 
   /** `n` elements of an infinite generator taken: each element's rest run in place by the handler, the rest after
    * the `n`th dropped */
   @Benchmark
   def generateTaken(): Long = backend match
-    case "cont" => okay.std.source[Long](okay.cont.top)(forever(0, 1)).take(n).sum
-    case _ => okay.std.source[Long](okay.zero.top)(forever(0, 1)).take(n).sum
+    case "cont" => okay.std.stream[Long](okay.cont.top)(forever(0, 1)).take(n).sum
+    case _ => okay.std.stream[Long](okay.zero.top)(forever(0, 1)).take(n).sum
 
   /** `n` elements of a finite generator summed, pushed: each where it is yielded, no rest captured */
   @Benchmark
   def generatePushed(): Long = backend match
-    case "cont" => okay.std.source[Long](okay.cont.top)(fibs(n, 0, 1)).fold(0L)(_ + _)
-    case _ => okay.std.source[Long](okay.zero.top)(fibs(n, 0, 1)).fold(0L)(_ + _)
+    case "cont" => okay.std.stream[Long](okay.cont.top)(fibs(n, 0, 1)).fold(0L)(_ + _)
+    case _ => okay.std.stream[Long](okay.zero.top)(fibs(n, 0, 1)).fold(0L)(_ + _)
 
   /** the first `n` elements summed, each pulled by a run of the rest: no list made */
-  private def sum(s0: okay.std.Stream[Long]): Long =
+  private def sum(s0: okay.std.Step[Long]): Long =
     var s = s0
     var i = 0
     var sum = 0L
     while i < n do
       s match
-        case e: okay.std.Stream.Next[Long] => sum += e.w; i += 1; if i < n then s = e.pull()
-        case e: okay.std.Stream.Later[Long] => sum += e.w; i += 1; if i < n then s = e.pull()
-        case okay.std.Stream.Done() => i = n
+        case e: okay.std.Step.Next[Long] => sum += e.w; i += 1; if i < n then s = e.pull()
+        case e: okay.std.Step.Later[Long] => sum += e.w; i += 1; if i < n then s = e.pull()
+        case okay.std.Step.Done() => i = n
     sum
 
   /** a shift under a reset: the rest 256 maps, `k` 8 times; the rest one map, `k` once */

@@ -2,25 +2,25 @@ package okay.std
 
 import okay.core.*
 
-/** A SOURCE OF ELEMENTS, NOT STARTED: a value — each consumption a run of its own, from the beginning. Pushed
+/** A STREAM OF ELEMENTS, NOT STARTED: a value — each consumption a run of its own, from the beginning. Pushed
  * (`foreach`, `fold`, `toList`: the whole of it), or pulled (`take`, `iterator`: as far as asked, the rest
- * cancelled). A generator's (`source`, `Async.source`) fuses `map` and `filter` into what its handler does with an
- * element; any other wraps them */
-abstract class Source[W]:
-  /** `f` of every element, in order, the source run to its end */
+ * cancelled). A generator's (`stream`, `Async.stream`: a `Source` run) fuses `map` and `filter` into what its
+ * handler does with an element; any other wraps them */
+abstract class Stream[W]:
+  /** `f` of every element, in order, the stream run to its end */
   def push(f: W => Unit): Unit
   /** the elements, each pulled when asked for; `close()` ends the run where it is */
-  def iterator: Source.Iter[W]
+  def iterator: Stream.Iter[W]
 
   /** the first `n` elements; the rest never run */
   def take(n: Int): List[W] =
     val it = iterator
     try it.take(n).toList finally it.close()
-  def map[B](f: W => B): Source[B] = Source.Mapped(this, f)
-  def filter(p: W => Boolean): Source[W] = Source.Filtered(this, p)
-  def withFilter(p: W => Boolean): Source[W] = filter(p)
-  /** each element's source, one after another */
-  def flatMap[B](f: W => Source[B]): Source[B] = Source.Bound(this, f)
+  def map[B](f: W => B): Stream[B] = Stream.Mapped(this, f)
+  def filter(p: W => Boolean): Stream[W] = Stream.Filtered(this, p)
+  def withFilter(p: W => Boolean): Stream[W] = filter(p)
+  /** each element's stream, one after another */
+  def flatMap[B](f: W => Stream[B]): Stream[B] = Stream.Bound(this, f)
 
   def foreach(f: W => Unit): Unit = push(f)
   def fold[B](z: B)(op: (B, W) => B): B =
@@ -32,20 +32,20 @@ abstract class Source[W]:
     push(out += _)
     out.result()
 
-object Source:
+object Stream:
   /** an iterator that can be closed: its run ended where it is */
   trait Iter[W] extends Iterator[W], AutoCloseable:
     def close(): Unit = ()
 
   /** the elements given */
-  def of[W](ws: W*): Source[W] = new Source[W]:
+  def of[W](ws: W*): Stream[W] = new Stream[W]:
     def push(f: W => Unit): Unit = ws.foreach(f)
     def iterator: Iter[W] = new Iter[W]:
       private val it = ws.iterator
       def hasNext: Boolean = it.hasNext
       def next(): W = it.next()
 
-  private final class Mapped[W, B](src: Source[W], f: W => B) extends Source[B]:
+  private final class Mapped[W, B](src: Stream[W], f: W => B) extends Stream[B]:
     def push(g: B => Unit): Unit = src.push(w => g(f(w)))
     def iterator: Iter[B] = new Iter[B]:
       private val it = src.iterator
@@ -53,7 +53,7 @@ object Source:
       def next(): B = f(it.next())
       override def close(): Unit = it.close()
 
-  private final class Filtered[W](src: Source[W], p: W => Boolean) extends Source[W]:
+  private final class Filtered[W](src: Stream[W], p: W => Boolean) extends Stream[W]:
     def push(g: W => Unit): Unit = src.push(w => if p(w) then g(w))
     def iterator: Iter[W] = new Iter[W]:
       private val under = src.iterator
@@ -62,7 +62,7 @@ object Source:
       def next(): W = it.next()
       override def close(): Unit = under.close()
 
-  private final class Bound[W, B](src: Source[W], f: W => Source[B]) extends Source[B]:
+  private final class Bound[W, B](src: Stream[W], f: W => Stream[B]) extends Stream[B]:
     def push(g: B => Unit): Unit = src.push(w => f(w).push(g))
     def iterator: Iter[B] = new Iter[B]:
       private val outer = src.iterator
@@ -75,25 +75,25 @@ object Source:
           if outer.hasNext then inner = f(outer.next()).iterator else more = false
         more
       def next(): B =
-        if !hasNext then throw java.util.NoSuchElementException("Source")
+        if !hasNext then throw java.util.NoSuchElementException("Stream")
         inner.nn.next()
       override def close(): Unit =
         if inner != null then inner.nn.close()
         outer.close()
 
 /** A GENERATOR ON A MONAD'S TOP, NOT STARTED: `map` and `filter` fused — composed into what the generator's handler
- * does with an element, no object an element of their own. `start` runs it to its first element, a `Stream` */
-abstract class Generator[W] extends Source[W]:
+ * does with an element, no object an element of their own. `start` runs it to its first element, a `Step` */
+abstract class Generator[W] extends Stream[W]:
   val top: Top
   /** the generator run at its top, each element and the rest through `out`: a program there answering `G` */
   def run[G](out: (W, top.M[G, G, G, G]) => top.M[G, G, G, G], done: G): G
 
   /** started: the first element and the rest, or done */
-  def start: Stream[W] =
-    val c = top.at[Stream[W]]
-    run[Stream[W]]((w, rest) => c.pure(Stream.Next(w, top, rest)), Stream.Done())
+  def start: Step[W] =
+    val c = top.at[Step[W]]
+    run[Step[W]]((w, rest) => c.pure(Step.Next(w, top, rest)), Step.Done())
 
-  def iterator: Source.Iter[W] = new Source.Iter[W]:
+  def iterator: Stream.Iter[W] = new Stream.Iter[W]:
     private val it = start.iterator
     def hasNext: Boolean = it.hasNext
     def next(): W = it.next()
@@ -125,10 +125,10 @@ abstract class Generator[W] extends Source[W]:
       def push(g: W => Unit): Unit = src.push(w => if p(w) then g(w))
   override def withFilter(p: W => Boolean): Generator[W] = filter(p)
 
-/** `source(t)(body)`: the body as a `Generator` of its elements, on the monad of the top `t` — `okay.zero.top`,
+/** `stream(t)(body)`: the source `body` as a `Generator` of its elements, on the monad of the top `t` — `okay.zero.top`,
  * `okay.cont.top`, a context's `c.top`. The body's effects are `Emit` and those it handles itself; under effects
  * still to be handled, `generate` */
-def source[W](t: Top)(body: Yields[W]): Generator[W] = new Generator[W]:
+def stream[W](t: Top)(body: Source[W]): Generator[W] = new Generator[W]:
   val top: t.type = t
   def run[G](out: (W, t.M[G, G, G, G]) => t.M[G, G, G, G], done: G): G =
     val c = t.at[G]
@@ -144,18 +144,19 @@ def source[W](t: Top)(body: Yields[W]): Generator[W] = new Generator[W]:
       def value[X](op: Emit[W, X]): X = op match
         case Emit.Yield(w) => f(w))(body))
 
-/** A GENERATOR WHATEVER THE MONAD: an element and the rest, or done. The rest of a generator's element (`Next`) is
- * a program of the monad of `top`, its type `top`'s — so the type `Stream` names no monad, and one object an
- * element, no closure. The rest of a made one (`Later`: `map`, `flatMap`, `Stream.of`) is a function. `pull()` runs
+/** WHERE A STARTED STREAM STANDS, WHATEVER THE MONAD: an element and the rest, or done (`Generator.start`). The
+ * rest of a generator's element (`Next`) is a program of the monad of `top`, its type `top`'s — so the type `Step`
+ * names no monad, and one object an element, no closure. The rest of a made one (`Later`: `map`, `flatMap`,
+ * `Step.of`) is a function: a started rest is a program already made, its answer fixed. `pull()` runs
  * the rest, each call a run of its own (a program is a value, run as many times as asked). Every operation lazy, in
  * constant stack */
-enum Stream[W]:
-  case Next(w: W, top: Top, rest: top.M[Stream[W], Stream[W], Stream[W], Stream[W]])
-  case Later(w: W, rest: () => Stream[W])
+enum Step[W]:
+  case Next(w: W, top: Top, rest: top.M[Step[W], Step[W], Step[W], Step[W]])
+  case Later(w: W, rest: () => Step[W])
   case Done()
 
   /** the stream after this element; done, done */
-  def pull(): Stream[W] = this match
+  def pull(): Step[W] = this match
     case n: Next[W] => n.top.run(n.rest)
     case Later(_, rest) => rest()
     case Done() => this
@@ -164,27 +165,27 @@ enum Stream[W]:
   private def head: W = this match
     case Next(w, _, _) => w
     case Later(w, _) => w
-    case Done() => throw java.util.NoSuchElementException("Stream.Done")
+    case Done() => throw java.util.NoSuchElementException("Step.Done")
 
   /** `f` of each element, as pulled */
-  def map[B](f: W => B): Stream[B] = this match
+  def map[B](f: W => B): Step[B] = this match
     case Done() => Done()
     case _ => Later(f(head), () => pull().map(f))
 
   /** the stream of each element, one after another, as pulled; the empty ones skipped in a loop */
-  def flatMap[B](f: W => Stream[B]): Stream[B] =
+  def flatMap[B](f: W => Step[B]): Step[B] =
     var s = this
-    var out: Stream[B] | Null = null
+    var out: Step[B] | Null = null
     while out == null do
       s match
         case Done() => out = Done()
         case at => f(at.head) match
           case Done() => s = at.pull()
-          case inner => out = Stream.concat(inner, () => at.pull().flatMap(f))
+          case inner => out = Step.concat(inner, () => at.pull().flatMap(f))
     out.nn
 
   /** the elements `p` keeps, as pulled; those dropped skipped in a loop */
-  def filter(p: W => Boolean): Stream[W] =
+  def filter(p: W => Boolean): Step[W] =
     var s = this
     while s match
         case Done() => false
@@ -193,10 +194,10 @@ enum Stream[W]:
     s match
       case Done() => s
       case at => Later(at.head, () => at.pull().filter(p))
-  def withFilter(p: W => Boolean): Stream[W] = filter(p)
+  def withFilter(p: W => Boolean): Step[W] = filter(p)
 
   /** this stream's elements, then `that`'s */
-  def ++(that: => Stream[W]): Stream[W] = Stream.concat(this, () => that)
+  def ++(that: => Step[W]): Step[W] = Step.concat(this, () => that)
 
   /** the first `n` elements, each pulled by a run of the rest, none past the `n`th — a loop, in constant stack */
   def take(n: Int): List[W] =
@@ -214,7 +215,7 @@ enum Stream[W]:
 
   /** the elements as an `Iterator`, each pulled when asked for, none past the last asked */
   def iterator: Iterator[W] = new Iterator[W]:
-    private var s = Stream.this
+    private var s = Step.this
     private var pulled = true
     def hasNext: Boolean =
       if !pulled then { s = s.pull(); pulled = true }
@@ -235,15 +236,15 @@ enum Stream[W]:
         case at => f(at.head); s = at.pull(); true
     do ()
 
-object Stream:
+object Step:
   /** the elements given, then done */
-  def of[W](ws: W*): Stream[W] = from(ws.toList)
-  private def from[W](ws: List[W]): Stream[W] = ws match
+  def of[W](ws: W*): Step[W] = from(ws.toList)
+  private def from[W](ws: List[W]): Step[W] = ws match
     case w :: more => Later(w, () => from(more))
     case Nil => Done()
 
   /** `s`'s elements, then `that()`'s */
-  private def concat[W](s: Stream[W], that: () => Stream[W]): Stream[W] = s match
+  private def concat[W](s: Step[W], that: () => Step[W]): Step[W] = s match
     case Done() => that()
     case at => Later(at.head, () => concat(at.pull(), that))
 

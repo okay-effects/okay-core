@@ -19,7 +19,7 @@ abstract class TestAsyncStreamOn(top: Top, stackSafe: Boolean = true) extends mu
     try
       def body(using c: Effects, e: Emit % Int :? c.Effs, a: Async :? c.Effs): c.Prog[Unit] =
         later(pool, 1).flatMap(yield_(_)).flatMap(_ => later(pool, 2).flatMap(yield_(_))).flatMap(_ => async(3).flatMap(yield_(_)))
-      val src = Async.source[Int](top)(body)
+      val src = Async.stream[Int](top)(body)
       assertEquals(src.iterator.toList, List(1, 2, 3))
       assertEquals(src.toList, List(1, 2, 3))
       assertEquals(src.map(_ * 10).filter(_ > 10).toList, List(20, 30))
@@ -30,7 +30,7 @@ abstract class TestAsyncStreamOn(top: Top, stackSafe: Boolean = true) extends mu
     var made = 0
     def from(i: Int)(using c: Effects, e: Emit % Int :? c.Effs, a: Async :? c.Effs): c.Prog[Unit] =
       async { made += 1; i }.flatMap(yield_(_)).flatMap(_ => from(i + 1))
-    val src = Async.source[Int](top)(from(0))
+    val src = Async.stream[Int](top)(from(0))
     assertEquals(made, 0)
     assertEquals(src.take(3), List(0, 1, 2))
     assertEquals(made, 3)
@@ -39,11 +39,11 @@ abstract class TestAsyncStreamOn(top: Top, stackSafe: Boolean = true) extends mu
     var made = 0
     def from(i: Int)(using c: Effects, e: Emit % Int :? c.Effs, a: Async :? c.Effs): c.Prog[Unit] =
       async { made += 1; i }.flatMap(yield_(_)).flatMap(_ => from(i + 1))
-    val it = Async.source[Int](top)(from(0)).iterator
+    val it = Async.stream[Int](top)(from(0)).iterator
     assertEquals(it.next(), 0)
     it.close()
     assertEquals((made, it.hasNext), (1, false))
-    val it2 = Async.source[Int](top)(from(0)).iterator
+    val it2 = Async.stream[Int](top)(from(0)).iterator
     assertEquals(it2.hasNext, true)
     it2.close()
     assertEquals(it2.hasNext, false)
@@ -51,17 +51,17 @@ abstract class TestAsyncStreamOn(top: Top, stackSafe: Boolean = true) extends mu
   test("async source: subscribed, not waiting — 100 000 elements in constant stack, then done"):
     var sum = 0L
     var end: Either[Throwable, Unit] | Null = null
-    Async.source[Int](top)(upTo(1, 100000)).subscribe(sum += _)(end = _)
+    Async.stream[Int](top)(upTo(1, 100000)).subscribe(sum += _)(end = _)
     assertEquals((sum, end), (5000050000L, Right(())))
-    assertEquals(Async.source[Int](top)(upTo(1, 100000)).fold(0L)(_ + _), 5000050000L)
+    assertEquals(Async.stream[Int](top)(upTo(1, 100000)).fold(0L)(_ + _), 5000050000L)
 
   test("async source: a failure at a callback ends it — the elements before it, then thrown"):
     def body(using c: Effects, e: Emit % Int :? c.Effs, a: Async :? c.Effs): c.Prog[Unit] =
       yield_(1).flatMap(_ => await[Int](cb => cb(Left(IllegalStateException("cb"))))).flatMap(yield_(_))
-    val it = Async.source[Int](top)(body).iterator
+    val it = Async.stream[Int](top)(body).iterator
     assertEquals(it.next(), 1)
     assertEquals(intercept[IllegalStateException](it.hasNext).getMessage, "cb")
-    assertEquals(intercept[IllegalStateException](Async.source[Int](top)(body).toList).getMessage, "cb")
+    assertEquals(intercept[IllegalStateException](Async.stream[Int](top)(body).toList).getMessage, "cb")
 
 class TestAsyncStream extends TestAsyncStreamOn(okay.cont.top)
 class TestAsyncStreamOnCont0 extends TestAsyncStreamOn(okay.zero.top)
