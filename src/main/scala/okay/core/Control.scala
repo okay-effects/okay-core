@@ -2,7 +2,7 @@ package okay.core
 
 /** DELIMITED CONTROL over the monad: `shift` and `reset`, answers moved — Danvy–Filinski's, typed as Asai–Kameyama's.
  * The raw operations at the context's row; `Control.shift` and `Control.reset` are them in context */
-trait Control extends Context:
+abstract class Control extends Context:
   /** the context in a reset here, its body written at `S2`: the monad `Within` */
   type Reset[S2] <: Control { type M[I, O, A] = Control.this.Within[I, O, A]; type Effs = Control.this.Effs; type S = S2 }
   /** this context at the answer `S2`, the monad the same: a shift's body, where the delimiter was */
