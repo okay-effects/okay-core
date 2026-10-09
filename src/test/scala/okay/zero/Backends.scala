@@ -44,3 +44,5 @@ class TestAsyncOnZero extends okay.core.TestAsyncOn:
 class TestAsyncOnRef extends okay.core.TestAsyncOn:
   def runIO[A](body: (c: Effects { type Effs = okay.std.Async +: okay.std.Async.Fails; type S = Unit }) ?=> c.Prog[A]): Either[Throwable, A] =
     Ref.run(okay.std.throws[Throwable, A](okay.std.Async.run(body)))
+class TestInterceptOnZero extends okay.core.TestInterceptOn(ZeroBackend)
+class TestInterceptOnRef extends okay.core.TestInterceptOn(RefBackend)

@@ -55,6 +55,15 @@ object Cps0:
         case In.Here() => h(op, x => readHand(k(x), h))
         case In.There(o) => request[E2, R, J, T, X](op, o).flatMap(x => readHand(k(x), h)))
 
+  /** an interceptor's reading: an operation at its path by the clause, the rest read again; another asked again
+   * outside, its path the same */
+  def readIntercept[E[_], R <: Row, J, T, Ans](target: In[E, R], out: => Eff[R, J, T, T, Res[R, Lv[R, J, T], Ans]],
+      h: Handler[[X] =>> Eff[R, J, T, T, X], E, ?, Ans]): Eff[R, J, T, T, Ans] =
+    read[R, R, J, T, Ans](out, [E2[_], X] => (op: E2[X], in: In[E2, R], k: X => Eff[R, J, T, T, Res[R, Lv[R, J, T], Ans]]) =>
+      In.same(in, target) match
+        case null => request[E2, R, J, T, X](op, in).flatMap(x => readIntercept(target, k(x), h))
+        case same => h(same(op), x => readIntercept(target, k(x), h)))
+
   /** a reset's reading: every operation asked again outside */
   def passAll[R <: Row, J, T, O](out: => Eff[R, J, T, T, Res[R, Lv[R, J, T], O]]): Eff[R, J, T, T, O] =
     read[R, R, J, T, O](out, [E[_], X] => (op: E[X], in: In[E, R], k: X => Eff[R, J, T, T, Res[R, Lv[R, J, T], O]]) =>
@@ -90,6 +99,8 @@ object Cps0:
     def perform[E[_], S2, X](op: E[X], in: In[E, R0]): M[S2, S2, X] = request(op, in)
     def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: At[E +: R0, Lv[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A]): M[T0, T0, Ans] =
       readHand(dollar(body(using At()), (a: A) => Cps0.pure(Done[E +: R0, Lv[R0, J0, T0], Ans](h.ret(a)))), h)
+    def intercept[E[_], A, Ans](in: In[E, R0], h: Handler[Prog, E, A, Ans])(body: At[R0, Lv[R0, J0, T0], Ans] ?=> Inner[R0, Ans, Ans, A]): M[T0, T0, Ans] =
+      readIntercept(in, dollar(body(using At()), (a: A) => Cps0.pure(Done[R0, Lv[R0, J0, T0], Ans](h.ret(a)))), h)
     def shift[I, O, A](f: (A => M[O, O, I]) => M[O, O, O], same: (I =:= O) | Null): M[I, O, A] = control(f)
     def reset[S2, O](body: At[R0, Lv[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[T0, T0, O] =
       passAll(dollar(body(using At()), (s: S2) => Cps0.pure(Done[R0, Lv[R0, J0, T0], S2](s))))

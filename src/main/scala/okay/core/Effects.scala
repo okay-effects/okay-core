@@ -37,6 +37,12 @@ abstract class Effects extends Control:
   def perform[E[_], S2, X](op: E[X], in: In[E, Effs]): M[S2, S2, X]
   /** a handler of `E` here: the body in its context, over `E +: R` at the answer `Ans`; its answers read by `h` */
   def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: Handled[E, Ans] ?=> Inner[E +: Effs, Ans, Ans, A]): M[S, S, Ans]
+  /** an INTERCEPTOR of `E`, an effect already in this row at `in`: the body in a context of its own, the row the
+   * same, at the answer `Ans` — its operations at `in` to `h`'s clauses, `k` the rest under the interceptor again
+   * (deep), every other operation on outside as it is; a clause runs outside it, so an operation of `E` there is the
+   * handler's at `in`. A delimiter, as a reset: a `shift` in the body reaches it. What `local` and `handleWith` are
+   * (tofu's `WithLocal`, `Handle`), and a handler over an effect anywhere in a row */
+  def intercept[E[_], A, Ans](in: In[E, Effs], h: Handler[Prog, E, A, Ans])(body: Reset[Ans] ?=> Inner[Effs, Ans, Ans, A]): M[S, S, Ans]
   /** this context with the paths of the effects a program needs: the context of an `A ! Es` */
   type Needing[Es <: AnyKind] <: Needs[Es] { type M[I, O, A] = Effects.this.M[I, O, A]; type Effs = Effects.this.Effs; type S = Effects.this.S }
   def needing[Es <: AnyKind](p: Paths[Es, Effs]): Needing[Es]
@@ -64,6 +70,10 @@ object Effects:
   def handle[E[_], A, Ans](using c: Effects)(h: Handler[c.Prog, E, A, Ans])
             (body: c.Body[E, Ans, A]): c.Prog[Ans] =
     c.handle(h)(body)
+  /** `intercept(h)(body)` in context: `E`, already in the context's row, handled again for the body */
+  def intercept[E[_], A, Ans](using c: Effects, in: In[E, c.Effs])(h: Handler[c.Prog, E, A, Ans])
+               (body: c.Reset[Ans] ?=> c.Inner[c.Effs, Ans, Ans, A]): c.Prog[Ans] =
+    c.intercept(in, h)(body)
 
 /** a handler of the effect `E`, over the row `E +: T`, leaving `T`, written at the answer `Q` outside its
  * delimiter: the body's value `A` to the answer `Ans`; each operation with the rest of the body up to the

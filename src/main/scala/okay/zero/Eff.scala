@@ -82,6 +82,11 @@ private[zero] def handleRead[E[_], R <: Row, J, T, A, I0, V](h: Handler[[X] =>> 
     body: Eff[E +: R, Level[R, J, T], I0, V, A]): Eff[R, J, T, T, V] =
   readHand[E, R, J, T, V](Dollar(body, (a: A) => Return(Res.Done[E +: R, Level[R, J, T], I0](ret(a)))), h)
 
+/** an interceptor of `E` at `in`: `Done∘ret $ body`, its answers read — the operations at `in` by `h` */
+private[zero] def interceptRead[E[_], R <: Row, J, T, A, Ans](in: In[E, R], h: Handler[[X] =>> Eff[R, J, T, T, X], E, ?, Ans], ret: A => Ans,
+    body: Eff[R, Level[R, J, T], Ans, Ans, A]): Eff[R, J, T, T, Ans] =
+  readIntercept[E, R, J, T, Ans](in, Dollar(body, (a: A) => Return(Res.Done[R, Level[R, J, T], Ans](ret(a)))), h)
+
 /** a reset: `Done $ body`, every operation passed on */
 private[zero] def resetRead[R <: Row, J, T, S, O](body: Eff[R, Level[R, J, T], S, O, S]): Eff[R, J, T, T, O] =
   passAll[R, J, T, O](Dollar(body, (s: S) => Return(Res.Done[R, Level[R, J, T], S](s))))
@@ -116,6 +121,15 @@ private[zero] def readHand[E[_], R <: Row, J, T, Ans](out: Eff[R, J, T, T, Res[E
     in match
       case In.Here() => h(op, x => readHand(k(x), h))
       case In.There(o) => request[E2, R, J, T, X](op, o).flatMap(x => readHand(k(x), h)))
+
+/** an interceptor's reading: an operation at its path by the clause, `k` the rest read again — deep; another asked
+ * again outside, its path the same, the row is */
+private[zero] def readIntercept[E[_], R <: Row, J, T, Ans](target: In[E, R], out: Eff[R, J, T, T, Res[R, Level[R, J, T], Ans]],
+    h: Handler[[X] =>> Eff[R, J, T, T, X], E, ?, Ans]): Eff[R, J, T, T, Ans] =
+  read[R, R, J, T, Ans](out, [E2[_], X] => (op: E2[X], in: In[E2, R], k: X => Eff[R, J, T, T, Res[R, Level[R, J, T], Ans]]) =>
+    In.same(in, target) match
+      case null => request[E2, R, J, T, X](op, in).flatMap(x => readIntercept(target, k(x), h))
+      case same => h(same(op), x => readIntercept(target, k(x), h)))
 
 /** a reset's reading: every operation asked again outside — its path the same, the row is — the rest under it again */
 private[zero] def passAll[R <: Row, J, T, O](out: Eff[R, J, T, T, Res[R, Level[R, J, T], O]]): Eff[R, J, T, T, O] =

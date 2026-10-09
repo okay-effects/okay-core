@@ -20,6 +20,9 @@ class At[R0 <: Row, S0] extends Effects with Paths.Keep[R0, At[R0, S0]]:
   def perform[E[_], S2, X](op: E[X], in: In[E, R0]): Cont[R0, S2, S2, X] = Inject(op, in)
   def handle[E[_], A, Ans](h: Handler[[Z] =>> Cont[R0, S0, S0, Z], E, A, Ans])(body: At[E +: R0, Ans] ?=> Cont[E +: R0, Ans, Ans, A]): Cont[R0, S0, S0, Ans] =
     body(using At()).handle(h)
+  def intercept[E[_], A, Ans](in: In[E, R0], h: Handler[[Z] =>> Cont[R0, S0, S0, Z], E, A, Ans])(body: At[R0, Ans] ?=> Cont[R0, Ans, Ans, A])
+      : Cont[R0, S0, S0, Ans] =
+    Cont.intercepted(body(using At()), h.ret, in, h)
   // an `At` itself: `perform` and the rest the one implementation there is, called straight
   type Needing[Es <: AnyKind] = At[R0, S0] & Needs[Es]
   // the path kept in the context itself, no `Paths` between: one load an operation, not two

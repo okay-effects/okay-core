@@ -144,6 +144,23 @@ object Cont:
         case Reset(b, r) => Reset(b, r)
         case b => Reset(b, identity)
 
+  /** an interceptor's body to its head, over its row: a value answered by `ret`; an operation at `in` given to the
+   * clause, the rest intercepted again, lazily; another goes out as it is, the rest under the interceptor again; a
+   * capture's body in place of the rest, under the interceptor, the rest under a delimiter of its own as `k` */
+  private[cont] def intercepted[E[_], R <: Row, Q, S, Ans, A](body: Cont[R, S, Ans, A], ret: A => S, in: In[E, R],
+      h: Handler[[Z] =>> Cont[R, Q, Q, Z], E, ?, Ans]): Cont[R, Q, Q, Ans] =
+    body.step match
+      case Head.Done(a) => Return(ret(a))
+      case o: Head.Op[e, e2, t, i, oo, x, a] => In.same(o.in, in) match
+        case null => o.in.bind(o.op, Reintercept(o.k, ret, in, h))
+        case same => h[x](same(o.op), (y: x) => Delay(() => intercepted(o.k(y), ret, in, h)))
+      case c: Head.Cut[r, i, t, oo, x, a] => intercepted(c.f(under(c.k, ret)), identity, in, h)
+
+  /** the rest of an interceptor's body, once the operation it waits on is answered outside: intercepted again */
+  private final class Reintercept[E[_], R <: Row, Q, S, Ans, A, X](k: X => Cont[R, S, Ans, A], ret: A => S, in: In[E, R],
+      h: Handler[[Z] =>> Cont[R, Q, Q, Z], E, ?, Ans]) extends (X => Cont[R, Q, Q, Ans]):
+    def apply(x: X): Cont[R, Q, Q, Ans] = intercepted(k(x), ret, in, h)
+
   /** a captured rest as `k`: applied, the stack it holds resumed, under a delimiter of its own with `ret` */
   private[cont] def under[R <: Row, Q, S, T, X, A](k: Frames[R, X, S, T, A], ret: A => S): X => Cont[R, Q, Q, T] =
     x => Reset(Push(Return(x), k), ret)

@@ -22,6 +22,22 @@ infix type :?[E[_], R <: Row] = In[E, R]
 
 object In extends InLow:
   given here[E[_], T <: Row]: In[E, E +: T] = Here()
+  /** two paths in one row, the same one: then their effects are the same, `Same` the proof — by the compiler's own
+   * reading of the two paths, no cast. A walk as long as the paths, the row's length at most */
+  @scala.annotation.tailrec
+  def same[E1[_], E2[_], R <: Row](a: In[E1, R], b: In[E2, R]): Same[E1, E2] | Null = a match
+    case _: Here[e1, t1] => b match
+      case _: Here[e2, t2] => Same.Refl()
+      case _ => null
+    case t: There[e1, x1, t1] => b match
+      case u: There[e2, x2, t2] => same(t.in, u.in)
+      case _ => null
+
+/** the effects `E1` and `E2`, the same: an operation of one an operation of the other */
+enum Same[E1[_], E2[_]]:
+  case Refl[E[_]]() extends Same[E, E]
+  def apply[X](op: E1[X]): E2[X] = this match
+    case Refl() => op
 sealed trait InLow:
   given there[E[_], E2[_], T <: Row](using in: In[E, T]): In[E, E2 +: T] = In.There(in)
 

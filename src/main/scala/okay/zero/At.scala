@@ -26,6 +26,9 @@ class At[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: At[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
       : M[T0, T0, Ans] =
     handleNode(h, body(using At()))
+  def intercept[E[_], A, Ans](in: In[E, R0], h: core.Handler[Prog, E, A, Ans])(body: At[R0, Level[R0, J0, T0], Ans] ?=> Inner[R0, Ans, Ans, A])
+      : M[T0, T0, Ans] =
+    interceptRead(in, h, h.ret, body(using At()))
   def shift[I, O, A](f: (A => M[O, O, I]) => M[O, O, O], same: (I =:= O) | Null): M[I, O, A] = control(f, same)
   def reset[S2, O](body: At[R0, Level[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[T0, T0, O] =
     resetNode(body(using At()))
