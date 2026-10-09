@@ -82,10 +82,10 @@ At the top `run` sometimes needs the answer named: `okay.cont.run[Int](...)`.
 
 | Effect | Operations | Handler → answer |
 |---|---|---|
-| `Reader[E]` | `ask[E]` | `reader(e)(body)` → `A` |
+| `Reader[E]` | `ask[E]`, `local(f)(body)` | `reader(e)(body)` → `A` |
 | `State[S]` | `get[S]`, `put(s)`, `modify(f)` | `state(s0)(body)` → `(S, A)` — a cell per run |
 | `Writer[W]` | `tell(w)` | `writer[W, A](body)` → `(List[W], A)` |
-| `Throws[E]` | `raise[E, A](e)` | `throws[E, A](body)` → `Either[E, A]` |
+| `Throws[E]` | `raise[E, A](e)`, `handleWith(body)(f)` | `throws[E, A](body)` → `Either[E, A]` |
 | `Choose` | `among(as)` — multi-shot | `choose[A](body)` → `Seq[A]`, every path |
 | `Emit[W]` | `yield_(w)` | `collect(body)` → `(List[W], A)`; `stream(top)(source)` → `Generator[W]`, pushed or pulled; `generate(next, done)(body)` — lazy |
 | `PState` | `st.get[S]`, `st.put[S](s2)` | `pstate(s0)(st => body)` — the state's *type* may change |
@@ -246,6 +246,69 @@ fixed, so mapping it wraps each element; mapping a `Stream` changes what the han
 
 Effects the source handles itself are in the stream: `stream(top)(reader(5)(body))`. A `state` there is one cell a
 run. Under effects still to be handled, `generate(next, done)(body)`: a generator of the consumer's own type.
+
+## Intercepting: `local`, `handleWith`
+
+An effect already in the row can be handled again for a part of the program: `Effects.intercept(h)(body)` — the
+body's operations of that effect go to `h`'s clauses, `k` the rest under the interceptor again; a clause runs
+outside it, so its own operation of the effect reaches the handler. The standard ones:
+
+```scala
+def scaled(using c: Effects, r: Reader % Int :? c.Effs): c.Prog[(Int, Int)] =
+  ask[Int].flatMap(a => local[Int, Int](_ * 10)(ask[Int]).map(b => (a, b)))
+
+okay.zero.run(reader(4)(scaled))   // (4, 40)
+okay.zero.run(throws[String, Int](handleWith[String, Int](raise[String, Int]("bad"))(e => pure(e.length))))   // Right(3)
+```
+
+Nested ones compose, as tofu's `local`s do: the inner clause's `ask` is the outer interceptor's.
+
+## `Program[R, A]`: the row in the type
+
+A program written in context is built where it is written. `Program[R, A]` is one not yet built: `on(c)` builds it
+in any context whose row is `R`. So its type names its row — `F[A]` for code written over `F[_]`, okay's `A ! R`,
+what Scala 2 can write — and it can be built again where a delimiter needs it. The standard effects as programs
+are in `okay.std.Programs`; `Program.run(top)(p)` runs one on a monad.
+
+```scala
+type Row1 = Reader % Int +: Throws % String +: Pure
+
+def checked: Program[Row1, Int] =
+  Programs.ask[Row1, Int].flatMap(n => if n < 0 then Programs.raise[Row1, String, Int]("negative") else Program.pure(n * 2))
+
+Program.run(okay.zero.top)(Programs.throws[Pure, String, Int](Programs.reader[Throws % String +: Pure, Int, Int](21)(checked)))   // Right(42)
+Program.run(okay.cont.top)(Programs.throws[Pure, String, Int](Programs.reader[Throws % String +: Pure, Int, Int](-1)(checked)))   // Left("negative")
+```
+
+### With tofu
+
+`Program.Of[R]` is an `F[_]`; given tofu's typeclasses over it — `Monad` (cats), `WithLocal` from a `Reader` in the
+row, `Errors` from a `Throws` — code written over `F[_]` with tofu runs on okay's effects, on any monad. The
+instances are in the tests (`okay.tofu.OnProgram`), the shape of an optional module:
+
+```scala
+import okay.tofu.OnProgram.given
+
+def greeting[F[_]: cats.Monad](using ctx: tofu.WithLocal[F, String], err: tofu.Errors[F, String]): F[String] =
+  cats.Monad[F].flatMap(ctx.local(ctx.context)(_.toUpperCase))(n => if n.isEmpty then err.raise("nobody") else cats.Monad[F].pure(s"hi $n"))
+
+type Row2 = Reader % String +: Throws % String +: Pure
+
+Program.run(okay.zero.top)(Programs.throws[Pure, String, String](Programs.reader[Throws % String +: Pure, String, String]("ann")(greeting[Program.Of[Row2]])))   // Right("hi ANN")
+```
+
+### From Scala 2
+
+The same artifact, read by scalac 2.13 with `-Ytasty-reader` — the build's `scala2/` project is its proof, tofu's
+2.13 artifacts over `Program` included. Scala 2 sees the classes and objects (`Program`, `Programs`, `In`, the
+`top`s), not the top-level definitions; an effect of two parameters is a Scala 2 type lambda, and a row is written
+without infix precedence:
+
+```text
+type App = +:[({ type L[X] = Reader[Int, X] })#L, Pure]      // or kind-projector's +:[Reader[Int, *], Pure]
+val p: Program[App, Int] = Programs.ask[App, Int].map(_ + 1)
+Program.run(okay.zero.top)(Programs.reader[Pure, Int, Int](41)(p))   // 42
+```
 
 ## Async
 

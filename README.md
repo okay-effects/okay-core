@@ -1,6 +1,6 @@
 # okay-core
 
-Algebraic effects and handlers for Scala 3, with delimited control — `shift`/`reset` with the answer type modified
+Algebraic effects and handlers for Scala 3 — and Scala 2.13, from the same artifact — with delimited control — `shift`/`reset` with the answer type modified
 (Danvy–Filinski, Asai–Kameyama) — written **once** over an interface and run on **two monads**:
 
 - **`Cont`** (`okay.cont`) — shift and reset; a handler a fold over the program;
@@ -37,7 +37,8 @@ outside in; a program names only the effects it needs. These examples are compil
 ## Documentation
 
 - [Guide](docs/guide.md) — programs, rows, `A ! Es`, the standard effects, your own effects and handlers, answering
-  in place, `shift`/`reset`/`shift0`, `PState`, streams, `Async`.
+  in place, `shift`/`reset`/`shift0`, `PState`, streams, intercepting (`local`, `handleWith`), `Program[R, A]`,
+  tofu, Scala 2, `Async`.
 - [What `Cont0` does better than `Cont`](docs/cont0-vs-cont.md) — and where it does not.
 - [Architecture](docs/architecture.md) — the interface, `Cont`, `Cont0` and its machine, the references, tests,
   benchmarks.
@@ -47,8 +48,8 @@ outside in; a program names only the effects it needs. These examples are compil
 
 | Package | What is in it |
 |---|---|
-| `okay.core` | the interface: rows (`Row`, `+:`, `Pure`, `E :? R`, `%`), `Context`, `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`), `Handler`, `Answering`, `A ! Es`, `Top` |
-| `okay.std` | the effects, written once: `Reader`, `State`, `Writer`, `Throws`, `Choose`, `Emit` (`collect`, `stream`, `generate`), `PState`, `Async` |
+| `okay.core` | the interface: rows (`Row`, `+:`, `Pure`, `E :? R`, `%`), `Context`, `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`, `intercept`), `Handler`, `Answering`, `A ! Es`, `Top`; `Program[R, A]`, a program over a row built where it runs |
+| `okay.std` | the effects, written once: `Reader` (`local`), `State`, `Writer`, `Throws` (`handleWith`), `Choose`, `Emit` (`collect`, `stream`, `generate`), `PState`, `Async`; `Programs`, the same as `Program`s |
 | `okay.cont` | `Cont`, its loop and fold; the instance `At`; `run`; `top` |
 | `okay.zero` | `Cont0` (the kernel, open as a monad of its own), the machine; the instance `At`; `run`; `top`; `shift0` |
 
@@ -80,15 +81,23 @@ The suites are written once and run on four monads: `Cont`, `Cont0`, and two ref
 (`Cont0` without its machine, each delimiter its definition) and `Cps0` (shift0 and `$` in textbook CPS, no code of
 either monad). They agree on every suite; where `Cont0` differs by design, `TestMonads` says so.
 
+## With tofu, and from Scala 2
+
+`Program.Of[R]` is an `F[_]`: given tofu's `Monad`, `WithLocal` and `Errors` over it (in the tests, the shape of an
+optional module), code written over `F[_]` with tofu runs on okay's effects, on either monad — `local` and
+`handleWith` by `intercept`, an effect handled again where it is. Scala 2.13 reads the same artifact through its
+TASTy reader; `scala2/` holds the suites that prove it, tofu's 2.13 artifacts included. The core itself names no
+library.
+
 ## Build
 
 ```sh
-sbt test                                      # the tests (munit)
+sbt test                                      # the tests (munit), Scala 3 and the Scala 2.13 ones in scala2/
 sbt bench                                     # JMH, then a summary table (project/Bench.scala)
 sbt "bench -f 1 -p backend=zero MonadsBenchmark.state"
 sbt "bench save -prof gc"                     # keep the run in bench.d/ (index.tsv + CSV)
 sbt "benchHistory <regexp>"                   # the benchmarks matching it, run by run
 ```
 
-Scala 3.9.0, sbt 1.13.0, JDK 25 or later. The benchmarks run on the JDK sbt runs on, JDK 26 for the runs in
+Scala 3.9.0 (and 2.13.18 for `scala2/`), sbt 1.13.0, JDK 25 or later; tests only: munit 1.2.3, tofu 0.14.3, cats 2.13.0. The benchmarks run on the JDK sbt runs on, JDK 26 for the runs in
 `bench.d` so far; `bench` prints it and `bench save` keeps it in the index's `jvm` column.

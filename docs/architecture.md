@@ -4,12 +4,57 @@ One interface, written once; several monads implementing it; references that def
 no casts, no runtime tests of an operation's class.
 
 ```
-okay.core   the interface          rows, Context, Control, Effects, Handler, Needs, A ! Es, Top
-okay.std    effects, written once   Reader, State, Writer, Throws, Choose, Emit, PState, Async
+okay.core   the interface          rows, Context, Control, Effects, Handler, intercept, Needs, A ! Es, Top,
+                                   Program (a program over a row, built where it runs)
+okay.std    effects, written once   Reader (local), State, Writer, Throws (handleWith), Choose, Emit, PState, Async;
+                                   Programs (the same as Programs), Stream
 okay.cont   the monad Cont          shift/reset, a handler a fold         — At, run, top
 okay.zero   the monad Cont0         shift0 and $, a machine               — At, run, top, shift0
-tests       the references          Ref (Cont0 without the machine), Cps0 (textbook CPS)
+tests       the references          Ref (Cont0 without the machine), Cps0 (textbook CPS); tofu over Program
+scala2/     Scala 2.13              the core read by scalac 2.13; tofu's 2.13 artifacts over Program
 ```
+
+## What it is for, and the layers that follow
+
+Four requirements, one design:
+
+1. **A small kernel people can read and use on its own** — the core names no library; ~1 700 lines.
+2. **The kernel of okay**, whose programs are `M[R, A]` — the row in the type — over `Effects[M]`, and whose
+   handlers take an effect off the row wherever it is.
+3. **Scala 2.13**, from the same artifact: okay reaches Scala 2 through scalac 2.13's TASTy reader (a cross-build
+   of its own core was measured impossible: union rows, inline, opaque types); okay-core's rows are nominal, so the
+   reader reads it as it is.
+4. **Code written over `F[_]`** — cats, tofu: a carrier `F`, its typeclasses instances.
+
+The layers:
+
+- **The context (Scala 3).** A program is written against a context, `(using c: Effects)`, a value of
+  `c.Prog[A]`: concise, the row and the answer never named, the monad the context's. A handler's body, a reset's,
+  an interceptor's is a context function — which Scala 2 cannot write, and which `F[_]` code cannot take.
+- **`Program[R, A]`, the row in the type.** A program over the row `R` NOT YET BUILT: `on(c)` builds it in any
+  context whose row is `R`. It is `F[A]` for `F[_]` code (`Program.Of[R]`), okay's `M[R, A]`, and what Scala 2
+  writes — a class with plain methods, `pure`, `flatMap`, `perform`, `run(top)`. Because it is built where it runs,
+  it can be built again under a delimiter: what `local` and `handleWith` need, and what an already built `c.Prog`
+  cannot give — its answer type is the one outside, so no delimiter goes around it. The standard effects as
+  `Program`s: `okay.std.Programs`.
+- **`intercept`, the one primitive added for them.** An effect already in the row handled again for a body: its
+  operations at a path to the interceptor's clauses, the rest on as they are; a clause runs outside, so it reaches
+  the handler. Paths compared by `In.same`, whose `Same` proves the two effects the same — no cast. On `Cont` a
+  fold at the same row; on `Cont0` a `$` whose answers are read (`interceptRead`), the machine not entered —
+  correct because inside it nothing is known of the handlers outside (`Ev.Unknown`), so an operation is never
+  answered in place past the interceptor; the slow path, to be measured before a machine node is made. It is
+  tofu's `WithLocal.local` and `Handle.handleWith`, and okay's handler of an effect anywhere in a row.
+- **Integrations, outside the core.** tofu and cats instances over `Program` are in the tests now
+  (`src/test/scala/okay/tofu`, `scala2/src/test/scala/okay/scala2`): the shape of an optional module, each
+  dependency behind it.
+
+Scala 2's view, measured: a Scala 2 program sees every class and object of the core (`Program`, `Programs`, `In`
+and its givens as implicits, the monads' `top`s); it does not see top-level definitions — `%`, `:?`, `!`,
+`perform`, the context-style `reader`, `ask` — and reads a type lambda alias as a proper type, so an effect of two
+parameters is written as Scala 2 writes a type lambda, `({ type L[X] = Reader[Int, X] })#L` or kind-projector's
+`Reader[Int, *]`; and its infix types have one precedence, so a row is `+:[A, +:[B, Pure]]` or parenthesised. An
+`export` of a sealed trait crashed the reader (`addChild inapplicable for type Row`): `okay.zero` imports the rows
+instead.
 
 ## The interface (`okay.core`)
 
@@ -139,7 +184,8 @@ The suites are written once over the interface and take a `Backend` — a monad'
 `TestEffectsOn`, `TestContextOn`, `TestControlOn`, `TestTogetherOn`, `TestDynamicOn`, `TestPStateOn`, `TestAsyncOn`.
 Each runs on `Cont`, `Cont0`, `Ref` and `Cps0`. Beside them: `TestCont` and `TestCont0` (the kernels), `TestMonads`
 (the same programs on each monad, and where they differ), `TestShiftAtHandler` and `TestZero` (`Cont0`'s own),
-`TestStreamOn`, `TestAsyncStreamOn` (streams on each monad's top), `TestSealed` (what does not compile), `TestGuide` (the guide's examples),
+`TestStreamOn`, `TestAsyncStreamOn` (streams on each monad's top), `TestInterceptOn` (`intercept`), `TestTofuOn`
+(tofu over `Program`, okay.tofu), `TestTofuFromScala2` (scala2/: the same from Scala 2.13), `TestSealed` (what does not compile), `TestGuide` (the guide's examples),
 `TestGuideDoc` (the guide's own text: its `scala` blocks generated into `GuideDoc` by `project/GuideDoc.scala`, each
 `expr   // value` line checked), `TestAgree` (1 000 programs made at random — handlers nested in any order, resets and
 shifts — on `Cont`, `Cont0`, `Ref` and `Cps0`, which must agree).
