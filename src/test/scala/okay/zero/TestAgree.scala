@@ -20,6 +20,8 @@ class TestAgree extends munit.FunSuite:
 
   enum Kind:
     case Write, St, Ch, Thr, Rd, Rst
+    /** an interceptor: a delimiter that adds no effect to the row */
+    case Icp
 
   enum P:
     case Pure(n: Int)
@@ -27,6 +29,8 @@ class TestAgree extends munit.FunSuite:
     /** an operation of the handler `index` out, `0` the innermost */
     case Op(index: Int, n: Int)
     case Handle(k: Kind, n: Int, body: P)
+    /** an interceptor of the handler `target` out, over the body */
+    case Intercept(target: Int, n: Int, body: P)
 
   /** a program over the scope, the kinds of the handlers in force, the innermost first */
   def make(r: Random, scope: List[Kind], budget: Int): P =
@@ -38,11 +42,20 @@ class TestAgree extends munit.FunSuite:
         scope(i) match
           case Kind.Ch if r.nextInt(3) > 0 => P.Pure(r.nextInt(10)) // a choice multiplies the paths: rarely
           case Kind.Rst if i > 0 => P.Pure(r.nextInt(10))           // a shift only up to the nearest delimiter
+          case Kind.Icp => P.Pure(r.nextInt(10))                    // an interceptor has no operation
           case _ => P.Op(i, r.nextInt(10))
     else if pick == 3 then P.Seq(make(r, scope, budget / 2), make(r, scope, budget / 2))
     else
-      val k = Kind.values(r.nextInt(Kind.values.length))
-      P.Handle(k, r.nextInt(10), make(r, k :: scope, budget - 1))
+      val targets = scope.indices.filter(i => Intercepted(scope(i)))
+      if targets.nonEmpty && r.nextInt(4) == 0 then
+        P.Intercept(targets(r.nextInt(targets.size)), r.nextInt(10), make(r, Kind.Icp :: scope, budget - 1))
+      else
+        val k = Handlers(r.nextInt(Handlers.length))
+        P.Handle(k, r.nextInt(10), make(r, k :: scope, budget - 1))
+
+  val Handlers: Array[Kind] = Kind.values.filter(_ != Kind.Icp)
+  /** the effects an interceptor is made for */
+  val Intercepted: Set[Kind] = Set(Kind.Rd, Kind.Thr, Kind.Write, Kind.St)
 
   /** the path past `i` effects of the row: `There` `i` times, then `Here` — typed by a cast, the row known only at
    * run time */
@@ -52,8 +65,8 @@ class TestAgree extends munit.FunSuite:
     case P.Pure(n) => c.pure(n)
     case P.Seq(a, b) => build(a, scope).flatMap(x => build(b, scope).map(y => x * 3 + y))
     case P.Op(i, n) =>
-      // a reset adds no effect to the row: the path counts the handlers between, not the resets
-      val in = path(scope.take(i).count(_ != Kind.Rst))
+      // a reset adds no effect to the row, nor an interceptor: the path counts the handlers between
+      val in = path(scope.take(i).count(Handlers.contains))
       scope(i) match
         case Kind.Write => tell[Int](n)(using c, in.asInstanceOf[Writer % Int :? c.Effs]).map(_ => n)
         case Kind.St =>
@@ -77,6 +90,26 @@ class TestAgree extends munit.FunSuite:
         case Kind.Thr => throws[Int, Int](build(body, inner)).map(_.fold(e => -e, identity))
         case Kind.Rd => reader[Int](n)(build(body, inner))
         case Kind.Rst => reset[Int](build(body, inner)).map(_ + n)
+        case Kind.Icp => c.pure(n)
+    case P.Intercept(t, n, body) =>
+      val inner = Kind.Icp :: scope
+      val in = path(scope.take(t).count(Handlers.contains))
+      scope(t) match
+        case Kind.Rd => local[Int, Int](_ + n)(using c, in.asInstanceOf[Reader % Int :? c.Effs])(build(body, inner))
+        case Kind.Thr => handleWith[Int, Int](using c, in.asInstanceOf[Throws % Int :? c.Effs])(build(body, inner))(e => c.pure(e * 2 + n))
+        case Kind.Write =>
+          given (Writer % Int :? c.Effs) = in.asInstanceOf[Writer % Int :? c.Effs]
+          Effects.intercept(new Handler[c.Prog, Writer % Int, Int, Int]:
+            def ret(a: Int): Int = a
+            def apply[X](op: Writer[Int, X], k: X => c.Prog[Int]): c.Prog[Int] = op match
+              case Writer.Tell(w) => tell[Int](w + n).flatMap(_ => k(())))(build(body, inner))
+        case _ =>
+          given (State % Int :? c.Effs) = in.asInstanceOf[State % Int :? c.Effs]
+          Effects.intercept(new Handler[c.Prog, State % Int, Int, Int]:
+            def ret(a: Int): Int = a
+            def apply[X](op: State[Int, X], k: X => c.Prog[Int]): c.Prog[Int] = op match
+              case State.Get() => get[Int].flatMap(s => k(s + n))
+              case State.Put(s) => put[Int](s).flatMap(_ => k(())))(build(body, inner))
 
   /** a program's run on each monad: its value, or the failure's class — what they must agree on */
   def outcomes(p: P): List[Any] =
@@ -96,6 +129,8 @@ class TestAgree extends munit.FunSuite:
     case P.Seq(a, b) => a :: b :: smaller(a).map(P.Seq(_, b)) ::: smaller(b).map(P.Seq(a, _))
     case P.Handle(k, n, body) =>
       unwrap(body, 0) :: P.Pure(0) :: (if n != 0 then List(P.Handle(k, 0, body)) else Nil) ::: smaller(body).map(P.Handle(k, n, _))
+    case P.Intercept(t, n, body) =>
+      unwrap(body, 0) :: P.Pure(0) :: (if n != 0 then List(P.Intercept(t, 0, body)) else Nil) ::: smaller(body).map(P.Intercept(t, n, _))
 
   /** the body of a handler taken out of it, `d` handlers deep in the body: an operation of the handler a value, one of
    * a handler further out one index nearer */
@@ -104,6 +139,10 @@ class TestAgree extends munit.FunSuite:
     case P.Op(i, n) => if i == d then P.Pure(n) else if i > d then P.Op(i - 1, n) else p
     case P.Seq(a, b) => P.Seq(unwrap(a, d), unwrap(b, d))
     case P.Handle(k, n, body) => P.Handle(k, n, unwrap(body, d + 1))
+    // an interceptor of the handler taken out goes with it; one further out one index nearer
+    case P.Intercept(t, n, body) =>
+      if t == d then unwrap(unwrap(body, 0), d)
+      else P.Intercept(if t > d then t - 1 else t, n, unwrap(body, d + 1))
 
   /** a disagreeing program cut greedily to one no step smaller of which disagrees */
   @annotation.tailrec final def shrink(p: P): P = smaller(p).find(disagree) match
@@ -115,18 +154,27 @@ class TestAgree extends munit.FunSuite:
     case P.Op(i, _) => (0, if i > 0 then 1 else 0)
     case P.Seq(a, b) => val (h1, c1) = count(a); val (h2, c2) = count(b); (h1 + h2, c1 + c2)
     case P.Handle(_, _, body) => val (h, c) = count(body); (h + 1, c)
+    case P.Intercept(_, _, body) => val (h, c) = count(body); (h + 1, c)
+
+  def interceptors(p: P): Int = p match
+    case P.Pure(_) | P.Op(_, _) => 0
+    case P.Seq(a, b) => interceptors(a) + interceptors(b)
+    case P.Handle(_, _, body) => interceptors(body)
+    case P.Intercept(_, _, body) => 1 + interceptors(body)
 
   test("1 000 programs made at random: Cont, Cont0, Ref and Cps0 agree"):
     val r = Random(20261009)
     var handlers = 0
     var crossing = 0
+    var intercepts = 0
     for i <- 0 until 1000 do
       val p = make(r, Nil, 32)
       val (h, c) = count(p)
       handlers += h
       crossing += c
+      intercepts += interceptors(p)
       if disagree(p) then
         val small = shrink(p)
         fail(s"the monads disagree: ${outcomes(small)} on\n$small\nshrunk from\n$p")
     // the programs are not trivial: handlers nested, operations crossing them
-    assert(handlers > 3000 && crossing > 500, s"$handlers handlers, $crossing operations crossing one")
+    assert(handlers > 3000 && crossing > 500 && intercepts > 300, s"$handlers handlers, $crossing operations crossing one, $intercepts interceptors")

@@ -58,6 +58,16 @@ object Cont0:
     /** the node its own `ret`, a function: no closure made for it, a shift each */
     def apply(a: A): Ans = h.ret(a)
     def rets: A => Ans = this
+  /** an interceptor of `E` at `target`, over the row `R`: `Done∘h.ret $ body`, its operations at `target` read by
+   * `h`, the others passed on — the delimiter its loop answers to, itself */
+  private[zero] final case class Icpt[E[_], R <: Row, J, T, A, Ans](target: In[E, R],
+      body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], Ans]], A],
+      h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans]
+      with ByIntercept[E, R, J, T, A, Ans] with (A => Ans):
+    def clauses: Handler[[Y] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Y], E, ?, Ans] = h
+    def ret(a: A): Ans = h.ret(a)
+    def apply(a: A): Ans = h.ret(a)
+    def rets: A => Ans = this
   /** `m`, a program outside the nearest delimiter, run there, its value back here: `shift0(k => Bind(m, k))` — what
    * a `shift`'s `k` is from inside the reset it is under again */
   private[zero] final case class Lift[RB <: Row, L, O, X](m: Cont0[L, L, X]) extends Cont0[Cont0[L, L, Res[RB, L, O]], Cont0[L, L, Res[RB, L, O]], X]
@@ -96,6 +106,9 @@ object Cont0:
       case s: Reset[r, j, tt, sv, ov] => enterReset(s, Ev.Unknown, 0) match
         case v: Return[s2, vv] => step(b.f(v.a), k)
         case m => step(m, Frames.Then(b.f, k))
+      case ic: Icpt[e, r, j, tt, a2, ans] => enterIntercept(ic, Ev.Unknown, 0) match
+        case v: Return[s2, vv] => step(b.f(v.a), k)
+        case m => step(m, Frames.Then(b.f, k))
       case _ => step(b.m, Frames.Then(b.f, k))
     case Return(a) => k match
       case Frames.End() => Head.Done(a)
@@ -112,6 +125,7 @@ object Cont0:
     case c: Ctl[r, j, a, i, o] => Head.Cut[I, j, j, Res[r, j, i], Cont0[j, j, Res[r, j, o]], a, A](kk => Return(Res.Ctl(c.f, kk)), k)
     case h: Handle[e, r, j, t, a, ans] => step(enterHandle(h, Ev.Unknown, 0), k)
     case s: Reset[r, j, t, sv, o] => step(enterReset(s, Ev.Unknown, 0), k)
+    case ic: Icpt[e, r, j, t, a, ans] => step(enterIntercept(ic, Ev.Unknown, 0), k)
     case r: Resume[rb, l, i0, v, a, x, t1, y] => step(enterUnknown(r), k)
     case c: Ctl0[r, j, t, a, s, o] => step(shift0Program(c), k)
     case Shift0(f) => Head.Cut(f, k)
@@ -150,6 +164,13 @@ private[zero] sealed trait ByHandler[E[_], R <: Row, J, T, A, I0, V] extends Del
   def ret(a: A): I0
   /** `ret` as a function — the one there is, passed on as it is, not wrapped once more each shift */
   def rets: A => I0
+
+/** an interceptor's of `E` at `target`: its body over `R`, the row the same, its value to the answer by `ret` */
+private[zero] sealed trait ByIntercept[E[_], R <: Row, J, T, A, V] extends Delim[R, Cont0[J, J, Res[R, J, T]], V, V, A]:
+  def target: In[E, R]
+  def clauses: Handler[[Y] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Y], E, ?, V]
+  def ret(a: A): V
+  def rets: A => V
 
 /** a reset's, made by the machine: for a `shift`'s body under the reset again, and for its rest resumed */
 private[zero] final case class Rst[R <: Row, J, T, S, V]() extends ByReset[R, J, T, S, V]

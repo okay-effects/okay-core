@@ -62,6 +62,10 @@ private[zero] def control[R <: Row, J, A, I, O](f: (A => Eff[R, J, O, O, I]) => 
 private[zero] def handleNode[E[_], R <: Row, J, T, A, Ans](h: Handler[[X] =>> Eff[R, J, T, T, X], E, A, Ans],
     body: Eff[E +: R, Level[R, J, T], Ans, Ans, A]): Eff[R, J, T, T, Ans] = Handle(body, h)
 
+/** an interceptor of `E` at `in`: its body, its operations at `in` read by `h`, the others passed on */
+private[zero] def interceptNode[E[_], R <: Row, J, T, A, Ans](in: In[E, R], h: Handler[[X] =>> Eff[R, J, T, T, X], E, A, Ans],
+    body: Eff[R, Level[R, J, T], Ans, Ans, A]): Eff[R, J, T, T, Ans] = Icpt(in, body, h)
+
 /** a reset: its body, every operation passed on */
 private[zero] def resetNode[R <: Row, J, T, S, O](body: Eff[R, Level[R, J, T], S, O, S]): Eff[R, J, T, T, O] = Reset(body)
 
@@ -103,6 +107,7 @@ private[zero] def bail[RB <: Row, L, I0, V, A, T, X](c: Cont0[T, Cont0[L, L, Res
   d match
     case h: ByHandler[e, r, j, t, a, i0, v] => handleRead[e, r, j, t, A, I0, V](h.clauses, h.rets, Bind(c, k))
     case _: ByReset[r, j, t, s, v] => resetRead[r, j, t, I0, V](Bind(c, k))
+    case ic: ByIntercept[e, r, j, t, a, v] => interceptRead[e, r, j, t, A, V](ic.target, ic.clauses, ic.rets, Bind(c, k))
 
 // THE DELIMITERS' READING of their answers as values — for what the machine does not take, and for shift0
 

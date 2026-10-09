@@ -90,6 +90,26 @@ class MonadsBenchmark:
   @Benchmark
   def state(): Int = run(okay.std.state[Int](0)(counting(n)))._1
 
+  type St = State % Int +: Pure
+  def countingP(i: Int): Program[St, Int] =
+    if i == 0 then Programs.get[St, Int]
+    else Programs.get[St, Int].flatMap(x => Programs.put[St, Int](x + 1)).flatMap(_ => countingP(i - 1))
+  def top: Top = if backend == "cont" then okay.cont.top else okay.zero.top
+
+  /** `state`'s loop as a `Program`, built on the monad where it runs: what the row in the type costs */
+  @Benchmark
+  def stateProgram(): Int = Program.run(top)(Programs.state[Pure, Int, Int](0)(countingP(n)))._1
+
+  def asks(i: Int, acc: Int)(using c: Effects, r: Reader % Int :? c.Effs): c.Prog[Int] =
+    if i == 0 then c.pure(acc) else ask[Int].flatMap(v => asks(i - 1, acc + v))
+
+  /** `n` asks under a reader, answered in place */
+  @Benchmark
+  def reads(): Int = run(reader(1)(asks(n, 0)))
+  /** the same under an interceptor of the reader, `local`: each ask its clause, the reader asked outside */
+  @Benchmark
+  def readsLocal(): Int = run(reader(1)(local[Int, Int](_ + 1)(asks(n, 0))))
+
   def telling(i: Int)(using c: Effects, w: Writer % Int :? c.Effs): c.Prog[Unit] =
     if i == 0 then c.pure(()) else tell(i).flatMap(_ => telling(i - 1))
 

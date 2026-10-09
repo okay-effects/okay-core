@@ -32,6 +32,14 @@ private def outside[E[_], R <: Row](ev: Ev[E +: R]): Ev[R] = ev match
   case e: Ev.Entry[e, t] => e.outer
   case _ => Ev.Unknown
 
+/** the handlers in force inside an interceptor at `in`: those outside, the one at `in` answering nothing in place —
+ * its operations go to the interceptor. A walk as long as the path, the row's length at most */
+private def masked[E[_], R <: Row](ev: Ev[R], in: In[E, R]): Ev[R] = ev match
+  case e: Ev.Entry[e, t] => in match
+    case In.Here() => Ev.Entry[e, t](e.outer, null)
+    case In.There(out) => Ev.Entry[e, t](masked(e.outer, out), e.answers)
+  case _ => ev
+
 /** how deep resumptions run nested in the loops of the shifts' bodies, at most: past it, the stack kept constant */
 private inline val Nested = 64
 
@@ -55,6 +63,9 @@ private inline val Nested = 64
     case s: Reset[r, j, tt, sv, ov] => enterReset[r, j, tt, sv, ov](s, ev, n) match
       case v: Return[s2, vv] => deliver[RB, L, I0, V, A, T, X](b.f(v.a), k, d, ev, n)
       case m => deliver[RB, L, I0, V, A, t, a](m, Frames.Then(b.f, k), d, ev, n)
+    case ic: Icpt[e, r, j, tt, a2, ans] => enterIntercept[e, r, j, tt, a2, ans](ic, ev, n) match
+      case v: Return[s2, vv] => deliver[RB, L, I0, V, A, T, X](b.f(v.a), k, d, ev, n)
+      case m => deliver[RB, L, I0, V, A, t, a](m, Frames.Then(b.f, k), d, ev, n)
     case _ => deliver[RB, L, I0, V, A, t, a](b.m, Frames.Then(b.f, k), d, ev, n)
   case r: Return[s, x] => k match
     case Frames.End() => Return[L, V](ret(d, r.a))
@@ -74,6 +85,7 @@ private inline val Nested = 64
   case r: Resume[rb, l, i0, v, a, x, t1, y] => deliver[RB, L, I0, V, A, T, X](enter(r, inner[rb, RB, L, V, i0, v, a](r.d, ev, r.ev), n), k, d, ev, n)
   case h: Handle[e, r, j, t, a, ans] => deliver[RB, L, I0, V, A, T, X](enterHandle[e, r, j, t, a, ans](h, ev, n), k, d, ev, n)
   case s: Reset[r, j, t, sv, o] => deliver[RB, L, I0, V, A, T, X](enterReset[r, j, t, sv, o](s, ev, n), k, d, ev, n)
+  case ic: Icpt[e, r, j, t, a, ans] => deliver[RB, L, I0, V, A, T, X](enterIntercept[e, r, j, t, a, ans](ic, ev, n), k, d, ev, n)
   // a program outside run there, its value back into the rest under the delimiter. A shift's k from its body, a
   // resumption: run here, nested, as a delimiter's body is — its value back in this loop, no capture of the rest;
   // anything else, or nested too deep, out and back
@@ -87,6 +99,8 @@ private inline val Nested = 64
         enter(r, inner[rb2, r3, j3, t3, i02, v2, a2](r.d, outside[e3, r3](ev), r.ev), n + 1) match
           case v: Return[s, vv] => deliver[RB, L, I0, V, A, T, X](Return(v.a), k, d, ev, n)
           case m => Bind(m, Resumed(unit[Cont0[L, L, Res[RB, L, V]], X], k, d, ev))
+      // under an interceptor the handlers outside it are not kept: out and back
+      case _ => Bind(l.m, Resumed(unit[Cont0[L, L, Res[RB, L, V]], X], k, d, ev))
     case _ => Bind(l.m, Resumed(unit[Cont0[L, L, Res[RB, L, V]], X], k, d, ev))
   // a shift up to a delimiter: Danvy–Filinski's, its body under the delimiter again, k the rest under it, lifted in
   // — shift0 and reset0. Up to a handler k's operations are k's handler's, its clauses at its answer: the shift keeps
@@ -100,6 +114,8 @@ private inline val Nested = 64
     case h: ByHandler[e, r2, j2, t2, a2, i02, v2] => c.same match
       case null => bail(c, k, d)
       case same => shiftAtHandler[e, r2, j2, t2, I0, V, A, a, i](h.clauses, h.rets, same, c, k, ev, n)
+    // up to an interceptor, rare: its definition
+    case _ => bail(c, k, d)
   case _ => bail(c, k, d)
 
 /** a `shift` up to a reset: its body under a reset again, `k` the rest under the reset, run outside, its value back in */
@@ -126,6 +142,7 @@ private def deliver0[RB <: Row, L, I0, V, A](c: Cont0[Cont0[L, L, Res[RB, L, I0]
 private[zero] def ret[RB <: Row, L, I0, V, A](d: Delim[RB, L, I0, V, A], a: A): I0 = d match
   case h: ByHandler[e, r, j, t, a, i0, v] => h.ret(a)
   case _: ByReset[r, j, t, s, v] => a
+  case ic: ByIntercept[e, r, j, t, a, v] => ic.ret(a)
 
 /** an operation not answered in place, at the delimiter: a handler's own — its clause, `k` the rest under it again;
  * another's — on outside, one handler shorter, or as it is past a reset */
@@ -136,6 +153,10 @@ private def route[RB <: Row, L, I0, V, A, E[_], X, T1, Y](op: E[X], in: In[E, RB
     case In.Here() => h.clauses(op, Resumed(f, k, d, ev))
     case In.There(o) => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], v](op, o, Resumed(f, k, d, ev))
   case _: ByReset[r, j, t, s, v] => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], v](op, in, Resumed(f, k, d, ev))
+  // an interceptor's: at its path, its clause, `k` the rest under it again; another's on outside as it is
+  case ic: ByIntercept[e, r, j, t, a, v] => In.same(in, ic.target) match
+    case null => OpK[r, j, t, E, X, Cont0[j, j, Res[r, j, t]], v](op, in, Resumed(f, k, d, ev))
+    case same => ic.clauses(same(op), Resumed(f, k, d, ev))
 
 /** a captured rest as `k`: applied, a `Resume` — lazily, so a clause that keeps it runs nothing by making it */
 private final class Resumed[RB <: Row, L, I0, V, A, X, T1, Y](f: X => Cont0[T1, Cont0[L, L, Res[RB, L, V]], Y],
@@ -153,6 +174,7 @@ private def inner[RB <: Row, RO <: Row, LO, VO, I0, V, A](d: Delim[RB, Cont0[LO,
       case w: Ev.Entry[e2, t2] if w.outer eq ev => was
       case _ => within(h.clauses, ev)
     case _: ByReset[r, j, t, s, v] => ev
+    case ic: ByIntercept[e, r, j, t, a, v] => masked(ev, ic.target)
 
 /** a resumption: its rest under its delimiter again, in a loop of its own */
 private[zero] def enter[RB <: Row, L, I0, V, A, X, T1, Y](r: Resume[RB, L, I0, V, A, X, T1, Y], ev: Ev[RB], n: Int): Cont0[L, L, V] =
@@ -163,6 +185,11 @@ private[zero] def enter[RB <: Row, L, I0, V, A, X, T1, Y](r: Resume[RB, L, I0, V
 private[zero] def enterHandle[E[_], R <: Row, J, T, A, Ans](h: Handle[E, R, J, T, A, Ans], ev: Ev[R], n: Int): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans] =
   deliver0(h.body, h, within(h.h, ev), n)
 
+/** an interceptor entered: its body in a loop of its own, the node its delimiter, the handler at its path answering
+ * nothing in place */
+private[zero] def enterIntercept[E[_], R <: Row, J, T, A, Ans](ic: Icpt[E, R, J, T, A, Ans], ev: Ev[R], n: Int): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans] =
+  deliver0(ic.body, ic, masked(ev, ic.target), n)
+
 /** a reset entered: its body in a loop of its own, the node its delimiter */
 private[zero] def enterReset[R <: Row, J, T, S, O](s: Reset[R, J, T, S, O], ev: Ev[R], n: Int): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O] =
   deliver0(s.body, s, ev, n)
@@ -171,3 +198,4 @@ private[zero] def enterReset[R <: Row, J, T, S, O](s: Reset[R, J, T, S, O], ev: 
 private[zero] def enterUnknown[RB <: Row, L, I0, V, A, X, T1, Y](r: Resume[RB, L, I0, V, A, X, T1, Y]): Cont0[L, L, V] = r.d match
   case _: ByHandler[e, rr, j, t, a, i0, v] => enter(r, inner[RB, rr, j, t, I0, V, A](r.d, Ev.Unknown, r.ev), 0)
   case _: ByReset[rr, j, t, s, v] => enter(r, Ev.Unknown, 0)
+  case _: ByIntercept[e, rr, j, t, a, v] => enter(r, Ev.Unknown, 0)
