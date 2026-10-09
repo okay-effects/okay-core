@@ -63,7 +63,7 @@ okay.zero.run(reader("Ann")(writer[String, Int](greet)))   // (List("hello, Ann"
 |---|---|---|
 | control | shift and reset (Danvy–Filinski) | shift0 and `$` (Materzok–Biernacki); shift and reset on them |
 | a handler | a fold over the program's tree | a delimiter run by a machine |
-| an operation across other handlers | goes out through each of them | answered in place if its handler answers in place — 2–5× faster |
+| an operation across other handlers | goes out through each of them | answered in place if its handler answers in place — 2–16× faster |
 | `shift0` | — | yes |
 | a `shift` directly under a handler | `k` the rest under the handler's `ret` | `k` the rest *with* the handler |
 

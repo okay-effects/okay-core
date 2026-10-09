@@ -48,15 +48,16 @@ handled — and answering handlers and general ones behave alike. (`TestMonads` 
 `Cont` runs a handler as a fold over the program: an operation of an effect further out goes out through every
 handler between, each re-folding the rest. `Cont0` runs a handler as a delimiter in a machine that knows, at run
 time, the handlers in force: an operation of an answering handler is answered **in place**, across any number of
-handlers and resets between.
+handlers and resets between. Its path keeps what it found last and from where, so a loop's operations, coming with
+one path, find their handler by a compare: the same cost across 1 handler or 16.
 
 The same programs, `MonadsBenchmark` (bench.d, 2026-10-09), ns an operation unless noted:
 
 | | `Cont` | `Cont0` | |
 |---|---|---|---|
-| an operation across 1 handler | 11.7 | 5.7 | 2.0× |
-| across 4 handlers | 22.8 | 6.8 | 3.4× |
-| across 16 handlers | 90.4 | 17.2 | 5.3× |
+| an operation across 1 handler | 11.7 | 5.5 | 2.1× |
+| across 4 handlers | 22.8 | 5.2 | 4.4× |
+| across 16 handlers | 90.4 | 5.5 | 16× |
 | answered in place / by a general clause | 6.50 / 8.99 | 5.43 / 7.72 | 1.2× |
 | state / writer / collect | 15.5 / 20.0 / 13.1 | 14.1 / 17.3 / 10.5 | 1.1–1.25× |
 | 8 queens (a run) | 255 µs | 191 µs | 1.3× |
@@ -90,5 +91,5 @@ executable definition beside it.
 ## In short
 
 `Cont0` is the more general foundation (shift0 and `$`, the CPS hierarchy, an open kernel), with stronger static
-guarantees (levels in the types), a cleaner semantics for `shift` under a handler, and 2–5× faster effects where
+guarantees (levels in the types), a cleaner semantics for `shift` under a handler, and 2–16× faster effects where
 handlers are layered. `Cont` is simpler and a little faster in a few shallow cases.

@@ -43,11 +43,25 @@ private def masked[E[_], R <: Row](ev: Ev[R], in: In[E, R]): Ev[R] = ev match
 /** how deep resumptions run nested in the loops of the shifts' bodies, at most: past it, the stack kept constant */
 private inline val Nested = 64
 
-/** the handler at the path, if it answers in place — `shift0 k. k(v)` is `v` */
-@tailrec private def inPlace[E[_], R <: Row](in: In[E, R], ev: Ev[R]): okay.core.Value[E] | Null = ev match
+/** the handler at the path, if it answers in place — `shift0 k. k(v)` is `v`. The first handler's at once; one
+ * further out by the path's last lookup, if from these handlers: the same path through the same handlers finds the
+ * same — a loop's operations come with one path, so a lookup across any number of handlers is a compare */
+private def inPlace[E[_], R <: Row](in: In[E, R], ev: Ev[R]): okay.core.Value[E] | Null = ev match
   case e: Ev.Entry[e, t] => in match
     case In.Here() => e.answers
-    case In.There(out) => inPlace(out, e.outer)
+    case _ =>
+      val f = in.found
+      if f != null && (f.from eq e) then f.answers
+      else
+        val v = walk(in, ev)
+        in.found = In.Found(e, v)
+        v
+  case _ => null
+
+@tailrec private def walk[E[_], R <: Row](in: In[E, R], ev: Ev[R]): okay.core.Value[E] | Null = ev match
+  case e: Ev.Entry[e, t] => in match
+    case In.Here() => e.answers
+    case In.There(out) => walk(out, e.outer)
   case _ => null
 
 /** the loop: `c` with the stack `k` under the delimiter `d`, the handlers in force inside it `ev` — to the program

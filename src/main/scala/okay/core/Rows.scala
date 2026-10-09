@@ -15,12 +15,18 @@ sealed trait Pure extends Row
 enum In[E[_], R <: Row]:
   case Here[E[_], T <: Row]() extends In[E, E +: T]
   case There[E[_], E2[_], T <: Row](in: In[E, T]) extends In[E, E2 +: T]
+  /** what a monad finding handlers by path found last by this one, and where: the same path from the same place
+   * finds the same, so a loop's operations look up once (`okay.zero`'s machine). Typed by `E`, no cast; one
+   * object, its fields final, read whole on any thread */
+  private[okay] var found: In.Found[E] | Null = null
 
 /** `E :? R`, the effect `E` in the row `R`: `In` as it is written in a signature, `(using in: Reader % E :? c.Effs)` —
  * a `:`-operator, so `%` and `+:` bind tighter: `Ask :? Ask +: Pure` */
 infix type :?[E[_], R <: Row] = In[E, R]
 
 object In extends InLow:
+  /** a lookup from `from`: the handler of `E` answering in place, or none */
+  final class Found[E[_]](val from: AnyRef, val answers: Value[E] | Null)
   given here[E[_], T <: Row]: In[E, E +: T] = Here()
   /** two paths in one row, the same one: then their effects are the same, `Same` the proof — by the compiler's own
    * reading of the two paths, no cast. A walk as long as the paths, the row's length at most */

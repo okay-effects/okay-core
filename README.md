@@ -64,7 +64,7 @@ only the handler's `ret` (a `raise` in `k` aborts the shift's body). `shift0` is
 
 | | `Cont` | `Cont0` |
 |---|---|---|
-| an operation across 1 / 4 / 16 handlers | 11.6 / 23.4 / 91.7 | 5.7 / 6.7 / 17.1 |
+| an operation across 1 / 4 / 16 handlers | 11.6 / 23.4 / 91.7 | 5.5 / 5.2 / 5.5 |
 | answered in place / by a general clause | 6.43 / 8.92 | 5.41 / 7.79 |
 | state, writer, collect | 16.1, 20.0, 13.1 | 14.7, 17.3, 10.5 |
 | a generator, an element pulled / pushed (`stream`, measured apart) | 14.9 / 10.3 | 14.5 / 7.6 |
@@ -73,7 +73,7 @@ only the handler's `ret` (a `raise` in `k` aborts the shift's body). `shift0` is
 | choose, throws | 29.2, 13.6 | 34.3, 14.3 |
 | pure binds | 3.36 | 3.42 |
 
-`Cont0` is 2–5× faster where handlers are layered and faster in most of the rest; `Cont` is ahead by 3–17% in
+`Cont0` is 2–16× faster where handlers are layered and faster in most of the rest; `Cont` is ahead by 3–17% in
 `choose`, `throws` and a shallow shift directly under a handler.
 
 ## Tests

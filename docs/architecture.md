@@ -203,5 +203,5 @@ shifts — on `Cont`, `Cont0`, `Ref` and `Cps0`, which must agree).
 
 Where `Cont0` is slower — `choose`, `throws`, a shallow shift directly under a handler, by 3–17% — it is the price of
 a delimiter being a node the machine enters: an entry, a frame stack, a resumption a little larger than `Cont`'s.
-The same choice makes an operation across handlers 2–5× faster. Measurements and the changes behind them are in
+The same choice makes an operation across handlers 2–16× faster. Measurements and the changes behind them are in
 `changelog.d` and `bench.d`.
