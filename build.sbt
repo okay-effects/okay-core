@@ -17,7 +17,11 @@ lazy val root = (project in file("."))
     inConfig(Compile)(allowUnsafe),
     inConfig(Test)(allowUnsafe),
     Jmh / run / javaOptions ~= (o => (o :+ unsafe).distinct),
-    Bench.settings
+    Bench.settings,
+    // docs/guide.md's scala blocks, compiled as they are written and their `expr   // value` lines checked
+    Test / sourceGenerators += Def.task {
+      GuideDoc.generate(baseDirectory.value / "docs" / "guide.md", (Test / sourceManaged).value / "okay" / "docs" / "GuideDoc.scala")
+    }.taskValue
   )
 
 // `sbt bench`, or `sbt "bench -f 1 -p n=100000 tailcall"`: JMH's options and a regexp go to `benchRun` (JMH,

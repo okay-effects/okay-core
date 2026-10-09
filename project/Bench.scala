@@ -14,7 +14,8 @@ import scala.sys.process._
  *
  * THE HISTORY, `bench.d/`: a run with `save` among its arguments — `sbt "bench save"`, `sbt "bench save -prof gc
  * tailcall"` — is kept as `<time>_<commit>.csv` (`+` after the commit when the tree had changes), with a line for
- * it in `bench.d/index.tsv`: time, commit, changed, JMH arguments, wall time, file. A run without it is not kept;
+ * it in `bench.d/index.tsv`: time, commit, changed, JMH arguments, wall time, file, and the JVM it ran on (the JDK
+ * of the runs before the column: 26, sbt's — not the README's 25). A run without it is not kept;
  * its `Δ` still compares with the history. `sbt "benchHistory <regexp>"`: the benchmarks matching it, run by run,
  * oldest first. */
 object Bench {
@@ -54,7 +55,9 @@ object Bench {
           if (!csv.exists) log.warn("bench: no results — JMH ran nothing")
           else {
             val previous = runs(history)
-            val kept = if (save) Some(keep(csv, history, baseDirectory.value, args, elapsed)) else None
+            val jvm = (Jmh / run / javaHome).value.map(_.getName).getOrElse(System.getProperty("java.version"))
+            log.info(s"bench: on the JVM $jvm")
+            val kept = if (save) Some(keep(csv, history, baseDirectory.value, args, elapsed, jvm)) else None
             report(read(csv), previous, elapsed, kept, log)
           }
         }
@@ -73,15 +76,15 @@ object Bench {
   }
 
   /** the run's CSV into the history, and its line in the index; the kept file */
-  private def keep(csv: File, history: File, base: File, args: Seq[String], elapsed: Long): File = {
+  private def keep(csv: File, history: File, base: File, args: Seq[String], elapsed: Long, jvm: String): File = {
     IO.createDirectory(history)
     val now = LocalDateTime.now.format(stamp)
     val (sha, changed) = commit(base)
     val kept = history / s"${now}_$sha${if (changed) "+" else ""}.csv"
     IO.copyFile(csv, kept)
     val index = history / "index.tsv"
-    if (!index.exists) IO.write(index, "time\tcommit\tchanged\targs\twall\tfile\n")
-    IO.append(index, Seq(now, sha, changed.toString, args.mkString(" "), wall(elapsed), kept.getName).mkString("", "\t", "\n"))
+    if (!index.exists) IO.write(index, "time\tcommit\tchanged\targs\twall\tfile\tjvm\n")
+    IO.append(index, Seq(now, sha, changed.toString, args.mkString(" "), wall(elapsed), kept.getName, jvm).mkString("", "\t", "\n"))
     kept
   }
 

@@ -90,4 +90,5 @@ sbt "bench save -prof gc"                     # keep the run in bench.d/ (index.
 sbt "benchHistory <regexp>"                   # the benchmarks matching it, run by run
 ```
 
-Scala 3.9.0, sbt 1.13.0, JDK 25.
+Scala 3.9.0, sbt 1.13.0, JDK 25 or later. The benchmarks run on the JDK sbt runs on, JDK 26 for the runs in
+`bench.d` so far; `bench` prints it and `bench save` keeps it in the index's `jvm` column.

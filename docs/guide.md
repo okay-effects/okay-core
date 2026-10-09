@@ -1,7 +1,8 @@
 # Guide
 
-How to write programs with effects and delimited control, run them, and write effects of your own. Every example
-here is in `src/test/scala/okay/docs/TestGuide.scala`, compiled and run on both monads.
+How to write programs with effects and delimited control, run them, and write effects of your own. The guide's own
+text is compiled: `project/GuideDoc.scala` makes its `scala` blocks one object, and `TestGuideDoc` checks each line
+`expr   // value` against the value written. `TestGuide` runs the examples on both monads besides.
 
 ```scala
 import okay.core.*                       // the interface: Effects, Handler, perform, rows, A ! Es
@@ -29,7 +30,7 @@ def greet(using c: Effects, r: Reader % String :? c.Effs, w: Writer % String :? 
 ## Rows
 
 ```scala
-Reader % Int +: Writer % String +: Pure   // a row: Reader of Int, then Writer of String
+type Row = Reader % Int +: Writer % String +: Pure   // a row: Reader of Int, then Writer of String
 ```
 
 - `Pure` is the empty row, `E +: R` the effect `E` in front of the row `R`.
@@ -163,10 +164,13 @@ returned out of its `reader(7)` and run under `reader(8)`, asks 8.
 
 ```scala
 def twice(using c: Effects): c.Prog[Int] =
-  reset[Int](shift[Int, Int](k => k(10).flatMap(k)).map(_ + 1))   // 12
+  reset[Int](shift[Int, Int](k => k(10).flatMap(k)).map(_ + 1))
 
 def modified(using c: Effects): c.Prog[String] =
-  reset[Int](shift[Int, String](k => k(5).map(_.toString)).map(_ * 2))   // "10"
+  reset[Int](shift[Int, String](k => k(5).map(_.toString)).map(_ * 2))
+
+okay.zero.run(twice)      // 12
+okay.zero.run(modified)   // "10"
 ```
 
 - `shift[A, O]`: `A` the value at the hole, `O` the answer the delimiter is moved to. The answer type may change
@@ -204,8 +208,7 @@ It needs a reset's context of `Cont0`: under a handler, or on `Cont`, it does no
 a `get` of the wrong type does not compile.
 
 ```scala
-pstate(7)(st => st.get[Int].flatMap(n => st.put[Int]("x" * n)).flatMap(_ => st.get[String]).map(_.length))
-// ("xxxxxxx", 7)
+okay.zero.run[(String, Int)](pstate(7)(st => st.get[Int].flatMap(n => st.put[Int]("x" * n)).flatMap(_ => st.get[String]).map(_.length)))   // ("xxxxxxx", 7)
 ```
 
 ## Generators
