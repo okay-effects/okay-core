@@ -20,7 +20,7 @@ def choose[A](using c: Effects)(body: c.Body[Choose, Seq[A], A]): c.Prog[Seq[A]]
       // elements built first — a fold bound them all before the first ran, two closures and a frame each
       case Choose.Among(as) =>
         val xs = as match
-          case is: IndexedSeq[X] => is
+          case is: IndexedSeq[X @unchecked] => is
           case _ => as.toVector
         def from(i: Int, acc: Vector[A]): c.Prog[Seq[A]] =
           if i == xs.length then c.pure[c.S, Seq[A]](acc) else k(xs(i)).flatMap(r => from(i + 1, acc ++ r))
