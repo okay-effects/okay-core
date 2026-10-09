@@ -113,7 +113,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
     assertEquals(p.value, (List(1, 2), ()))
 
   test("generate is lazy: an infinite body, three elements pulled, nothing past them runs"):
-    type G = Gen[Cont, Int, Pure]
+    type G = Gen[[I, O, A] =>> Cont[Pure, I, O, A], Int]
     var produced = 0
     def from(n: Int)(using c: Effects, e: Emit % Int :? c.Effs): c.Prog[Unit] =
       yield_(n).flatMap(_ => { produced += 1; from(n + 1) })
@@ -126,7 +126,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
 
   test("generate over a remaining effect: the rest of the generator still asks, under the handler it is run in"):
     type F = Reader % Int +: Pure
-    type G = Gen[Cont, Int, F]
+    type G = Gen[[I, O, A] =>> Cont[F, I, O, A], Int]
     def all(g: Cont[F, G, G, G]): List[Int] = okay.cont.run(reader[G](7)(g)) match
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: all(rest)
@@ -139,7 +139,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
       if i == 0 then c.pure(()) else yield_(a).flatMap(_ => fibs(i - 1, b, a + b))
     def forever(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
       yield_(a).flatMap(_ => forever(b, a + b))
-    type G = Gen[Cont, Long, Pure]
+    type G = Gen[[I, O, A] =>> Cont[Pure, I, O, A], Long]
     def take(n: Int, g: Cont[Pure, G, G, G]): List[Long] = if n == 0 then Nil else g.value match
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: take(n - 1, rest)
@@ -150,7 +150,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
 
   test("generate stays lazy over a forwarded effect: an infinite body asking at every step, three pulled"):
     type F = Reader % Int +: Pure
-    type G = Gen[Cont, Int, F]
+    type G = Gen[[I, O, A] =>> Cont[F, I, O, A], Int]
     var produced = 0
     def from(n: Int)(using c: Effects, e: Emit % Int :? c.Effs, r: Reader % Int :? c.Effs): c.Prog[Unit] =
       ask[Int].flatMap(x => yield_(n * x)).flatMap(_ => { produced += 1; from(n + 1) })
@@ -162,7 +162,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
 
   test("handlers are dynamic: a generator's rest asks the reader it is run under, not the one it was built under"):
     type F = Reader % Int +: Pure
-    type G = Gen[Cont, Int, F]
+    type G = Gen[[I, O, A] =>> Cont[F, I, O, A], Int]
     // built under reader(7): its rest is still a program over Reader — its type says it needs one — and the
     // consumer runs it under reader(8). A handler found where the program was BUILT (evidence passing) would say 7
     val gen: Cont[Pure, G, G, G] =

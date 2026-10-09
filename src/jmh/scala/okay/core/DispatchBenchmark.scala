@@ -59,7 +59,7 @@ class DispatchBenchmark:
     if n == 0 then c.pure(false) else perform(Tick.Value(n)).flatMap(_ => evenT(n - 1))
 
   /** the context an `Effects` whose monad is `Cont`: any row, any answer, the monad known */
-  type OnCont = Effects { type M[X <: Row, I, O, A] = Cont[X, I, O, A] }
+  type OnCont = Effects { type M[I, O, A] = Cont[T, I, O, A] }
   def evenM(n: Int)(using c: OnCont, t: Tick :? c.Effs): c.Prog[Boolean] =
     if n == 0 then c.pure(true) else perform(Tick.Value(n)).flatMap(_ => oddM(n - 1))
   def oddM(n: Int)(using c: OnCont, t: Tick :? c.Effs): c.Prog[Boolean] =

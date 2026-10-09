@@ -58,7 +58,7 @@ class TestMonads extends munit.FunSuite:
   // WHERE THEY DIFFER, by design: a shift directly under a general handler. On Cont and on the reference `k` is the
   // rest under the handler's `ret` only, an operation in it the shift body's handler's — a raise in k aborts the
   // body; on Cont0's machine `k` is the rest WITH the handler, a raise in k that k's Left
-  def kRaising(using c: Effects { type S = Either[String, Int] }, t: Throws % String :? c.Effs): c.M[c.Effs, Either[String, Int], Either[String, Int], Int] =
+  def kRaising(using c: Effects { type S = Either[String, Int] }, t: Throws % String :? c.Effs): c.M[Either[String, Int], Either[String, Int], Int] =
     shift[Int, Either[String, Int]](k =>
       k(1).flatMap(r1 => k(2).map(r2 => Right(List(r1, r2).map(_.fold(_.length, identity)).sum))))
       .flatMap(x => if x == 1 then raise[String, Int]("one") else c.pure(x * 10))

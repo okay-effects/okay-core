@@ -5,19 +5,19 @@ import Cont.*
 
 /** THE INSTANCE over `Cont`, the context at the row `R0`, the answer `S0`: effects and control both */
 class At[R0 <: Row, S0] extends Effects with Paths.Keep[R0, At[R0, S0]]:
-  type M[R <: Row, I, O, A] = Cont[R, I, O, A]
+  type M[I, O, A] = Cont[R0, I, O, A]
   type Effs = R0
   type S = S0
   type Inner[X <: Row, I, O, A] = Cont[X, I, O, A]
   type Handled[E[_], S2] = At[E +: R0, S2]
   type Reset[S2] = At[R0, S2]
   type Answer[S2] = At[R0, S2]
-  def pure[X <: Row, S2, A](a: A): Cont[X, S2, S2, A] = Return(a)
-  def delay[X <: Row, I, O, A](m: => Cont[X, I, O, A]): Cont[X, I, O, A] = Delay(() => m)
-  extension [X <: Row, I, O, A](m: Cont[X, I, O, A])
-    def flatMap[I2, B](f: A => Cont[X, I2, I, B]): Cont[X, I2, O, B] = m.flatMap(f)
-    def map[B](f: A => B): Cont[X, I, O, B] = m.map(f)
-  def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): Cont[R2, S2, S2, X] = Inject(op, in)
+  def pure[S2, A](a: A): Cont[R0, S2, S2, A] = Return(a)
+  def delay[I, O, A](m: => Cont[R0, I, O, A]): Cont[R0, I, O, A] = Delay(() => m)
+  extension [I, O, A](m: Cont[R0, I, O, A])
+    def flatMap[I2, B](f: A => Cont[R0, I2, I, B]): Cont[R0, I2, O, B] = m.flatMap(f)
+    def map[B](f: A => B): Cont[R0, I, O, B] = m.map(f)
+  def perform[E[_], S2, X](op: E[X], in: In[E, R0]): Cont[R0, S2, S2, X] = Inject(op, in)
   def handle[E[_], A, Ans](h: Handler[[Z] =>> Cont[R0, S0, S0, Z], E, A, Ans])(body: At[E +: R0, Ans] ?=> Cont[E +: R0, Ans, Ans, A]): Cont[R0, S0, S0, Ans] =
     body(using At()).handle(h)
   // an `At` itself: `perform` and the rest the one implementation there is, called straight

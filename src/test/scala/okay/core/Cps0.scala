@@ -73,7 +73,7 @@ object Cps0:
 
   /** the context: the row `R0`, the outside of its delimiter at `J0`, the answer `T0` */
   class At[R0 <: Row, J0, T0] extends Effects:
-    type M[X <: Row, I, O, A] = Eff[X, J0, I, O, A]
+    type M[I, O, A] = Eff[R0, J0, I, O, A]
     type Inner[X <: Row, I, O, A] = Eff[X, Lv[R0, J0, T0], I, O, A]
     type Effs = R0
     type S = T0
@@ -81,16 +81,16 @@ object Cps0:
     type Reset[S2] = At[R0, Lv[R0, J0, T0], S2]
     type Answer[S2] = At[R0, J0, S2]
     def answer[S2]: At[R0, J0, S2] = At()
-    def pure[X <: Row, S2, A](a: A): M[X, S2, S2, A] = Cps0.pure(a)
-    def delay[X <: Row, I, O, A](m: => M[X, I, O, A]): M[X, I, O, A] = F(k => m.run(k))
-    extension [X <: Row, I, O, A](m: M[X, I, O, A])
-      def flatMap[I2, B](f: A => M[X, I2, I, B]): M[X, I2, O, B] = Cps0.flatMap(m)(f)
-      def map[B](f: A => B): M[X, I, O, B] = Cps0.map(m)(f)
-    def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = request(op, in)
-    def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: At[E +: R0, Lv[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A]): M[R0, T0, T0, Ans] =
+    def pure[S2, A](a: A): M[S2, S2, A] = Cps0.pure(a)
+    def delay[I, O, A](m: => M[I, O, A]): M[I, O, A] = F(k => m.run(k))
+    extension [I, O, A](m: M[I, O, A])
+      def flatMap[I2, B](f: A => M[I2, I, B]): M[I2, O, B] = Cps0.flatMap(m)(f)
+      def map[B](f: A => B): M[I, O, B] = Cps0.map(m)(f)
+    def perform[E[_], S2, X](op: E[X], in: In[E, R0]): M[S2, S2, X] = request(op, in)
+    def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: At[E +: R0, Lv[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A]): M[T0, T0, Ans] =
       readHand(dollar(body(using At()), (a: A) => Cps0.pure(Done[E +: R0, Lv[R0, J0, T0], Ans](h.ret(a)))), h)
-    def shift[I, O, A](f: (A => M[R0, O, O, I]) => M[R0, O, O, O], same: (I =:= O) | Null): M[R0, I, O, A] = control(f)
-    def reset[S2, O](body: At[R0, Lv[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[R0, T0, T0, O] =
+    def shift[I, O, A](f: (A => M[O, O, I]) => M[O, O, O], same: (I =:= O) | Null): M[I, O, A] = control(f)
+    def reset[S2, O](body: At[R0, Lv[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[T0, T0, O] =
       passAll(dollar(body(using At()), (s: S2) => Cps0.pure(Done[R0, Lv[R0, J0, T0], S2](s))))
     type Needing[Es <: AnyKind] = At[R0, J0, T0] & Needs[Es]
     def needing[Es <: AnyKind](p: Paths[Es, R0]): At[R0, J0, T0] & Needs[Es] = Needy(p)

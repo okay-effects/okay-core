@@ -25,8 +25,8 @@ def collect[W, A](using c: Effects)(body: c.Body[Emit % W, (List[W], A), A])
 
 /** a lazy generator over the row `R`: the next element and the rest, a program over `R` at the generator's own
  * answer; or done */
-enum Gen[M[_ <: Row, _, _, _], W, R <: Row]:
-  case Next(w: W, rest: M[R, Gen[M, W, R], Gen[M, W, R], Gen[M, W, R]])
+enum Gen[M[_, _, _], W]:
+  case Next(w: W, rest: M[Gen[M, W], Gen[M, W], Gen[M, W]])
   case Done()
 /** `generate[W, G](next, done)(body)`: the body as a lazy generator — nothing runs until the consumer pulls — of
  * the consumer's own type `G`: each element with the rest, a program here of `G`, by `next`; the end, `done`. Any

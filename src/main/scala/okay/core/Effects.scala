@@ -9,35 +9,36 @@ package okay.core
  * a nested scope's given is preferred. Its monad is `Inner`, the monad ONE LEVEL IN: `Cont`'s the same, `M`; a monad
  * whose answers are programs of the level outside (`okay.zero`'s) one level deeper */
 abstract class Context:
-  type M[R <: Row, I, O, A]
+  /** a program here, over the row `Effs`: of value `A`, with a continuation answering `I`, answering `O` */
+  type M[I, O, A]
   type Effs <: Row
   type S
   /** the monad of the bodies of the delimiters here: a handler's, a reset's */
   type Inner[X <: Row, I, O, A]
   /** a program here, the answer kept: what most programs are */
-  type Prog[A] = M[Effs, S, S, A]
-  def pure[R <: Row, S2, A](a: A): M[R, S2, S2, A]
+  type Prog[A] = M[S, S, A]
+  def pure[S2, A](a: A): M[S2, S2, A]
   /** `delay(m)`: the program `m`, built when it is run — a tail call */
-  def delay[R <: Row, I, O, A](m: => M[R, I, O, A]): M[R, I, O, A]
-  extension [R <: Row, I, O, A](m: M[R, I, O, A])
-    def flatMap[I2, B](f: A => M[R, I2, I, B]): M[R, I2, O, B]
-    def map[B](f: A => B): M[R, I, O, B]
+  def delay[I, O, A](m: => M[I, O, A]): M[I, O, A]
+  extension [I, O, A](m: M[I, O, A])
+    def flatMap[I2, B](f: A => M[I2, I, B]): M[I2, O, B]
+    def map[B](f: A => B): M[I, O, B]
 
 /** EFFECTS over the monad: an operation at its path in the row, and a handler — a delimiter that answers the
  * operations of its effect; a reset is one that answers none. So effects are control with handlers: every context
  * with effects has `shift` and `reset`, and its delimiters' contexts are so too */
 abstract class Effects extends Control:
   /** the context under a handler of `E` here, at its answer `S2`: the row `E +: R`, the monad `Inner` */
-  type Handled[E[_], S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.Inner[X, I, O, A]; type Effs = E +: Effects.this.Effs; type S = S2 }
-  type Reset[S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.Inner[X, I, O, A]; type Effs = Effects.this.Effs; type S = S2 }
-  type Answer[S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.M[X, I, O, A]; type Effs = Effects.this.Effs; type S = S2 }
+  type Handled[E[_], S2] <: Effects { type M[I, O, A] = Effects.this.Inner[E +: Effects.this.Effs, I, O, A]; type Effs = E +: Effects.this.Effs; type S = S2 }
+  type Reset[S2] <: Effects { type M[I, O, A] = Effects.this.Inner[Effects.this.Effs, I, O, A]; type Effs = Effects.this.Effs; type S = S2 }
+  type Answer[S2] <: Effects { type M[I, O, A] = Effects.this.M[I, O, A]; type Effs = Effects.this.Effs; type S = S2 }
   /** a handler of `E`'s body here, of value `A`, at the handler's answer `Ans`: in its context, one level in */
   type Body[E[_], Ans, A] = Handled[E, Ans] ?=> Inner[E +: Effs, Ans, Ans, A]
-  def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X]
+  def perform[E[_], S2, X](op: E[X], in: In[E, Effs]): M[S2, S2, X]
   /** a handler of `E` here: the body in its context, over `E +: R` at the answer `Ans`; its answers read by `h` */
-  def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: Handled[E, Ans] ?=> Inner[E +: Effs, Ans, Ans, A]): M[Effs, S, S, Ans]
+  def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: Handled[E, Ans] ?=> Inner[E +: Effs, Ans, Ans, A]): M[S, S, Ans]
   /** this context with the paths of the effects a program needs: the context of an `A ! Es` */
-  type Needing[Es <: AnyKind] <: Needs[Es] { type M[X <: Row, I, O, A] = Effects.this.M[X, I, O, A]; type Effs = Effects.this.Effs; type S = Effects.this.S }
+  type Needing[Es <: AnyKind] <: Needs[Es] { type M[I, O, A] = Effects.this.M[I, O, A]; type Effs = Effects.this.Effs; type S = Effects.this.S }
   def needing[Es <: AnyKind](p: Paths[Es, Effs]): Needing[Es]
 
 /** THE CONTEXT WITH THE EFFECTS A PROGRAM NEEDS, `Es`, found in its row: a context of the instance's own making,
@@ -46,7 +47,7 @@ trait Needs[Es <: AnyKind] extends Effects:
   def find[E[_]](r: Req[E, Es]): In[E, Effs]
 object Needs:
   given all[Es <: AnyKind](using c: Effects, p: Paths[Es, c.Effs])
-    : (Needs[Es] { type M[X <: Row, I, O, A] = c.M[X, I, O, A]; type Effs = c.Effs; type S = c.S }) = c.needing(p)
+    : (Needs[Es] { type M[I, O, A] = c.M[I, O, A]; type Effs = c.Effs; type S = c.S }) = c.needing(p)
   /** an effect needed: its path in the context's row */
   given found[E[_], Es <: AnyKind](using n: Needs[Es], r: Req[E, Es]): In[E, n.Effs] = n.find(r)
 

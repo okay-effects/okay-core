@@ -16,4 +16,4 @@ def choose[A](using c: Effects)(body: c.Body[Choose, Seq[A], A]): c.Prog[Seq[A]]
     // List or a Seq's `++` copied all the values so far for each path, quadratic in their number
     def apply[X](op: Choose[X], k: X => c.Prog[Seq[A]]): c.Prog[Seq[A]] = op match
       case Choose.Among(as) =>
-        as.foldLeft(c.pure[c.Effs, c.S, Seq[A]](Vector.empty))((acc, x) => acc.flatMap(v => k(x).map(v ++ _))))(body)
+        as.foldLeft(c.pure[c.S, Seq[A]](Vector.empty))((acc, x) => acc.flatMap(v => k(x).map(v ++ _))))(body)

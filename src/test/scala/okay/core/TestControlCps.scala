@@ -13,18 +13,18 @@ object Cps:
   final class F[R <: Row, I, O, A](val run: (A => I) => O)
 
   final class At[R0 <: Row, S0] extends Control:
-    type M[R <: Row, I, O, A] = F[R, I, O, A]
+    type M[I, O, A] = F[R0, I, O, A]
     type Effs = R0
     type S = S0
     type Inner[X <: Row, I, O, A] = F[X, I, O, A]
     type Reset[S2] = At[R0, S2]
     type Answer[S2] = At[R0, S2]
     def answer[S2]: At[R0, S2] = At()
-    def pure[X <: Row, S2, A](a: A): F[X, S2, S2, A] = F(k => k(a))
-    def delay[X <: Row, I, O, A](m: => F[X, I, O, A]): F[X, I, O, A] = F(k => m.run(k))
-    extension [X <: Row, I, O, A](m: F[X, I, O, A])
-      def flatMap[I2, B](f: A => F[X, I2, I, B]): F[X, I2, O, B] = F(k => m.run(a => f(a).run(k)))
-      def map[B](f: A => B): F[X, I, O, B] = F(k => m.run(a => k(f(a))))
+    def pure[S2, A](a: A): F[R0, S2, S2, A] = F(k => k(a))
+    def delay[I, O, A](m: => F[R0, I, O, A]): F[R0, I, O, A] = F(k => m.run(k))
+    extension [I, O, A](m: F[R0, I, O, A])
+      def flatMap[I2, B](f: A => F[R0, I2, I, B]): F[R0, I2, O, B] = F(k => m.run(a => f(a).run(k)))
+      def map[B](f: A => B): F[R0, I, O, B] = F(k => m.run(a => k(f(a))))
     /** `shift f = λk. f (λa. λk'. k' (k a)) id` */
     def shift[I, O, A](f: (A => F[R0, O, O, I]) => F[R0, O, O, O], same: (I =:= O) | Null): F[R0, I, O, A] =
       F(k => f(a => F(k2 => k2(k(a)))).run(identity))
@@ -51,7 +51,7 @@ class TestControlCps extends munit.FunSuite:
   test("the answer type modified: an Int hole, a String answer"):
     both(okay.cont.run(modified), Cps.run(modified), "10")
 
-  def atTop(using c: Control { type S = Int }): c.M[c.Effs, Int, Int, Int] =
+  def atTop(using c: Control { type S = Int }): c.M[Int, Int, Int] =
     shift[Int, Int](k => k(1).flatMap(k)).map(_ * 3)
   test("a shift at the top: the top is the delimiter"):
     both(okay.cont.run(atTop), Cps.run(atTop), 9)
