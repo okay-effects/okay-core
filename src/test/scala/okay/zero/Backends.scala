@@ -50,4 +50,4 @@ class TestAsyncOnRef extends okay.core.TestAsyncOn:
 class TestInterceptOnZero extends okay.core.TestInterceptOn(ZeroBackend)
 class TestInterceptOnRef extends okay.core.TestInterceptOn(RefBackend)
 class TestNestingOnZero extends okay.core.TestNestingOn(ZeroBackend, deep = true)
-class TestNestingOnRef extends okay.core.TestNestingOn(RefBackend)
+class TestNestingOnRef extends okay.core.TestNestingOn(RefBackend, deep = true)

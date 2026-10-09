@@ -30,13 +30,13 @@ class Ref[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   def perform[E[_], S2, X](op: E[X], in: In[E, R0]): M[S2, S2, X] = request(op, in)
   def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: Ref[E +: R0, Level[R0, J0, T0], Ans] ?=> Handling[E, Ans, Ans, A])
       : M[T0, T0, Ans] =
-    handleRead(h, h.ret, body(using Ref()))
+    handleRead(h, h.ret, okay.zero.delay(body(using Ref())))
   def intercept[E[_], A, Ans](in: In[E, R0], h: core.Handler[Prog, E, A, Ans])(body: Ref[R0, Level[R0, J0, T0], Ans] ?=> Within[Ans, Ans, A])
       : M[T0, T0, Ans] =
-    interceptRead(in, h, h.ret, body(using Ref()))
+    interceptRead(in, h, h.ret, okay.zero.delay(body(using Ref())))
   def shift[I, O, A](f: (A => M[O, O, I]) => M[O, O, O], same: (I =:= O) | Null): M[I, O, A] = control(f, null)
   def reset[S2, O](body: Ref[R0, Level[R0, J0, T0], S2] ?=> Within[S2, O, S2]): M[T0, T0, O] =
-    resetRead(body(using Ref()))
+    resetRead(okay.zero.delay(body(using Ref())))
 
   type Needing[Es <: AnyKind] = Ref[R0, J0, T0] & core.Needs[Es]
   def needing[Es <: AnyKind](p: Paths[Es, R0]): Ref[R0, J0, T0] & core.Needs[Es] = Ref.Needy(p)

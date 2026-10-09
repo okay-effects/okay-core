@@ -43,6 +43,10 @@ private def masked[E[_], R <: Row](ev: Ev[R], in: In[E, R]): Ev[R] = ev match
 /** how deep resumptions run nested in the loops of the shifts' bodies, at most: past it, the stack kept constant */
 private inline val Nested = 64
 
+/** how deep the loop runs delimiters and resumptions it enters nested in itself, a JVM frame each — the common,
+ * cheapest way: no object pushed. Past it, pushed on the metacontinuation (`Meta`): any depth in constant stack */
+private inline val Deep = 32
+
 /** the handler at the path, if it answers in place — `shift0 k. k(v)` is `v`. The first handler's at once; one
  * further out by the path's last lookup, if from these handlers: the same path through the same handlers finds the
  * same — a loop's operations come with one path, so a lookup across any number of handlers is a compare */
@@ -76,58 +80,76 @@ private[zero] enum Meta[L, V, Z]:
 /** the loop: `c` with the stack `k` under the delimiter `d`, the handlers in force inside it `ev`, the delimiters
  * outside it `meta` — to the program outside the outermost */
 @tailrec private def deliver[RB <: Row, L, I0, V, A, T, X, Z](c: Cont0[T, Cont0[L, L, Res[RB, L, V]], X],
-    k: Frames[X, Cont0[L, L, Res[RB, L, I0]], T, A], d: Delim[RB, L, I0, V, A], ev: Ev[RB], n: Int, meta: Meta[L, V, Z]): Z =
+    k: Frames[X, Cont0[L, L, Res[RB, L, I0]], T, A], d: Delim[RB, L, I0, V, A], ev: Ev[RB], n: Int, depth: Int, meta: Meta[L, V, Z]): Z =
   // `out`, the program leaving the delimiter: to the loop's caller, or on in the delimiter outside — the same loop
   inline def leave(out: Cont0[L, L, V]): Z = meta match
     case _: Meta.Top[l, v] => out
-    case u: Meta.Under[rb, l, i0, v, a, x, z] => deliver[rb, l, i0, v, a, Cont0[l, l, Res[rb, l, v]], x, Z](out, u.k, u.d, u.ev, n, u.up)
+    case u: Meta.Under[rb, l, i0, v, a, x, z] => deliver[rb, l, i0, v, a, Cont0[l, l, Res[rb, l, v]], x, Z](out, u.k, u.d, u.ev, n, depth, u.up)
   c match
   case b: Bind[i, t, o, a, bb] => b.m match
-    case r: Return[s, aa] => deliver[RB, L, I0, V, A, T, X, Z](b.f(r.a), k, d, ev, n, meta)
-    // a handler, a reset, an interceptor bound: entered — this loop's frames and the bind pushed under it
+    case r: Return[s, aa] => deliver[RB, L, I0, V, A, T, X, Z](b.f(r.a), k, d, ev, n, depth, meta)
+    // a handler, a reset, an interceptor bound: entered at once, nested — its value, the usual, bound with no frame
+    // pushed; past `Deep` nested, this loop's frames and the bind pushed under it
+    case h: Handle[e, r, j, tt, a2, ans] if depth < Deep => enterHandle[e, r, j, tt, a2, ans](h, ev, n, depth + 1) match
+      case v: Return[s, vv] => deliver[RB, L, I0, V, A, T, X, Z](b.f(v.a), k, d, ev, n, depth, meta)
+      case m => deliver[RB, L, I0, V, A, t, a, Z](m, Frames.Then(b.f, k), d, ev, n, depth, meta)
+    case s: Reset[r, j, tt, sv, ov] if depth < Deep => enterReset[r, j, tt, sv, ov](s, ev, n, depth + 1) match
+      case v: Return[s2, vv] => deliver[RB, L, I0, V, A, T, X, Z](b.f(v.a), k, d, ev, n, depth, meta)
+      case m => deliver[RB, L, I0, V, A, t, a, Z](m, Frames.Then(b.f, k), d, ev, n, depth, meta)
+    case ic: Icpt[e, r, j, tt, a2, ans] if depth < Deep => enterIntercept[e, r, j, tt, a2, ans](ic, ev, n, depth + 1) match
+      case v: Return[s2, vv] => deliver[RB, L, I0, V, A, T, X, Z](b.f(v.a), k, d, ev, n, depth, meta)
+      case m => deliver[RB, L, I0, V, A, t, a, Z](m, Frames.Then(b.f, k), d, ev, n, depth, meta)
     case h: Handle[e, r, j, tt, a2, ans] =>
-      deliver[e +: r, Cont0[j, j, Res[r, j, tt]], ans, ans, a2, Cont0[Cont0[j, j, Res[r, j, tt]], Cont0[j, j, Res[r, j, tt]], Res[e +: r, Cont0[j, j, Res[r, j, tt]], ans]], a2, Z](h.body, Frames.End(), h, within(h.h, ev), n, Meta.Under[RB, L, I0, V, A, a, Z](Frames.Then(b.f, k), d, ev, meta))
+      deliver[e +: r, Cont0[j, j, Res[r, j, tt]], ans, ans, a2, Cont0[Cont0[j, j, Res[r, j, tt]], Cont0[j, j, Res[r, j, tt]], Res[e +: r, Cont0[j, j, Res[r, j, tt]], ans]], a2, Z](h.body, Frames.End(), h, within(h.h, ev), n, depth, Meta.Under[RB, L, I0, V, A, a, Z](Frames.Then(b.f, k), d, ev, meta))
     case s: Reset[r, j, tt, sv, ov] =>
-      deliver[r, Cont0[j, j, Res[r, j, tt]], sv, ov, sv, Cont0[Cont0[j, j, Res[r, j, tt]], Cont0[j, j, Res[r, j, tt]], Res[r, Cont0[j, j, Res[r, j, tt]], sv]], sv, Z](s.body, Frames.End(), s, ev, n, Meta.Under[RB, L, I0, V, A, a, Z](Frames.Then(b.f, k), d, ev, meta))
+      deliver[r, Cont0[j, j, Res[r, j, tt]], sv, ov, sv, Cont0[Cont0[j, j, Res[r, j, tt]], Cont0[j, j, Res[r, j, tt]], Res[r, Cont0[j, j, Res[r, j, tt]], sv]], sv, Z](s.body, Frames.End(), s, ev, n, depth, Meta.Under[RB, L, I0, V, A, a, Z](Frames.Then(b.f, k), d, ev, meta))
     case ic: Icpt[e, r, j, tt, a2, ans] =>
-      deliver[r, Cont0[j, j, Res[r, j, tt]], ans, ans, a2, Cont0[Cont0[j, j, Res[r, j, tt]], Cont0[j, j, Res[r, j, tt]], Res[r, Cont0[j, j, Res[r, j, tt]], ans]], a2, Z](ic.body, Frames.End(), ic, masked(ev, ic.target), n, Meta.Under[RB, L, I0, V, A, a, Z](Frames.Then(b.f, k), d, ev, meta))
-    case _ => deliver[RB, L, I0, V, A, t, a, Z](b.m, Frames.Then(b.f, k), d, ev, n, meta)
+      deliver[r, Cont0[j, j, Res[r, j, tt]], ans, ans, a2, Cont0[Cont0[j, j, Res[r, j, tt]], Cont0[j, j, Res[r, j, tt]], Res[r, Cont0[j, j, Res[r, j, tt]], ans]], a2, Z](ic.body, Frames.End(), ic, masked(ev, ic.target), n, depth, Meta.Under[RB, L, I0, V, A, a, Z](Frames.Then(b.f, k), d, ev, meta))
+    case _ => deliver[RB, L, I0, V, A, t, a, Z](b.m, Frames.Then(b.f, k), d, ev, n, depth, meta)
   case r: Return[s, x] => k match
     case Frames.End() => leave(Return[L, V](ret(d, r.a)))
-    case th: Frames.Then[a1, x1, i1, t1, t2, b1] => deliver[RB, L, I0, V, A, t1, x1, Z](th.f(r.a), th.next, d, ev, n, meta)
+    case th: Frames.Then[a1, x1, i1, t1, t2, b1] => deliver[RB, L, I0, V, A, t1, x1, Z](th.f(r.a), th.next, d, ev, n, depth, meta)
     case mp: Frames.Mapped[a1, x1, i1, t1, b1] => feed(mp.f(r.a), mp.next) match
       case Fed.Value(b) => leave(Return[L, V](ret(d, b)))
-      case nx: Fed.Next[x2, i2, t3, t4, b2] => deliver[RB, L, I0, V, A, t3, x2, Z](nx.c, nx.next, d, ev, n, meta)
+      case nx: Fed.Next[x2, i2, t3, t4, b2] => deliver[RB, L, I0, V, A, t3, x2, Z](nx.c, nx.next, d, ev, n, depth, meta)
   // the handler at the operation's path answering in place, its value at once; not known so, to the delimiter
   case o: OpK[r, j, t, e, x, i, b] => inPlace[e, RB](o.in, ev) match
     case null => leave(route(o.op, o.in, o.k, k, d, ev))
-    case v => deliver[RB, L, I0, V, A, T, X, Z](o.k(v.value(o.op)), k, d, ev, n, meta)
+    case v => deliver[RB, L, I0, V, A, T, X, Z](o.k(v.value(o.op)), k, d, ev, n, depth, meta)
   case o: Op[r, j, t, e, x] => inPlace[e, RB](o.in, ev) match
     case null => leave(route(o.op, o.in, unit[T, x], k, d, ev))
-    case v => deliver[RB, L, I0, V, A, T, X, Z](Return(v.value(o.op)), k, d, ev, n, meta)
-  case m: Map[i, o, a, b] => deliver[RB, L, I0, V, A, T, a, Z](m.m, Frames.Mapped(m.f, k), d, ev, n, meta)
-  case dl: Delay[i, o, a] => deliver[RB, L, I0, V, A, T, X, Z](dl.c(), k, d, ev, n, meta)
-  // a resumption, a handler, a reset, an interceptor: entered — this loop pushed under it
+    case v => deliver[RB, L, I0, V, A, T, X, Z](Return(v.value(o.op)), k, d, ev, n, depth, meta)
+  case m: Map[i, o, a, b] => deliver[RB, L, I0, V, A, T, a, Z](m.m, Frames.Mapped(m.f, k), d, ev, n, depth, meta)
+  case dl: Delay[i, o, a] => deliver[RB, L, I0, V, A, T, X, Z](dl.c(), k, d, ev, n, depth, meta)
+  // a resumption, a handler, a reset, an interceptor: entered, nested; past `Deep`, this loop pushed under it
+  case r: Resume[rb, l, i0, v, a, x, t1, y] if depth < Deep =>
+    deliver[RB, L, I0, V, A, T, X, Z](enter(r, inner[rb, RB, L, V, i0, v, a](r.d, ev, r.ev), n, depth + 1), k, d, ev, n, depth, meta)
+  case h: Handle[e, r, j, t, a, ans] if depth < Deep =>
+    deliver[RB, L, I0, V, A, T, X, Z](enterHandle[e, r, j, t, a, ans](h, ev, n, depth + 1), k, d, ev, n, depth, meta)
+  case s: Reset[r, j, t, sv, o] if depth < Deep =>
+    deliver[RB, L, I0, V, A, T, X, Z](enterReset[r, j, t, sv, o](s, ev, n, depth + 1), k, d, ev, n, depth, meta)
+  case ic: Icpt[e, r, j, t, a, ans] if depth < Deep =>
+    deliver[RB, L, I0, V, A, T, X, Z](enterIntercept[e, r, j, t, a, ans](ic, ev, n, depth + 1), k, d, ev, n, depth, meta)
   case r: Resume[rb, l, i0, v, a, x, t1, y] =>
-    deliver[rb, l, i0, v, a, t1, y, Z](r.f(r.x), r.k, r.d, inner[rb, RB, L, V, i0, v, a](r.d, ev, r.ev), n, Meta.Under[RB, L, I0, V, A, X, Z](k, d, ev, meta))
+    deliver[rb, l, i0, v, a, t1, y, Z](r.f(r.x), r.k, r.d, inner[rb, RB, L, V, i0, v, a](r.d, ev, r.ev), n, depth, Meta.Under[RB, L, I0, V, A, X, Z](k, d, ev, meta))
   case h: Handle[e, r, j, t, a, ans] =>
-    deliver[e +: r, Cont0[j, j, Res[r, j, t]], ans, ans, a, Cont0[Cont0[j, j, Res[r, j, t]], Cont0[j, j, Res[r, j, t]], Res[e +: r, Cont0[j, j, Res[r, j, t]], ans]], a, Z](h.body, Frames.End(), h, within(h.h, ev), n, Meta.Under[RB, L, I0, V, A, X, Z](k, d, ev, meta))
+    deliver[e +: r, Cont0[j, j, Res[r, j, t]], ans, ans, a, Cont0[Cont0[j, j, Res[r, j, t]], Cont0[j, j, Res[r, j, t]], Res[e +: r, Cont0[j, j, Res[r, j, t]], ans]], a, Z](h.body, Frames.End(), h, within(h.h, ev), n, depth, Meta.Under[RB, L, I0, V, A, X, Z](k, d, ev, meta))
   case s: Reset[r, j, t, sv, o] =>
-    deliver[r, Cont0[j, j, Res[r, j, t]], sv, o, sv, Cont0[Cont0[j, j, Res[r, j, t]], Cont0[j, j, Res[r, j, t]], Res[r, Cont0[j, j, Res[r, j, t]], sv]], sv, Z](s.body, Frames.End(), s, ev, n, Meta.Under[RB, L, I0, V, A, X, Z](k, d, ev, meta))
+    deliver[r, Cont0[j, j, Res[r, j, t]], sv, o, sv, Cont0[Cont0[j, j, Res[r, j, t]], Cont0[j, j, Res[r, j, t]], Res[r, Cont0[j, j, Res[r, j, t]], sv]], sv, Z](s.body, Frames.End(), s, ev, n, depth, Meta.Under[RB, L, I0, V, A, X, Z](k, d, ev, meta))
   case ic: Icpt[e, r, j, t, a, ans] =>
-    deliver[r, Cont0[j, j, Res[r, j, t]], ans, ans, a, Cont0[Cont0[j, j, Res[r, j, t]], Cont0[j, j, Res[r, j, t]], Res[r, Cont0[j, j, Res[r, j, t]], ans]], a, Z](ic.body, Frames.End(), ic, masked(ev, ic.target), n, Meta.Under[RB, L, I0, V, A, X, Z](k, d, ev, meta))
+    deliver[r, Cont0[j, j, Res[r, j, t]], ans, ans, a, Cont0[Cont0[j, j, Res[r, j, t]], Cont0[j, j, Res[r, j, t]], Res[r, Cont0[j, j, Res[r, j, t]], ans]], a, Z](ic.body, Frames.End(), ic, masked(ev, ic.target), n, depth, Meta.Under[RB, L, I0, V, A, X, Z](k, d, ev, meta))
   // a program outside run there, its value back into the rest under the delimiter. A shift's k from its body, a
   // resumption: run here, nested, as a delimiter's body is — its value back in this loop, no capture of the rest;
   // anything else, or nested too deep, out and back
   case l: Lift[rb, l, o, x] => l.m match
     case r: Resume[rb2, l2, i02, v2, a2, x2, t12, y2] if n < Nested => d match
       case _: ByReset[r3, j3, t3, s3, v3] =>
-        enter(r, inner[rb2, r3, j3, t3, i02, v2, a2](r.d, ev, r.ev), n + 1) match
-          case v: Return[s, vv] => deliver[RB, L, I0, V, A, T, X, Z](Return(v.a), k, d, ev, n, meta)
+        enter(r, inner[rb2, r3, j3, t3, i02, v2, a2](r.d, ev, r.ev), n + 1, depth + 1) match
+          case v: Return[s, vv] => deliver[RB, L, I0, V, A, T, X, Z](Return(v.a), k, d, ev, n, depth, meta)
           case m => leave(Bind(m, Resumed(unit[Cont0[L, L, Res[RB, L, V]], X], k, d, ev)))
       case _: ByHandler[e3, r3, j3, t3, a3, i03, v3] =>
-        enter(r, inner[rb2, r3, j3, t3, i02, v2, a2](r.d, outside[e3, r3](ev), r.ev), n + 1) match
-          case v: Return[s, vv] => deliver[RB, L, I0, V, A, T, X, Z](Return(v.a), k, d, ev, n, meta)
+        enter(r, inner[rb2, r3, j3, t3, i02, v2, a2](r.d, outside[e3, r3](ev), r.ev), n + 1, depth + 1) match
+          case v: Return[s, vv] => deliver[RB, L, I0, V, A, T, X, Z](Return(v.a), k, d, ev, n, depth, meta)
           case m => leave(Bind(m, Resumed(unit[Cont0[L, L, Res[RB, L, V]], X], k, d, ev)))
       // under an interceptor the handlers outside it are not kept: out and back
       case _ => leave(Bind(l.m, Resumed(unit[Cont0[L, L, Res[RB, L, V]], X], k, d, ev)))
@@ -143,12 +165,12 @@ private[zero] enum Meta[L, V, Z]:
   case c: Ctl[r, j, a, i, o] => d match
     case _: ByReset[r2, j2, t2, s2, v2] =>
       deliver[r2, Cont0[j2, j2, Res[r2, j2, t2]], V, V, V, Cont0[Cont0[j2, j2, Res[r2, j2, t2]], Cont0[j2, j2, Res[r2, j2, t2]], Res[r2, Cont0[j2, j2, Res[r2, j2, t2]], V]], V, Z](
-        shiftAtReset[r2, j2, t2, I0, V, a, i](c, k, ev), Frames.End(), Rst[r2, j2, t2, V, V](), ev, n, meta)
+        shiftAtReset[r2, j2, t2, I0, V, a, i](c, k, ev), Frames.End(), Rst[r2, j2, t2, V, V](), ev, n, depth, meta)
     case h: ByHandler[e, r2, j2, t2, a2, i02, v2] => c.same match
       case null => leave(bail(c, k, d))
       case same =>
         deliver[e +: r2, Cont0[j2, j2, Res[r2, j2, t2]], V, V, V, Cont0[Cont0[j2, j2, Res[r2, j2, t2]], Cont0[j2, j2, Res[r2, j2, t2]], Res[e +: r2, Cont0[j2, j2, Res[r2, j2, t2]], V]], V, Z](
-          shiftAtHandler[e, r2, j2, t2, I0, V, A, a, i](h.clauses, h.rets, same, c, k, ev), Frames.End(), Hd[e, r2, j2, t2, V, V, V](h.clauses, v => v), ev, n, meta)
+          shiftAtHandler[e, r2, j2, t2, I0, V, A, a, i](h.clauses, h.rets, same, c, k, ev), Frames.End(), Hd[e, r2, j2, t2, V, V, V](h.clauses, v => v), ev, n, depth, meta)
     // up to an interceptor, rare: its definition
     case _ => leave(bail(c, k, d))
   case _ => leave(bail(c, k, d))
@@ -170,8 +192,8 @@ private def shiftAtHandler[E[_], R <: Row, J, T, I0, V, A, X, Hole](h: Handler[[
 
 /** a body's loop from its start, nothing bound under it, the delimiters outside `meta` */
 private def deliver0[RB <: Row, L, I0, V, A, Z](c: Cont0[Cont0[L, L, Res[RB, L, I0]], Cont0[L, L, Res[RB, L, V]], A],
-    d: Delim[RB, L, I0, V, A], ev: Ev[RB], n: Int, meta: Meta[L, V, Z]): Z =
-  deliver[RB, L, I0, V, A, Cont0[L, L, Res[RB, L, I0]], A, Z](c, Frames.End(), d, ev, n, meta)
+    d: Delim[RB, L, I0, V, A], ev: Ev[RB], n: Int, depth: Int, meta: Meta[L, V, Z]): Z =
+  deliver[RB, L, I0, V, A, Cont0[L, L, Res[RB, L, I0]], A, Z](c, Frames.End(), d, ev, n, depth, meta)
 
 /** the body's value to the delimiter's answer */
 private[zero] def ret[RB <: Row, L, I0, V, A](d: Delim[RB, L, I0, V, A], a: A): I0 = d match
@@ -212,25 +234,25 @@ private def inner[RB <: Row, RO <: Row, LO, VO, I0, V, A](d: Delim[RB, Cont0[LO,
     case ic: ByIntercept[e, r, j, t, a, v] => masked(ev, ic.target)
 
 /** a resumption: its rest under its delimiter again, in a loop of its own */
-private[zero] def enter[RB <: Row, L, I0, V, A, X, T1, Y](r: Resume[RB, L, I0, V, A, X, T1, Y], ev: Ev[RB], n: Int): Cont0[L, L, V] =
+private[zero] def enter[RB <: Row, L, I0, V, A, X, T1, Y](r: Resume[RB, L, I0, V, A, X, T1, Y], ev: Ev[RB], n: Int, depth: Int): Cont0[L, L, V] =
   // the value through the frames in the loop, no program of the rest built frame by frame
-  deliver[RB, L, I0, V, A, T1, Y, Cont0[L, L, V]](r.f(r.x), r.k, r.d, ev, n, Meta.Top())
+  deliver[RB, L, I0, V, A, T1, Y, Cont0[L, L, V]](r.f(r.x), r.k, r.d, ev, n, depth, Meta.Top())
 
 /** a handler entered: its body in a loop of its own, the node its delimiter, the handler in front of those in force */
-private[zero] def enterHandle[E[_], R <: Row, J, T, A, Ans](h: Handle[E, R, J, T, A, Ans], ev: Ev[R], n: Int): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans] =
-  deliver0(h.body, h, within(h.h, ev), n, Meta.Top())
+private[zero] def enterHandle[E[_], R <: Row, J, T, A, Ans](h: Handle[E, R, J, T, A, Ans], ev: Ev[R], n: Int, depth: Int): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans] =
+  deliver0(h.body, h, within(h.h, ev), n, depth, Meta.Top())
 
 /** an interceptor entered: its body in a loop of its own, the node its delimiter, the handler at its path answering
  * nothing in place */
-private[zero] def enterIntercept[E[_], R <: Row, J, T, A, Ans](ic: Icpt[E, R, J, T, A, Ans], ev: Ev[R], n: Int): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans] =
-  deliver0(ic.body, ic, masked(ev, ic.target), n, Meta.Top())
+private[zero] def enterIntercept[E[_], R <: Row, J, T, A, Ans](ic: Icpt[E, R, J, T, A, Ans], ev: Ev[R], n: Int, depth: Int): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans] =
+  deliver0(ic.body, ic, masked(ev, ic.target), n, depth, Meta.Top())
 
 /** a reset entered: its body in a loop of its own, the node its delimiter */
-private[zero] def enterReset[R <: Row, J, T, S, O](s: Reset[R, J, T, S, O], ev: Ev[R], n: Int): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O] =
-  deliver0(s.body, s, ev, n, Meta.Top())
+private[zero] def enterReset[R <: Row, J, T, S, O](s: Reset[R, J, T, S, O], ev: Ev[R], n: Int, depth: Int): Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O] =
+  deliver0(s.body, s, ev, n, depth, Meta.Top())
 
 /** a resumption entered with nothing known of the handlers around it — by the kernel's loop */
 private[zero] def enterUnknown[RB <: Row, L, I0, V, A, X, T1, Y](r: Resume[RB, L, I0, V, A, X, T1, Y]): Cont0[L, L, V] = r.d match
-  case _: ByHandler[e, rr, j, t, a, i0, v] => enter(r, inner[RB, rr, j, t, I0, V, A](r.d, Ev.Unknown, r.ev), 0)
-  case _: ByReset[rr, j, t, s, v] => enter(r, Ev.Unknown, 0)
-  case _: ByIntercept[e, rr, j, t, a, v] => enter(r, Ev.Unknown, 0)
+  case _: ByHandler[e, rr, j, t, a, i0, v] => enter(r, inner[RB, rr, j, t, I0, V, A](r.d, Ev.Unknown, r.ev), 0, 0)
+  case _: ByReset[rr, j, t, s, v] => enter(r, Ev.Unknown, 0, 0)
+  case _: ByIntercept[e, rr, j, t, a, v] => enter(r, Ev.Unknown, 0, 0)

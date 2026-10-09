@@ -96,47 +96,60 @@ object Cont0:
 
   /** the program to its head: binds followed, a delimiter entered — the machine's nodes by their shift0 programs,
    * a handler, a reset and a resumption by the machine, nothing known of the handlers around */
-  @tailrec private[zero] def step[I, T, O, X, A](c: Cont0[T, O, X], k: Frames[X, I, T, A]): Head[I, O, A] = c match
-    case b: Bind[i, t, o, a, bb] => b.m match
-      case r: Return[s, aa] => step(b.f(r.a), k)
-      // a handler or a reset bound: entered at once — its value, the usual, bound with no frame pushed
-      case h: Handle[e, r, j, tt, a2, ans] => enterHandle(h, Ev.Unknown, 0) match
-        case v: Return[s, vv] => step(b.f(v.a), k)
-        case m => step(m, Frames.Then(b.f, k))
-      case s: Reset[r, j, tt, sv, ov] => enterReset(s, Ev.Unknown, 0) match
-        case v: Return[s2, vv] => step(b.f(v.a), k)
-        case m => step(m, Frames.Then(b.f, k))
-      case ic: Icpt[e, r, j, tt, a2, ans] => enterIntercept(ic, Ev.Unknown, 0) match
-        case v: Return[s2, vv] => step(b.f(v.a), k)
-        case m => step(m, Frames.Then(b.f, k))
-      case _ => step(b.m, Frames.Then(b.f, k))
-    case Return(a) => k match
-      case Frames.End() => Head.Done(a)
-      case Frames.Then(f, next) => step(f(a), next)
-      case mp: Frames.Mapped[a1, x1, i1, t1, b1] => mp.next match
-        case Frames.End() => Head.Done(mp.f(a))
-        case th: Frames.Then[a2, x2, i2, t3, t4, b2] => step(th.f(mp.f(a)), th.next)
-        case mp2: Frames.Mapped[a2, x2, i2, t3, b2] => step(Return(mp2.f(mp.f(a))), mp2.next)
-    case Map(m, f) => step(m, Frames.Mapped(f, k))
-    case Delay(t) => step(t(), k)
-    case o: Op[r, j, t, e, x] => Head.Cut[I, j, j, Res[r, j, t], Cont0[j, j, Res[r, j, t]], x, A](kk => Return(Res.Req(o.op, o.in, kk)), k)
-    case o: OpK[r, j, t, e, x, i, b] => Head.Cut[I, j, j, Res[r, j, t], Cont0[j, j, Res[r, j, t]], x, A](kk => Return(Res.Req(o.op, o.in, kk)), Frames.Then(o.k, k))
-    case l: Lift[rb, l, o, x] => Head.Cut[I, l, l, Res[rb, l, o], Cont0[l, l, Res[rb, l, o]], x, A](kk => Bind(l.m, kk), k)
-    case c: Ctl[r, j, a, i, o] => Head.Cut[I, j, j, Res[r, j, i], Cont0[j, j, Res[r, j, o]], a, A](kk => Return(Res.Ctl(c.f, kk)), k)
-    case h: Handle[e, r, j, t, a, ans] => step(enterHandle(h, Ev.Unknown, 0), k)
-    case s: Reset[r, j, t, sv, o] => step(enterReset(s, Ev.Unknown, 0), k)
-    case ic: Icpt[e, r, j, t, a, ans] => step(enterIntercept(ic, Ev.Unknown, 0), k)
-    case r: Resume[rb, l, i0, v, a, x, t1, y] => step(enterUnknown(r), k)
-    case c: Ctl0[r, j, t, a, s, o] => step(shift0Program(c), k)
-    case Shift0(f) => Head.Cut(f, k)
-    case Dollar(body, ret) => step(delimit(body, ret), k)
+  private[zero] def step[I, T, O, X, A](c: Cont0[T, O, X], k: Frames[X, I, T, A]): Head[I, O, A] =
+    go[I, T, O, X, A, Head[I, O, A]](c, k, KMeta.Top())
 
-  /** `ret $ body` to the program outside: a value through `ret`; a capture's body in the delimiter's place, `k` the
-   * rest under the delimiter again */
-  private def delimit[I, I2, O2, B, A](body: Cont0[I, Cont0[I2, O2, B], A], ret: A => I): Cont0[I2, O2, B] =
-    step(body, Frames.End()) match
-      case Head.Done(a) => ret(a)
-      case Head.Cut(f, k) => f(x => Dollar(resumed(x, k), ret))
+  /** THE `$`s THE KERNEL'S LOOP IS INSIDE, innermost first — its metacontinuation: what takes the head of the
+   * innermost's body, `Head[I, O, A]`, toward the loop's own result `Z`. At the top, the caller; under a `$`, its
+   * `ret` and the frames outside it — gone on in the same loop. So `$`s nested to any depth run in constant stack */
+  private[zero] enum KMeta[I, O, A, Z]:
+    case Top[I, O, A]() extends KMeta[I, O, A, Head[I, O, A]]
+    case Under[Ib, I2, O2, B, Ab, I, A, Z](ret: Ab => Ib, k: Frames[B, I, I2, A], up: KMeta[I, O2, A, Z])
+      extends KMeta[Ib, Cont0[I2, O2, B], Ab, Z]
+
+  @tailrec private def go[I, T, O, X, A, Z](c: Cont0[T, O, X], k: Frames[X, I, T, A], meta: KMeta[I, O, A, Z]): Z =
+    // the head of the innermost `$`'s body: to the caller; or, under a `$`, the value through its `ret`, a capture's
+    // body in the `$`'s place, the rest under it again — on in the frames outside it
+    inline def head(h: Head[I, O, A]): Z = meta match
+      case _: KMeta.Top[i, o, a] => h
+      case u: KMeta.Under[ib, i2, o2, b, ab, ii, aa, z] => h match
+        case Head.Done(a) => go[ii, i2, o2, b, aa, Z](u.ret(a), u.k, u.up)
+        case Head.Cut(f, kk) => go[ii, i2, o2, b, aa, Z](f(x => Dollar(resumed(x, kk), u.ret)), u.k, u.up)
+    c match
+    case b: Bind[i, t, o, a, bb] => b.m match
+      case r: Return[s, aa] => go(b.f(r.a), k, meta)
+      // a handler or a reset bound: entered at once — its value, the usual, bound with no frame pushed
+      case h: Handle[e, r, j, tt, a2, ans] => enterHandle(h, Ev.Unknown, 0, 0) match
+        case v: Return[s, vv] => go(b.f(v.a), k, meta)
+        case m => go(m, Frames.Then(b.f, k), meta)
+      case s: Reset[r, j, tt, sv, ov] => enterReset(s, Ev.Unknown, 0, 0) match
+        case v: Return[s2, vv] => go(b.f(v.a), k, meta)
+        case m => go(m, Frames.Then(b.f, k), meta)
+      case ic: Icpt[e, r, j, tt, a2, ans] => enterIntercept(ic, Ev.Unknown, 0, 0) match
+        case v: Return[s2, vv] => go(b.f(v.a), k, meta)
+        case m => go(m, Frames.Then(b.f, k), meta)
+      case _ => go(b.m, Frames.Then(b.f, k), meta)
+    case Return(a) => k match
+      case Frames.End() => head(Head.Done(a))
+      case Frames.Then(f, next) => go(f(a), next, meta)
+      case mp: Frames.Mapped[a1, x1, i1, t1, b1] => mp.next match
+        case Frames.End() => head(Head.Done(mp.f(a)))
+        case th: Frames.Then[a2, x2, i2, t3, t4, b2] => go(th.f(mp.f(a)), th.next, meta)
+        case mp2: Frames.Mapped[a2, x2, i2, t3, b2] => go(Return(mp2.f(mp.f(a))), mp2.next, meta)
+    case Map(m, f) => go(m, Frames.Mapped(f, k), meta)
+    case Delay(t) => go(t(), k, meta)
+    case o: Op[r, j, t, e, x] => head(Head.Cut[I, j, j, Res[r, j, t], Cont0[j, j, Res[r, j, t]], x, A](kk => Return(Res.Req(o.op, o.in, kk)), k))
+    case o: OpK[r, j, t, e, x, i, b] => head(Head.Cut[I, j, j, Res[r, j, t], Cont0[j, j, Res[r, j, t]], x, A](kk => Return(Res.Req(o.op, o.in, kk)), Frames.Then(o.k, k)))
+    case l: Lift[rb, l, o, x] => head(Head.Cut[I, l, l, Res[rb, l, o], Cont0[l, l, Res[rb, l, o]], x, A](kk => Bind(l.m, kk), k))
+    case c: Ctl[r, j, a, i, o] => head(Head.Cut[I, j, j, Res[r, j, i], Cont0[j, j, Res[r, j, o]], a, A](kk => Return(Res.Ctl(c.f, kk)), k))
+    case h: Handle[e, r, j, t, a, ans] => go(enterHandle(h, Ev.Unknown, 0, 0), k, meta)
+    case s: Reset[r, j, t, sv, o] => go(enterReset(s, Ev.Unknown, 0, 0), k, meta)
+    case ic: Icpt[e, r, j, t, a, ans] => go(enterIntercept(ic, Ev.Unknown, 0, 0), k, meta)
+    case r: Resume[rb, l, i0, v, a, x, t1, y] => go(enterUnknown(r), k, meta)
+    case c: Ctl0[r, j, t, a, s, o] => go(shift0Program(c), k, meta)
+    case Shift0(f) => head(Head.Cut(f, k))
+    // a `$`: its body in this loop, the frames outside it and its `ret` pushed
+    case d: Dollar[ib, i2, o2, b, ab] => go[ib, ib, Cont0[i2, o2, b], ab, ab, Z](d.body, Frames.End(), KMeta.Under[ib, i2, o2, b, ab, I, A, Z](d.ret, k, meta))
 
   /** `x` into the rest `k` — LAZILY: a bind the loop takes when it gets to it, so applying `k` runs nothing of the
    * rest; an empty rest, the value itself */
