@@ -89,7 +89,7 @@ At the top `run` sometimes needs the answer named: `okay.cont.run[Int](...)`.
 | `Choose` | `among(as)` — multi-shot | `choose[A](body)` → `Seq[A]`, every path |
 | `Emit[W]` | `yield_(w)` | `collect(body)` → `(List[W], A)`; `stream(top)(body)` → `Source[W]`, pulled or pushed; `generate(next, done)(body)` — lazy |
 | `PState` | `st.get[S]`, `st.put[S](s2)` | `pstate(s0)(st => body)` — the state's *type* may change |
-| `Async` | `async(a)`, `await(register)` | `Async.run(body)` on the context's own monad |
+| `Async` | `async(a)`, `await(register)` | `Async.run(body)` on the context's own monad; `Async.stream`, `Async.iterator` |
 
 The order of handlers is the semantics: `state(throws(body))` keeps the state of a failed body,
 `throws(state(body))` loses it.
@@ -254,6 +254,20 @@ raised in the context as `Throws % Throwable`.
 ```scala
 def io(using c: Effects, a: Async :? c.Effs): c.Prog[Int] = async(20).flatMap(x => async(x + 1))
 okay.zero.run(throws[Throwable, Int](Async.run(io)))   // Right(21)
+```
+
+### Asynchronous streams
+
+A body may yield and wait: `Emit` and `Async` together. `Async.stream(top)(body)(on)` hands `on` each element with
+`more()`, the demand for the next — the body waits at its `yield_` until asked, so it never runs ahead of its
+consumer (back-pressure); then `Done()`, or `Failed(e)`. `Async.iterator(top)(body)` is the same as a blocking
+`Iterator`.
+
+```scala
+def ticks(using c: Effects, e: Emit % Int :? c.Effs, a: Async :? c.Effs): c.Prog[Unit] =
+  async(1).flatMap(yield_(_)).flatMap(_ => async(2).flatMap(yield_(_)))
+
+Async.iterator[Int](okay.zero.top)(ticks).toList   // List(1, 2)
 ```
 
 ## Notes

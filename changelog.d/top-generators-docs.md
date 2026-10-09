@@ -35,3 +35,7 @@
   captured). A body's own handlers in the stream, pinned on the four monads: a reader; a state one cell a start.
 - Measured, ns an element (Cont / Cont0): pulled 14.9 / 14.5; mapped by `Later` 21.8 / 19.5, fused 18.0 / 16.2 (the
   rest of the +24 B the boxed mapped `Long`); pushed 10.3 / 7.6.
+- Asynchronous streams: a body of `Emit` and `Async` together. `Async.stream(top)(body)(on)` hands each element
+  with `more()`, the demand for the next — a `yield_` an `await` of it, so the body never runs ahead of its consumer;
+  a consumer asking in place a loop (100 000 elements in constant stack). `Async.iterator` the same, blocking.
+  `TestAsyncStreamOn` on Cont, Cont0, Ref and Cps0.

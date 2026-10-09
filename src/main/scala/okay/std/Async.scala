@@ -61,6 +61,50 @@ object Async:
                 case _ => f.pure(()))(body)
     go(handled)
 
+  /** a stream's body over `Async`: a program yielding `W`, waiting when it will */
+  type Yields[W] = (c: Effects { type Effs = Emit % W +: Async +: Fails; type S = Unit }) ?=> c.Prog[Unit]
+
+  /** what an asynchronous stream hands its consumer: an element, and `more()` to ask for the next — the body waits
+   * at its `yield_` until asked, so it never runs ahead of the consumer; or the end; or the failure */
+  enum Step[W]:
+    case Next(w: W, more: () => Unit)
+    case Done()
+    case Failed(e: Throwable)
+
+  /** `stream(t)(body)(on)`: the body run on the monad of `t`, each element given to `on` with the demand for the
+   * next, `more` — called in place or later, from any thread; the run goes on in the thread that asks. A `yield_` is
+   * an `await` of the consumer's demand, so a consumer asking at once is a loop, not a frame */
+  def stream[W](t: Top)(body: Yields[W])(on: Step[W] => Unit): Unit =
+    runAsync(using t)(emitting(on)(body))(r => on(r.fold(Step.Failed(_), _ => Step.Done())))
+  private def emitting[W](on: Step[W] => Unit)(body: Yields[W])(using c: Effects { type Effs = Async +: Fails; type S = Unit })
+      : c.Prog[Unit] =
+    Effects.handle(new Handler[c.Prog, Emit % W, Unit, Unit]:
+      def ret(u: Unit): Unit = ()
+      def apply[X](op: Emit[W, X], k: X => c.Prog[Unit]): c.Prog[Unit] = op match
+        case Emit.Yield(w) => await[Unit](cb => on(Step.Next(w, () => cb(Right(()))))).flatMap(_ => k(())))(body)
+
+  /** `iterator(t)(body)`: an asynchronous stream as a blocking `Iterator` — `hasNext` asks for the next element and
+   * waits for it; nothing runs ahead of it. A failure thrown by `hasNext` */
+  def iterator[W](t: Top)(body: Yields[W]): Iterator[W] = new Iterator[W]:
+    private val steps = java.util.concurrent.LinkedBlockingQueue[Step[W]]()
+    private var started = false
+    private var current: Step[W] | Null = null
+    private var more: () => Unit = () => ()
+    def hasNext: Boolean =
+      if current == null then
+        if !started then { started = true; stream(t)(body)(steps.put) } else more()
+        current = steps.take()
+      current match
+        case Step.Next(_, m) => more = m; true
+        case Step.Done() => false
+        case Step.Failed(e) => throw e
+        case null => false
+    def next(): W =
+      if !hasNext then throw java.util.NoSuchElementException("Async.Step.Done")
+      current match
+        case Step.Next(w, _) => current = null; w
+        case _ => throw java.util.NoSuchElementException("Async.Step.Done")
+
   /** `run(body)`: the body's value, run on the context's monad — at its top, `c.top` — this thread waiting for it,
    * at the edge of a program only; its failure raised in the context */
   def run[A](body: Body[A])(using c: Effects, has: Throws % Throwable :? c.Effs): c.Prog[A] =

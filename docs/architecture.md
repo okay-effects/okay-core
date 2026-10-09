@@ -139,7 +139,7 @@ The suites are written once over the interface and take a `Backend` — a monad'
 `TestEffectsOn`, `TestContextOn`, `TestControlOn`, `TestTogetherOn`, `TestDynamicOn`, `TestPStateOn`, `TestAsyncOn`.
 Each runs on `Cont`, `Cont0`, `Ref` and `Cps0`. Beside them: `TestCont` and `TestCont0` (the kernels), `TestMonads`
 (the same programs on each monad, and where they differ), `TestShiftAtHandler` and `TestZero` (`Cont0`'s own),
-`TestStreamOn` (`stream` on each monad's top), `TestSealed` (what does not compile), `TestGuide` (the guide's examples),
+`TestStreamOn`, `TestAsyncStreamOn` (streams on each monad's top), `TestSealed` (what does not compile), `TestGuide` (the guide's examples),
 `TestGuideDoc` (the guide's own text: its `scala` blocks generated into `GuideDoc` by `project/GuideDoc.scala`, each
 `expr   // value` line checked), `TestAgree` (1 000 programs made at random — handlers nested in any order, resets and
 shifts — on `Cont`, `Cont0`, `Ref` and `Cps0`, which must agree).
