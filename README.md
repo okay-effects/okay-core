@@ -85,20 +85,22 @@ Written once: `TestEffectsOn`, `TestContextOn`, `TestControlOn`, `TestTogetherOn
 take a `Backend` (a monad's run) and run on `Cont`, on `Cont0`, on the reference and on `Cps0` — shift0 and `$` in
 CPS from the textbook, functions `(A => I) => O`, no code of `Cont` nor of `Cont0`: the four agree (`Cps0`, not stack
 safe, runs its tests on a thread of a large stack); `TestAsyncOn` on all four. The references are in the tests: `Ref` (`Cont0` by the kernel alone, its delimiters their shift0 programs read) and
-`Cps0`. `MonadsBenchmark` runs the same programs, `backend=cont|zero`; `ref` measured when it was a backend there (ns
-an operation; the captures a run):
+`Cps0`. `MonadsBenchmark` runs the same programs, `backend=cont|zero`:
 
-| | cont | zero | ref |
-|---|---|---|---|
-| pure binds / left maps | 3.18 / 4.85 | 3.18 / 4.79 | 3.20 / 4.75 |
-| answered in place / the general clause | 5.44 / 8.83 | 5.55 / 7.51 | 29.2 / 29.4 |
-| across 1 / 16 handlers | 11.7 / 93.7 | 5.5 / 17.0 | 45.0 / 413 |
-| state, writer, throws, choose | 14.8, 19.9, 13.8, 28.8 | 13.9, 17.0, 14.4, 32.0 | 68.7, 38.0, 26.0, 48.2 |
-| collect | 11.9 | 10.3 | 38.3 |
-| a shift under a reset, 16 maps / 1, `k` 8 times | 440 / 135 | 324 / 128 | 1400 / 539 |
-| a shift under a handler, 16 maps / 1, `k` 8 times | 410 / 122 | 367 / 139 | 1430 / 560 |
+| ns an operation (the captures, queens: a run) | cont | zero |
+|---|---|---|
+| pure binds / left maps / tail calls by delay | 3.27 / 4.83 / 2.40 | 3.24 / 4.84 / 2.28 |
+| answered in place / the general clause | 6.50 / 8.99 | 5.43 / 7.72 |
+| across 1 / 4 / 16 handlers | 11.7 / 22.8 / 90.4 | 5.7 / 6.8 / 17.2 |
+| state, `A ! Es`, writer, throws, choose | 15.5, 16.1, 20.0, 13.6, 29.1 | 14.1, 14.6, 17.3, 14.6, 33.9 |
+| collect / generate / Fibonacci | 13.1 / 14.5 / 4.36 | 10.5 / 14.1 / 3.92 |
+| 8 queens | 255 µs | 191 µs |
+| a shift under a reset, 16 maps / 256 maps, `k` 8 times | 439 / 6050 | 323 / 4740 |
+| a shift under a handler, 16 maps / 1, `k` 8 times | 411 / 122 | 366 / 139 |
 
-`shift0` on `Cont0` (`ZeroShift0Benchmark`): 27 ns a run, `k` once; 1000 in a row 9.3 µs.
+The full run is kept in bench.d (`sbt "bench save -prof gc"`, 2026-10-09, 8d3b4f5).
+
+`shift0` on `Cont0` (`ZeroShift0Benchmark`): 27 ns a run, `k` once; 1000 in a row 9.2 µs.
 
 ## Build
 
