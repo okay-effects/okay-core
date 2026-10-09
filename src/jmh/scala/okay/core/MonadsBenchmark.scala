@@ -232,8 +232,8 @@ class MonadsBenchmark:
     var sum = 0L
     while i < n do
       s match
-        case e: okay.std.Stream.Next[Long] => sum += e.w; i += 1; if i < n then s = e.rest()
-        case okay.std.Stream.Done => i = n
+        case e: okay.std.Stream.Next[Long] => sum += e.w; i += 1; if i < n then s = e.pull()
+        case okay.std.Stream.Done() => i = n
     sum
 
   /** a shift under a reset: the rest 256 maps, `k` 8 times; the rest one map, `k` once */

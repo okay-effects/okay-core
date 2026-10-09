@@ -21,3 +21,6 @@
 - Then `Stream` one object an element: `Next` an abstract class, `w` and `rest()`; `stream` makes one that keeps the
   rest and its top, no closure. `generate` 14.6 µs on Cont, 13.8 on Cont0, 224 and 208 B an element — as the monads'
   own consumer types (14.5, 14.1; 224, 208 B): one type for every monad at no cost.
+- Then `Stream` an enum: `Next(w, top: Top, rest: top.M[…])` or `Done()` — a dependent case, the rest's type its
+  top's; `pull()` runs it. The same cost: 14.8 µs on Cont, 13.8 on Cont0, 224 and 208 B an element. A pattern's
+  variables lose the dependence: `n @ Next(w, _, _)` then `n.top.run(n.rest)`, or `n.pull()`.

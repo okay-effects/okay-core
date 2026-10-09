@@ -23,6 +23,14 @@ abstract class TestStreamOn(top: Top) extends munit.FunSuite:
     assertEquals(s.take(3), List(0, 1, 2))
     assertEquals(ran, 5)
 
+  test("stream: an enum — its rest run by its own top, matched"):
+    stream[Int](top)(from(5)) match
+      case n @ Stream.Next(w, _, _) =>
+        assertEquals(w, 5)
+        assertEquals(n.top.run(n.rest).take(2), List(6, 7))
+        assertEquals(n.pull().take(2), List(6, 7))
+      case Stream.Done() => fail("an element")
+
   test("stream: 100 000 elements, a run each"):
     assertEquals(stream[Int](top)(from(0)).take(100000).last, 99999)
 
