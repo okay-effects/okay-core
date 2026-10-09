@@ -118,7 +118,10 @@ private[zero] enum Meta[L, V, Z]:
     case v => deliver[RB, L, I0, V, A, T, X, Z](o.k(v.value(o.op)), k, d, ev, n, depth, meta)
   case o: Op[r, j, t, e, x] => inPlace[e, RB](o.in, ev) match
     case null => leave(route(o.op, o.in, unit[T, x], k, d, ev))
-    case v => deliver[RB, L, I0, V, A, T, X, Z](Return(v.value(o.op)), k, d, ev, n, depth, meta)
+    // its value straight into the frame bound to it, the usual — no `Return` made to carry it there
+    case v => k match
+      case th: Frames.Then[a1, x1, i1, t1, t2, b1] => deliver[RB, L, I0, V, A, t1, x1, Z](th.f(v.value(o.op)), th.next, d, ev, n, depth, meta)
+      case _ => deliver[RB, L, I0, V, A, T, X, Z](Return(v.value(o.op)), k, d, ev, n, depth, meta)
   case m: Map[i, o, a, b] => deliver[RB, L, I0, V, A, T, a, Z](m.m, Frames.Mapped(m.f, k), d, ev, n, depth, meta)
   case dl: Delay[i, o, a] => deliver[RB, L, I0, V, A, T, X, Z](dl.c(), k, d, ev, n, depth, meta)
   // a resumption, a handler, a reset, an interceptor: entered, nested; past `Deep`, this loop pushed under it
