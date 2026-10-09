@@ -4,12 +4,12 @@ import okay.core.{Backend, Effects}
 
 /** `Cont0`: `Fx` the context */
 object ZeroBackend extends Backend:
-  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.M[Pure, A, A, A]): A =
+  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.P[A]): A =
     Fx.run(body(using summon[Fx[Pure, A, A]]))
 
 /** `Cont0` by the kernel alone, the reference: `FxRef` the context */
 object RefBackend extends Backend:
-  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.M[Pure, A, A, A]): A =
+  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.P[A]): A =
     FxRef.run(body(using summon[FxRef[Pure, A, A]]))
 
 /** master's tests of the effects, on `Cont0` */

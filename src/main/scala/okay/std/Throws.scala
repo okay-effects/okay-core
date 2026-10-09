@@ -9,13 +9,13 @@ enum Throws[E, +A]:
 
 /** the failure: a program of any value, which no continuation ever gets — `Raise` is a `Throws[E, A]` for any
  * `A`, `Throws` covariant, so no map from `Nothing` */
-def raise[E, A](e: E)(using c: Effects, has: Throws % E :? c.R): c.M[c.R, c.S, c.S, A] =
+def raise[E, A](e: E)(using c: Effects, has: Throws % E :? c.R): c.P[A] =
   perform[Throws % E, A](Throws.Raise(e))
 /** `throws[E, A](body)`: the value as `Right`, or the first `raise` as `Left` */
-def throws[E, A](using c: Effects)(body: c.Handled[Throws % E, Either[E, A]] ?=> c.Inner[Throws % E +: c.R, Either[E, A], Either[E, A], A])
-    : c.M[c.R, c.S, c.S, Either[E, A]] =
+def throws[E, A](using c: Effects)(body: c.Body[Throws % E, Either[E, A], A])
+    : c.P[Either[E, A]] =
   type Ans = Either[E, A]
   Effects.handle(new Handler[c.M, Throws % E, c.R, c.S, A, Ans]:
     def ret(a: A): Ans = Right(a)
-    def apply[X](op: Throws[E, X], k: X => c.M[c.R, c.S, c.S, Ans]): c.M[c.R, c.S, c.S, Ans] = op match
+    def apply[X](op: Throws[E, X], k: X => c.P[Ans]): c.P[Ans] = op match
       case Throws.Raise(e) => c.pure(Left(e)))(body)

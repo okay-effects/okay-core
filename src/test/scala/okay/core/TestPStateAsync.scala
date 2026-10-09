@@ -8,7 +8,7 @@ import java.util.concurrent.{Executors, TimeUnit}
 /** `PState`: the state's type in the answer type; `Async`: a run that waits on callbacks */
 /** `PState` on any monad of master's `Effects`: the state's type in the answer type */
 abstract class TestPStateOn(on: Backend) extends munit.FunSuite:
-  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.M[Pure, A, A, A]): A = on.run(body)
+  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.P[A]): A = on.run(body)
 
   test("pstate: get after put, the type unchanged"):
     val r: (Int, Int) = run(pstate(1)(st => st.put[Int](41).flatMap(_ => st.get[Int]).map(_ + 1)))
@@ -44,13 +44,13 @@ class TestPStateAsync extends TestPStateOn(Backend.cont):
   test("await: a callback from another thread, the run going on in it"):
     val pool = Executors.newFixedThreadPool(2)
     try
-      def later(x: Int)(using c: Effects, has: Async :? c.R): c.M[c.R, c.S, c.S, Int] =
+      def later(x: Int)(using c: Effects, has: Async :? c.R): c.P[Int] =
         await[Int](cb => pool.execute(() => { Thread.sleep(1); cb(Right(x)) }))
       assertEquals(runIO(later(1).flatMap(a => later(2).map(_ + a)).flatMap(a => later(3).map(_ + a))), Right(6))
     finally pool.shutdown()
 
   test("await: 100 000 callbacks answered at once, in constant stack"):
-    def loop(i: Int, acc: Int)(using c: Effects, has: Async :? c.R): c.M[c.R, c.S, c.S, Int] =
+    def loop(i: Int, acc: Int)(using c: Effects, has: Async :? c.R): c.P[Int] =
       if i == 0 then c.pure(acc) else await[Int](cb => cb(Right(1))).flatMap(x => loop(i - 1, acc + x))
     assertEquals(runIO(loop(100000, 0)), Right(100000))
 

@@ -32,23 +32,23 @@ class MonadsBenchmark:
   @Param(Array("1000"))
   var n: Int = 0
 
-  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.M[Pure, A, A, A]): A =
+  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.P[A]): A =
     backend match
       case "cont" => Effects.run(body(using summon[Effects.At[Pure, A]]))
       case "zero" => Fx.run(body(using summon[Fx[Pure, A, A]]))
       case _ => okay.zero.FxRef.run(body(using summon[okay.zero.FxRef[Pure, A, A]]))
 
-  def isEven(i: Int)(using c: Effects): c.M[c.R, c.S, c.S, Boolean] =
+  def isEven(i: Int)(using c: Effects): c.P[Boolean] =
     if i == 0 then c.pure(true) else c.pure(()).flatMap(_ => isOdd(i - 1))
-  def isOdd(i: Int)(using c: Effects): c.M[c.R, c.S, c.S, Boolean] =
+  def isOdd(i: Int)(using c: Effects): c.P[Boolean] =
     if i == 0 then c.pure(false) else c.pure(()).flatMap(_ => isEven(i - 1))
 
   @Benchmark
   def pure(): Boolean = run(isEven(n))
 
-  def isEvenT(i: Int)(using c: Effects, t: Tick :? c.R): c.M[c.R, c.S, c.S, Boolean] =
+  def isEvenT(i: Int)(using c: Effects, t: Tick :? c.R): c.P[Boolean] =
     if i == 0 then c.pure(true) else perform(Tick.Value(i)).flatMap(_ => isOddT(i - 1))
-  def isOddT(i: Int)(using c: Effects, t: Tick :? c.R): c.M[c.R, c.S, c.S, Boolean] =
+  def isOddT(i: Int)(using c: Effects, t: Tick :? c.R): c.P[Boolean] =
     if i == 0 then c.pure(false) else perform(Tick.Value(i)).flatMap(_ => isEvenT(i - 1))
 
   def ticking[A](using c: Effects): Handler[c.M, Tick, c.R, c.S, A, A] = new Answering[c.M, Tick, c.R, c.S, A, A]:
@@ -57,7 +57,7 @@ class MonadsBenchmark:
       case Tick.Value(a) => a
   def tickingK[A](using c: Effects): Handler[c.M, Tick, c.R, c.S, A, A] = new Handler[c.M, Tick, c.R, c.S, A, A]:
     def ret(a: A): A = a
-    def apply[X](op: Tick[X], k: X => c.M[c.R, c.S, c.S, A]): c.M[c.R, c.S, c.S, A] = op match
+    def apply[X](op: Tick[X], k: X => c.P[A]): c.P[A] = op match
       case Tick.Value(a) => k(a)
   def skipping[A](using c: Effects): Handler[c.M, Skip, c.R, c.S, A, A] = new Answering[c.M, Skip, c.R, c.S, A, A]:
     def ret(a: A): A = a
@@ -73,25 +73,25 @@ class MonadsBenchmark:
   @Benchmark
   def forwarded(): Boolean = run(Effects.handle(ticking)(Effects.handle(skipping)(isEvenT(n))))
 
-  def skips(d: Int)(using c: Effects, t: Tick :? c.R): c.M[c.R, c.S, c.S, Boolean] =
+  def skips(d: Int)(using c: Effects, t: Tick :? c.R): c.P[Boolean] =
     if d == 0 then isEvenT(n) else Effects.handle(skipping)(skips(d - 1))
 
   @Benchmark
   def forwarded16(): Boolean = run(Effects.handle(ticking)(skips(16)))
 
-  def counting(i: Int)(using c: Effects, s: State % Int :? c.R): c.M[c.R, c.S, c.S, Int] =
+  def counting(i: Int)(using c: Effects, s: State % Int :? c.R): c.P[Int] =
     if i == 0 then get[Int] else get[Int].flatMap(x => put(x + 1)).flatMap(_ => counting(i - 1))
 
   @Benchmark
   def state(): Int = run(okay.std.state[Int](0)(counting(n)))._1
 
-  def telling(i: Int)(using c: Effects, w: Writer % Int :? c.R): c.M[c.R, c.S, c.S, Unit] =
+  def telling(i: Int)(using c: Effects, w: Writer % Int :? c.R): c.P[Unit] =
     if i == 0 then c.pure(()) else tell(i).flatMap(_ => telling(i - 1))
 
   @Benchmark
   def writer(): Int = run(okay.std.writer[Int, Unit](telling(n)))._1.length
 
-  def raising(i: Int, acc: Int)(using c: Effects): c.M[c.R, c.S, c.S, Int] =
+  def raising(i: Int, acc: Int)(using c: Effects): c.P[Int] =
     if i == 0 then c.pure(acc)
     else okay.std.throws[String, Int](raise[String, Int]("no")).flatMap(e => raising(i - 1, acc + e.fold(_.length, identity)))
 
@@ -101,7 +101,7 @@ class MonadsBenchmark:
   @Benchmark
   def choose(): Int = run(okay.std.choose[Int](among(0 until n).map(_ + 1))).length
 
-  def fibs(i: Int, a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.R): c.M[c.R, c.S, c.S, Unit] =
+  def fibs(i: Int, a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.R): c.P[Unit] =
     if i == 0 then c.pure(()) else yield_(a).flatMap(_ => fibs(i - 1, b, a + b))
 
   @Benchmark

@@ -26,7 +26,7 @@ class EffectsBenchmark:
   @Param(Array("1000"))
   var n: Int = 0
 
-  def counting(i: Int)(using c: Effects, s: State % Int :? c.R): c.M[c.R, c.S, c.S, Int] =
+  def counting(i: Int)(using c: Effects, s: State % Int :? c.R): c.P[Int] =
     if i == 0 then get[Int] else get[Int].flatMap(x => put(x + 1)).flatMap(_ => counting(i - 1))
 
   @Benchmark
@@ -45,13 +45,13 @@ class EffectsBenchmark:
   @Benchmark
   def stateGetPutHoisted(): Int = run(state[Int](0)(countingHoisted(n)))._1
 
-  def telling(i: Int)(using c: Effects, w: Writer % Int :? c.R): c.M[c.R, c.S, c.S, Unit] =
+  def telling(i: Int)(using c: Effects, w: Writer % Int :? c.R): c.P[Unit] =
     if i == 0 then c.pure(()) else tell(i).flatMap(_ => telling(i - 1))
 
   @Benchmark
   def writerTell(): Int = run(writer[Int, Unit](telling(n)))._1.length
 
-  def raising(i: Int, acc: Int)(using c: Effects): c.M[c.R, c.S, c.S, Int] =
+  def raising(i: Int, acc: Int)(using c: Effects): c.P[Int] =
     if i == 0 then c.pure(acc)
     else throws[String, Int](raise[String, Int]("no")).flatMap(e => raising(i - 1, acc + e.fold(_.length, identity)))
 

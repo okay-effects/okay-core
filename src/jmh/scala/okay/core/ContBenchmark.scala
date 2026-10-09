@@ -44,9 +44,9 @@ class ContBenchmark:
   @Benchmark
   def tailcallPure(): Boolean = isEven(n).value
 
-  def isEvenT(n: Int)(using c: Effects, t: Tick :? c.R): c.M[c.R, c.S, c.S, Boolean] =
+  def isEvenT(n: Int)(using c: Effects, t: Tick :? c.R): c.P[Boolean] =
     if n == 0 then c.pure(true) else perform(Tick.Value(n)).flatMap(_ => isOddT(n - 1))
-  def isOddT(n: Int)(using c: Effects, t: Tick :? c.R): c.M[c.R, c.S, c.S, Boolean] =
+  def isOddT(n: Int)(using c: Effects, t: Tick :? c.R): c.P[Boolean] =
     if n == 0 then c.pure(false) else perform(Tick.Value(n)).flatMap(_ => isEvenT(n - 1))
 
   /** `Tick` answered with its value: answered in place, its clause `k(a)` */
@@ -57,7 +57,7 @@ class ContBenchmark:
   /** the same handler with its clause written out, `k(a)`: the general road, a resumption built per operation */
   def tickingK[Q, A](using c: Effects): Handler[c.M, Tick, c.R, c.S, A, A] = new Handler[c.M, Tick, c.R, c.S, A, A]:
     def ret(a: A): A = a
-    def apply[X](op: Tick[X], k: X => c.M[c.R, c.S, c.S, A]): c.M[c.R, c.S, c.S, A] = op match
+    def apply[X](op: Tick[X], k: X => c.P[A]): c.P[A] = op match
       case Tick.Value(a) => k(a)
   /** the inner handler, of `Skip`: crossed by every `Tick` */
   def skipping[A](using c: Effects): Handler[c.M, Skip, c.R, c.S, A, A] = new Answering[c.M, Skip, c.R, c.S, A, A]:

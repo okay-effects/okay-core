@@ -27,6 +27,8 @@ abstract class Context extends IxMonad:
   type S
   /** the monad of the bodies of the delimiters here: a handler's, a reset's */
   type Inner[X <: Row, I, O, A]
+  /** a program here, the answer kept: what most programs are */
+  type P[A] = M[R, S, S, A]
 
 /** EFFECTS over the monad: an operation at its path in the row, and a handler — a delimiter that answers the
  * operations of its effect; a reset is one that answers none. So effects are control with handlers: every context
@@ -36,6 +38,8 @@ abstract class Effects extends Control:
   type Handled[E[_], S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.Inner[X, I, O, A]; type R = E +: Effects.this.R; type S = S2 }
   type Reset[S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.Inner[X, I, O, A]; type R = Effects.this.R; type S = S2 }
   type Answer[S2] <: Effects { type M[X <: Row, I, O, A] = Effects.this.M[X, I, O, A]; type R = Effects.this.R; type S = S2 }
+  /** a handler of `E`'s body here, of value `A`, at the handler's answer `Ans`: in its context, one level in */
+  type Body[E[_], Ans, A] = Handled[E, Ans] ?=> Inner[E +: R, Ans, Ans, A]
   def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X]
   /** a handler of `E` here: the body in its context, over `E +: R` at the answer `Ans`; its answers read by `h` */
   def handle[E[_], A, Ans](h: Handler[M, E, R, S, A, Ans])(body: Handled[E, Ans] ?=> Inner[E +: R, Ans, Ans, A]): M[R, S, S, Ans]
@@ -106,7 +110,7 @@ object Needs:
  * or a row of them, `Int ! Reader % Int +: Writer % String +: Pure`; their order the program's own, the context's
  * row any. At the context's answer, not `Free`'s `Unit`: under a handler the answer is the handler's
  * — `Either[E, A]` under `throws` — so a `Free` program would run only where nothing is answered */
-infix type ![A, Es <: AnyKind] = (c: Needs[Es]) ?=> c.M[c.R, c.S, c.S, A]
+infix type ![A, Es <: AnyKind] = (c: Needs[Es]) ?=> c.P[A]
 
 object Effects:
   /** THE INSTANCE over `Cont`, the context at the row `R0`, the answer `S0`: effects and control both */
@@ -150,7 +154,7 @@ object Effects:
 
   /** `handle(h)(body)` in context: the body written in the handler's context, over `E +: c.R`, at its answer */
   def handle[E[_], A, Ans](using c: Effects)(h: Handler[c.M, E, c.R, c.S, A, Ans])
-            (body: c.Handled[E, Ans] ?=> c.Inner[E +: c.R, Ans, Ans, A]): c.M[c.R, c.S, c.S, Ans] =
+            (body: c.Body[E, Ans, A]): c.P[Ans] =
     c.handle(h)(body)
 
 /** a handler of the effect `E`, over the row `E +: T`, leaving `T`, written at the answer `Q` outside its
@@ -262,4 +266,4 @@ private final class Resume[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T,
   def apply(x: X): Cont[T, Q, Q, Ans] = Delay(() => fold0(k(x), ret, h))
 
 /** `perform(op)`: an operation of `E`, in the context — its row has `E`, its answer is the operation's */
-def perform[E[_], X](op: E[X])(using c: Effects, in: In[E, c.R]): c.M[c.R, c.S, c.S, X] = c.perform(op, in)
+def perform[E[_], X](op: E[X])(using c: Effects, in: In[E, c.R]): c.P[X] = c.perform(op, in)

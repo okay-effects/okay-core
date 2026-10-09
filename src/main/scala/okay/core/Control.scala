@@ -29,7 +29,7 @@ trait KeepsLow:
 object Control:
   /** `reset[S](body)`: the body written at the answer `S`, its value; the delimiter answers what the body moved
    * the answer to, `O` */
-  def reset[S](using c: Control)[O](body: c.Reset[S] ?=> c.Inner[c.R, S, O, S]): c.M[c.R, c.S, c.S, O] =
+  def reset[S](using c: Control)[O](body: c.Reset[S] ?=> c.Inner[c.R, S, O, S]): c.P[O] =
     c.reset(body)
 
   /** `shift[A, O](k => body)`: the hole's value `A` and the answer the delimiter is moved to, `O`; the hole's

@@ -9,13 +9,13 @@ enum State[S, +A]:
   case Get[S]() extends State[S, S]
   case Put[S](s: S) extends State[S, Unit]
 
-def get[S](using c: Effects, has: State % S :? c.R): c.M[c.R, c.S, c.S, S] = perform[State % S, S](State.Get[S]())
-def put[S](s: S)(using c: Effects, has: State % S :? c.R): c.M[c.R, c.S, c.S, Unit] = perform[State % S, Unit](State.Put(s))
+def get[S](using c: Effects, has: State % S :? c.R): c.P[S] = perform[State % S, S](State.Get[S]())
+def put[S](s: S)(using c: Effects, has: State % S :? c.R): c.P[Unit] = perform[State % S, Unit](State.Put(s))
 /** the state changed by `f`; the new state */
-def modify[S](f: S => S)(using c: Effects, has: State % S :? c.R): c.M[c.R, c.S, c.S, S] =
+def modify[S](f: S => S)(using c: Effects, has: State % S :? c.R): c.P[S] =
   get[S].flatMap(s => { val n = f(s); put[S](n).map(_ => n) })
 /** `state[A](s0)(body)`: the last state and the value */
-def state[A](using c: Effects)[S](s0: S)(body: c.Handled[State % S, (S, A)] ?=> c.Inner[State % S +: c.R, (S, A), (S, A), A]): c.M[c.R, c.S, c.S, (S, A)] =
+def state[A](using c: Effects)[S](s0: S)(body: c.Body[State % S, (S, A), A]): c.P[(S, A)] =
   c.delay:
     Effects.handle(new Answering[c.M, State % S, c.R, c.S, A, (S, A)]:
       private var s: S = s0

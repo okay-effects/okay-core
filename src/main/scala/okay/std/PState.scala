@@ -27,6 +27,6 @@ final class PState[C <: Control & Singleton, V](val c: C)(val r: Control { type 
 /** `pstate(s0)(st => body)`: the body run from the state `s0`, of type `S0`, to a state of type `S1`, in the run's
  * reset; the last state and the value */
 def pstate[S0](s0: S0)[S1, W](using c: Control)(body: c.Reset[St[c.M, c.R, c.S, S1, (S1, W)]] ?=> PState[c.type, (S1, W)] => c.Inner[c.R, St[c.M, c.R, c.S, S1, (S1, W)], St[c.M, c.R, c.S, S0, (S1, W)], W])
-    : c.M[c.R, c.S, c.S, (S1, W)] =
+    : c.P[(S1, W)] =
   c.reset[St[c.M, c.R, c.S, S1, (S1, W)], St[c.M, c.R, c.S, S0, (S1, W)]](r ?=>
     body(PState(c)(r)).map(w => (s1: S1) => c.pure[c.R, c.S, (S1, W)]((s1, w)))).flatMap(f => f(s0))

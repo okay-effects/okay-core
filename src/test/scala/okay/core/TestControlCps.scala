@@ -39,12 +39,12 @@ class TestControlCps extends munit.FunSuite:
     assertEquals(onCont, expected, "on Cont")
     assertEquals(onCps, expected, "on CPS")
 
-  def twice(using c: Control): c.M[c.R, c.S, c.S, Int] =
+  def twice(using c: Control): c.P[Int] =
     reset[Int](shift[Int, Int](k => k(10).flatMap(k)).map(_ + 1))
   test("reset(1 + shift(k => k(k(10)))) is 12"):
     both(Effects.run(twice), Cps.run(twice), 12)
 
-  def modified(using c: Control): c.M[c.R, c.S, c.S, String] =
+  def modified(using c: Control): c.P[String] =
     reset[Int](shift[Int, String](k => k(5).map(_.toString)).map(_ * 2))
   test("the answer type modified: an Int hole, a String answer"):
     both(Effects.run(modified), Cps.run(modified), "10")
@@ -54,17 +54,17 @@ class TestControlCps extends munit.FunSuite:
   test("a shift at the top: the top is the delimiter"):
     both(Effects.run(atTop), Cps.run(atTop), 9)
 
-  def shots(using c: Control): c.M[c.R, c.S, c.S, List[Int]] =
+  def shots(using c: Control): c.P[List[Int]] =
     reset[List[Int]](shift[Int, List[Int]](k => k(1).flatMap(a => k(2).map(b => a ++ b))).map(x => List(x, x * 10)))
   test("multi-shot: k resumed twice, the answers joined"):
     both(Effects.run(shots), Cps.run(shots), List(1, 10, 2, 20))
 
-  def nested(using c: Control): c.M[c.R, c.S, c.S, Int] =
+  def nested(using c: Control): c.P[Int] =
     reset[Int](shift[Int, Int](k => k(1).map(_ * 100)).flatMap(a => reset[Int](shift[Int, Int](k => k(2).map(_ + 7)).map(_ + a))))
   test("a shift captures up to the nearest reset only"):
     both(Effects.run(nested), Cps.run(nested), 1000)
 
-  def stateful(using c: Control): c.M[c.R, c.S, c.S, (String, Int)] =
+  def stateful(using c: Control): c.P[(String, Int)] =
     pstate(7)(st => st.get[Int].flatMap(n => st.put[Int]("x" * n)).flatMap(_ => st.get[String]).map(_.length))
   test("pstate, library code over Control: the state's type changed on both"):
     both(Effects.run(stateful), Cps.run(stateful), ("xxxxxxx", 7))
