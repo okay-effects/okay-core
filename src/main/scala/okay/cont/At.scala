@@ -8,7 +8,8 @@ class At[R0 <: Row, S0] extends Effects with Paths.Keep[R0, At[R0, S0]]:
   type M[I, O, A] = Cont[R0, I, O, A]
   type Effs = R0
   type S = S0
-  type Inner[X <: Row, I, O, A] = Cont[X, I, O, A]
+  type Within[I, O, A] = Cont[R0, I, O, A]
+  type Handling[E[_], I, O, A] = Cont[E +: R0, I, O, A]
   type Handled[E[_], S2] = At[E +: R0, S2]
   type Reset[S2] = At[R0, S2]
   type Answer[S2] = At[R0, S2]

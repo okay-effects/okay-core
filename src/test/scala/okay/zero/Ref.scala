@@ -11,7 +11,8 @@ import okay.core
  * under the handler's `ret`, its operations the body's handler's */
 class Ref[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   type M[I, O, A] = Eff[R0, J0, I, O, A]
-  type Inner[X <: Row, I, O, A] = Eff[X, Level[R0, J0, T0], I, O, A]
+  type Within[I, O, A] = Eff[R0, Level[R0, J0, T0], I, O, A]
+  type Handling[E[_], I, O, A] = Eff[E +: R0, Level[R0, J0, T0], I, O, A]
   type Effs = R0
   type S = T0
   type Handled[E[_], S2] = Ref[E +: R0, Level[R0, J0, T0], S2]
@@ -27,14 +28,14 @@ class Ref[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
     def map[B](f: A => B): M[I, O, B] = okay.zero.map(m)(f)
 
   def perform[E[_], S2, X](op: E[X], in: In[E, R0]): M[S2, S2, X] = request(op, in)
-  def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: Ref[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
+  def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: Ref[E +: R0, Level[R0, J0, T0], Ans] ?=> Handling[E, Ans, Ans, A])
       : M[T0, T0, Ans] =
     handleRead(h, h.ret, body(using Ref()))
-  def intercept[E[_], A, Ans](in: In[E, R0], h: core.Handler[Prog, E, A, Ans])(body: Ref[R0, Level[R0, J0, T0], Ans] ?=> Inner[R0, Ans, Ans, A])
+  def intercept[E[_], A, Ans](in: In[E, R0], h: core.Handler[Prog, E, A, Ans])(body: Ref[R0, Level[R0, J0, T0], Ans] ?=> Within[Ans, Ans, A])
       : M[T0, T0, Ans] =
     interceptRead(in, h, h.ret, body(using Ref()))
   def shift[I, O, A](f: (A => M[O, O, I]) => M[O, O, O], same: (I =:= O) | Null): M[I, O, A] = control(f, null)
-  def reset[S2, O](body: Ref[R0, Level[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[T0, T0, O] =
+  def reset[S2, O](body: Ref[R0, Level[R0, J0, T0], S2] ?=> Within[S2, O, S2]): M[T0, T0, O] =
     resetRead(body(using Ref()))
 
   type Needing[Es <: AnyKind] = Ref[R0, J0, T0] & core.Needs[Es]

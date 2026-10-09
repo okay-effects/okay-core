@@ -83,7 +83,8 @@ object Cps0:
   /** the context: the row `R0`, the outside of its delimiter at `J0`, the answer `T0` */
   class At[R0 <: Row, J0, T0] extends Effects:
     type M[I, O, A] = Eff[R0, J0, I, O, A]
-    type Inner[X <: Row, I, O, A] = Eff[X, Lv[R0, J0, T0], I, O, A]
+    type Within[I, O, A] = Eff[R0, Lv[R0, J0, T0], I, O, A]
+    type Handling[E[_], I, O, A] = Eff[E +: R0, Lv[R0, J0, T0], I, O, A]
     type Effs = R0
     type S = T0
     type Handled[E[_], S2] = At[E +: R0, Lv[R0, J0, T0], S2]
@@ -97,12 +98,12 @@ object Cps0:
       def flatMap[I2, B](f: A => M[I2, I, B]): M[I2, O, B] = Cps0.flatMap(m)(f)
       def map[B](f: A => B): M[I, O, B] = Cps0.map(m)(f)
     def perform[E[_], S2, X](op: E[X], in: In[E, R0]): M[S2, S2, X] = request(op, in)
-    def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: At[E +: R0, Lv[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A]): M[T0, T0, Ans] =
+    def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: At[E +: R0, Lv[R0, J0, T0], Ans] ?=> Handling[E, Ans, Ans, A]): M[T0, T0, Ans] =
       readHand(dollar(body(using At()), (a: A) => Cps0.pure(Done[E +: R0, Lv[R0, J0, T0], Ans](h.ret(a)))), h)
-    def intercept[E[_], A, Ans](in: In[E, R0], h: Handler[Prog, E, A, Ans])(body: At[R0, Lv[R0, J0, T0], Ans] ?=> Inner[R0, Ans, Ans, A]): M[T0, T0, Ans] =
+    def intercept[E[_], A, Ans](in: In[E, R0], h: Handler[Prog, E, A, Ans])(body: At[R0, Lv[R0, J0, T0], Ans] ?=> Within[Ans, Ans, A]): M[T0, T0, Ans] =
       readIntercept(in, dollar(body(using At()), (a: A) => Cps0.pure(Done[R0, Lv[R0, J0, T0], Ans](h.ret(a)))), h)
     def shift[I, O, A](f: (A => M[O, O, I]) => M[O, O, O], same: (I =:= O) | Null): M[I, O, A] = control(f)
-    def reset[S2, O](body: At[R0, Lv[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[T0, T0, O] =
+    def reset[S2, O](body: At[R0, Lv[R0, J0, T0], S2] ?=> Within[S2, O, S2]): M[T0, T0, O] =
       passAll(dollar(body(using At()), (s: S2) => Cps0.pure(Done[R0, Lv[R0, J0, T0], S2](s))))
     type Needing[Es <: AnyKind] = At[R0, J0, T0] & Needs[Es]
     def needing[Es <: AnyKind](p: Paths[Es, R0]): At[R0, J0, T0] & Needs[Es] = Needy(p)

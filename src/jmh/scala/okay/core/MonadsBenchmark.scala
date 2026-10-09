@@ -98,7 +98,7 @@ class MonadsBenchmark:
 
   /** `state`'s loop as a `Program`, built on the monad where it runs: what the row in the type costs */
   @Benchmark
-  def stateProgram(): Int = Program.run(top)(Programs.state[Pure, Int, Int](0)(countingP(n)))._1
+  def stateProgram(): Int = Program.run(top)(Programs.state(0)(countingP(n)))._1
 
   def asks(i: Int, acc: Int)(using c: Effects, r: Reader % Int :? c.Effs): c.Prog[Int] =
     if i == 0 then c.pure(acc) else ask[Int].flatMap(v => asks(i - 1, acc + v))

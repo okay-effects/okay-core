@@ -268,7 +268,9 @@ Nested ones compose, as tofu's `local`s do: the inner clause's `ask` is the oute
 A program written in context is built where it is written. `Program[R, A]` is one not yet built: `on(c)` builds it
 in any context whose row is `R`. So its type names its row — `F[A]` for code written over `F[_]`, okay's `A ! R`,
 what Scala 2 can write — and it can be built again where a delimiter needs it. The standard effects as programs
-are in `okay.std.Programs`; `Program.run(top)(p)` runs one on a monad.
+are in `okay.std.Programs`; `Program.run(top)(p)` runs one on a monad. A handler of a `Program` takes its effect off
+WHEREVER it is in the row (`Removed`, okay's): the order of effects in a type says nothing, the order of handlers
+everything. Your own: `Program.handle(h)(p)`, `h` a `Program.Handler`.
 
 ```scala
 type Row1 = Reader % Int +: Throws % String +: Pure
@@ -276,8 +278,9 @@ type Row1 = Reader % Int +: Throws % String +: Pure
 def checked: Program[Row1, Int] =
   Programs.ask[Row1, Int].flatMap(n => if n < 0 then Programs.raise[Row1, String, Int]("negative") else Program.pure(n * 2))
 
-Program.run(okay.zero.top)(Programs.throws[Pure, String, Int](Programs.reader[Throws % String +: Pure, Int, Int](21)(checked)))   // Right(42)
-Program.run(okay.cont.top)(Programs.throws[Pure, String, Int](Programs.reader[Throws % String +: Pure, Int, Int](-1)(checked)))   // Left("negative")
+Program.run(okay.zero.top)(Programs.throws[String](Programs.reader(21)(checked)))   // Right(42)
+Program.run(okay.cont.top)(Programs.throws[String](Programs.reader(-1)(checked)))   // Left("negative")
+Program.run(okay.zero.top)(Programs.reader(21)(Programs.throws[String](checked)))   // Right(42)
 ```
 
 ### With tofu
@@ -294,7 +297,7 @@ def greeting[F[_]: cats.Monad](using ctx: tofu.WithLocal[F, String], err: tofu.E
 
 type Row2 = Reader % String +: Throws % String +: Pure
 
-Program.run(okay.zero.top)(Programs.throws[Pure, String, String](Programs.reader[Throws % String +: Pure, String, String]("ann")(greeting[Program.Of[Row2]])))   // Right("hi ANN")
+Program.run(okay.zero.top)(Programs.throws[String](Programs.reader("ann")(greeting[Program.Of[Row2]])))   // Right("hi ANN")
 ```
 
 ### From Scala 2
@@ -307,7 +310,7 @@ without infix precedence:
 ```text
 type App = +:[({ type L[X] = Reader[Int, X] })#L, Pure]      // or kind-projector's +:[Reader[Int, *], Pure]
 val p: Program[App, Int] = Programs.ask[App, Int].map(_ + 1)
-Program.run(okay.zero.top)(Programs.reader[Pure, Int, Int](41)(p))   // 42
+Program.run(okay.zero.top)(Programs.reader(41)(p))   // 42
 ```
 
 ## Async

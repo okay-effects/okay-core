@@ -3,8 +3,8 @@ package okay.core
 /** DELIMITED CONTROL over the monad: `shift` and `reset`, answers moved — Danvy–Filinski's, typed as Asai–Kameyama's.
  * The raw operations at the context's row; `Control.shift` and `Control.reset` are them in context */
 trait Control extends Context:
-  /** the context in a reset here, its body written at `S2`: the monad `Inner` */
-  type Reset[S2] <: Control { type M[I, O, A] = Control.this.Inner[Control.this.Effs, I, O, A]; type Effs = Control.this.Effs; type S = S2 }
+  /** the context in a reset here, its body written at `S2`: the monad `Within` */
+  type Reset[S2] <: Control { type M[I, O, A] = Control.this.Within[I, O, A]; type Effs = Control.this.Effs; type S = S2 }
   /** this context at the answer `S2`, the monad the same: a shift's body, where the delimiter was */
   type Answer[S2] <: Control { type M[I, O, A] = Control.this.M[I, O, A]; type Effs = Control.this.Effs; type S = S2 }
   def answer[S2]: Answer[S2]
@@ -14,7 +14,7 @@ trait Control extends Context:
   def shift[I, O, A](f: (A => M[O, O, I]) => M[O, O, O], same: (I =:= O) | Null): M[I, O, A]
   /** the delimiter: the body, in its context, written at `S2`, its value the answer; its final answer `O` the
    * delimiter's value here */
-  def reset[S2, O](body: Reset[S2] ?=> Inner[Effs, S2, O, S2]): M[S, S, O]
+  def reset[S2, O](body: Reset[S2] ?=> Within[S2, O, S2]): M[S, S, O]
 
 /** whether a shift keeps the answer, `T` to `O`: the proof, if the types say so; else nothing known */
 opaque type Keeps[T, O] = (T =:= O) | Null
@@ -29,7 +29,7 @@ trait KeepsLow:
 object Control:
   /** `reset[S](body)`: the body written at the answer `S`, its value; the delimiter answers what the body moved
    * the answer to, `O` */
-  def reset[S](using c: Control)[O](body: c.Reset[S] ?=> c.Inner[c.Effs, S, O, S]): c.Prog[O] =
+  def reset[S](using c: Control)[O](body: c.Reset[S] ?=> c.Within[S, O, S]): c.Prog[O] =
     c.reset(body)
 
   /** `shift[A, O](k => body)`: the hole's value `A` and the answer the delimiter is moved to, `O`; the hole's

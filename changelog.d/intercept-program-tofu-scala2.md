@@ -33,3 +33,11 @@ over `F[_]` (tofu). They meet in two additions:
     made, up to 64 deep (`Program.Fused` — past it the closures composed would call each other a frame each: a
     left-nested chain of 100 000 overflowed without the bound). `state`'s loop as a `Program` 32.3 → 22.7 / 23.0,
     502 → 342 B, against 15.4 / 14.1 written in context.
+- Then a handler of an effect anywhere in a row, okay's: `Removed[E, R]` (`Out`, and a translation `Tr` of the
+  paths of `R` into `E +: Out`), a `View` — a context seen over another row, each operation's path translated, its
+  delimiters' contexts views too. `Programs`' handlers take their effect off wherever it is
+  (`Programs.reader(e)(p)`, `throws[E](p)`, `writer[W](p)`, `state(s0)(p)`), `Program.handle(h)(p)` for one's own.
+  The interface's `Inner[X <: Row, …]` became `Within` and `Handling[E]`, so a view takes its context's monad and
+  keeps its row. okay's `TestEffectsRows`, over okay's interface `Effects[M[_ <: Row, _]]` written over `Program`,
+  and the handlers in every order, nested ones translated through both, `local` and `handleWith` in a view, 100 000
+  operations deep in a row: `TestAnywhereOn` on Cont, Cont0, Ref and Cps0. Read by Scala 2 too.

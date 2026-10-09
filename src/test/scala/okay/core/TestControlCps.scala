@@ -16,7 +16,7 @@ object Cps:
     type M[I, O, A] = F[R0, I, O, A]
     type Effs = R0
     type S = S0
-    type Inner[X <: Row, I, O, A] = F[X, I, O, A]
+    type Within[I, O, A] = F[R0, I, O, A]
     type Reset[S2] = At[R0, S2]
     type Answer[S2] = At[R0, S2]
     def answer[S2]: At[R0, S2] = At()

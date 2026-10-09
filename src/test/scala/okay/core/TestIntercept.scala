@@ -6,14 +6,14 @@ import okay.std.*
 abstract class TestInterceptOn(on: Backend) extends BackendSuite(on):
 
   /** `local(f)(body)`: every `ask` of the body answered `f` of the reader's value outside */
-  def local[A](using c: Effects, in: Reader % Int :? c.Effs)(f: Int => Int)(body: c.Reset[A] ?=> c.Inner[c.Effs, A, A, A]): c.Prog[A] =
+  def local[A](using c: Effects, in: Reader % Int :? c.Effs)(f: Int => Int)(body: c.Reset[A] ?=> c.Within[A, A, A]): c.Prog[A] =
     Effects.intercept(new Handler[c.Prog, Reader % Int, A, A]:
       def ret(a: A): A = a
       def apply[X](op: Reader[Int, X], k: X => c.Prog[A]): c.Prog[A] = op match
         case Reader.Ask() => ask[Int].flatMap(v => k(f(v))))(body)
 
   /** `recover(f)(body)`: a `raise` of the body answered `f` of the error, the rest of the body dropped */
-  def recover[A](using c: Effects, in: Throws % String :? c.Effs)(f: String => A)(body: c.Reset[A] ?=> c.Inner[c.Effs, A, A, A]): c.Prog[A] =
+  def recover[A](using c: Effects, in: Throws % String :? c.Effs)(f: String => A)(body: c.Reset[A] ?=> c.Within[A, A, A]): c.Prog[A] =
     Effects.intercept(new Handler[c.Prog, Throws % String, A, A]:
       def ret(a: A): A = a
       def apply[X](op: Throws[String, X], k: X => c.Prog[A]): c.Prog[A] = op match

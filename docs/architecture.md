@@ -45,6 +45,14 @@ The layers:
   correct because inside it nothing is known of the handlers outside (`Ev.Unknown`), so an operation is never
   answered in place past the interceptor; the slow path, to be measured before a machine node is made. It is
   tofu's `WithLocal.local` and `Handle.handleWith`, and okay's handler of an effect anywhere in a row.
+- **A handler of an effect anywhere in a row, okay's.** `Removed[E, R]` (okay's name): the row without `E`, `Out`,
+  and every path in `R` translated to one in `E +: Out` (`Tr`). A handler of a `Program` builds its body in a
+  `View` of the handler's context — a context seen over `R`, its operations' paths translated, everything else the
+  context's own, its delimiters' contexts views too. `Programs`' handlers, and `Program.handle(h)(p)` with a
+  `Program.Handler` (clauses written in any context outside). For it the interface's monad one level in is two
+  members, not one indexed by a row: `Within` (a reset's, an interceptor's body) and `Handling[E]` (a handler's) —
+  so a view keeps its row and takes the monad of the context it views. okay's own `TestEffectsRows`, over okay's
+  interface `Effects[M[_ <: Row, _]]` written here over `Program` (`TestAnywhereOn`), passes on the four monads.
 - **Integrations, outside the core.** tofu and cats instances over `Program` are in the tests now
   (`src/test/scala/okay/tofu`, `scala2/src/test/scala/okay/scala2`): the shape of an optional module, each
   dependency behind it.

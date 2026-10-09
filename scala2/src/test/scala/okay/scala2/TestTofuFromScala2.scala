@@ -30,7 +30,7 @@ class TestTofuFromScala2 extends munit.FunSuite {
   type F[A] = Program[App, A]
 
   def run[A](top: Top, cfg: Cfg)(p: F[A]): Either[String, A] =
-    Program.run(top)(Programs.throws[Pure, String, A](Programs.reader[+:[ThrowsOf[String]#L, Pure], Cfg, A](cfg)(p)))
+    Program.run(top)(Programs.throws[String](Programs.reader(cfg)(p)))
 
   for ((name, top) <- List("Cont0" -> okay.zero.top, "Cont" -> okay.cont.top)) {
     test(s"Scala 2, tofu on $name: WithLocal — the context and local") {
@@ -54,7 +54,7 @@ class TestTofuFromScala2 extends munit.FunSuite {
     type R = +:[({ type L[X] = State[Int, X] })#L, +:[({ type L[X] = Writer[String, X] })#L, Pure]]
     val p: Program[R, Int] =
       Programs.get[R, Int].flatMap(s => Programs.put[R, Int](s + 1).flatMap(_ => Programs.tell[R, String](s"was $s").map(_ => s)))
-    val run2 = Programs.writer[Pure, String, (Int, Int)](Programs.state[+:[({ type L[X] = Writer[String, X] })#L, Pure], Int, Int](41)(p))
+    val run2 = Programs.writer[String](Programs.state(41)(p))
     assertEquals(Program.run(okay.zero.top)(run2), (List("was 41"), (42, 41)))
     assertEquals(Program.run(okay.cont.top)(run2), (List("was 41"), (42, 41)))
   }

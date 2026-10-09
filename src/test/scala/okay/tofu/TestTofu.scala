@@ -36,7 +36,7 @@ abstract class TestTofuOn(top: Top, stackSafe: Boolean = true) extends munit.Fun
   type F[A] = Program[App, A]
   /** a program over `App` run: the reader inside, the throws outside */
   def run[A](cfg: Cfg)(p: F[A]): Either[String, A] =
-    Program.run(top)(Programs.throws[Pure, String, A](Programs.reader[Throws % String +: Pure, Cfg, A](cfg)(p)))
+    Program.run(top)(Programs.throws[String](Programs.reader(cfg)(p)))
 
   test("tofu: WithContext and WithLocal — the context, local, nested locals composed"):
     assertEquals(run(Cfg("ann", 1))(Service.describe[F]), Right("ann@1 ann@2 20"))

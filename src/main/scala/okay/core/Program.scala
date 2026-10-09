@@ -51,5 +51,20 @@ object Program:
   def apply[R <: Row, A](p: (c: Effects { type Effs = R }) => c.Prog[A]): Program[R, A] = new Program[R, A]:
     def on(c: Effects { type Effs = R }): c.Prog[A] = p(c)
 
+  /** A HANDLER OF `E` FOR PROGRAMS: the body's value to `Ans`; each operation with the rest `k`, its clause written
+   * in any context outside — the handler's row the one outside, whatever it is */
+  trait Handler[E[_], A, Ans]:
+    def ret(a: A): Ans
+    def apply[X](c: Effects)(op: E[X], k: X => c.Prog[Ans]): c.Prog[Ans]
+
+  /** `handle(h)(p)`: `E` handled WHEREVER it is in `p`'s row — okay's `handle` with `Removed`: `p` built in a view of
+   * the handler's context, its paths translated; the program over the row without `E` */
+  def handle[E[_], R <: Row, A, Ans](h: Handler[E, A, Ans])(p: Program[R, A])(using rm: Removed[E, R]): Program[rm.Out, Ans] =
+    new Program[rm.Out, Ans]:
+      def on(c: Effects { type Effs = rm.Out }): c.Prog[Ans] =
+        c.handle(new okay.core.Handler[c.Prog, E, A, Ans]:
+          def ret(a: A): Ans = h.ret(a)
+          def apply[X](op: E[X], k: X => c.Prog[Ans]): c.Prog[Ans] = h(c)(op, k))(hc ?=> p.on(View(hc, rm.tr)))
+
   /** `run(top)(p)`: a program with nothing left to handle, built at the top of a monad and run there */
   def run[A](top: Top)(p: Program[Pure, A]): A = top.run(p.on(top.at[A]))

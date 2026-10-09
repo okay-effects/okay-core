@@ -6,15 +6,16 @@ package okay.core
  * from. The context IS the instance: a program asks for one, `(using c: Effects)`, and is a value of `c.Prog`. A
  * delimiter gives its body one of its own: a handler's has the handler's effect in front of what the handler
  * leaves, `E +: c.Effs`, so the row is built by the handlers, outside in, and never named. The nearest context wins —
- * a nested scope's given is preferred. Its monad is `Inner`, the monad ONE LEVEL IN: `Cont`'s the same, `M`; a monad
+ * a nested scope's given is preferred. Its delimiters' bodies are in the monad ONE LEVEL IN, `Within` (a reset's, an
+ * interceptor's, over this row) and `Handling` (a handler's, its effect in front): `Cont`'s the same, `M`; a monad
  * whose answers are programs of the level outside (`okay.zero`'s) one level deeper */
 abstract class Context:
   /** a program here, over the row `Effs`: of value `A`, with a continuation answering `I`, answering `O` */
   type M[I, O, A]
   type Effs <: Row
   type S
-  /** the monad of the bodies of the delimiters here: a handler's, a reset's */
-  type Inner[X <: Row, I, O, A]
+  /** the monad of the body of a delimiter here over this row — a reset's, an interceptor's: one level in */
+  type Within[I, O, A]
   /** a program here, the answer kept: what most programs are */
   type Prog[A] = M[S, S, A]
   def pure[S2, A](a: A): M[S2, S2, A]
@@ -28,21 +29,23 @@ abstract class Context:
  * operations of its effect; a reset is one that answers none. So effects are control with handlers: every context
  * with effects has `shift` and `reset`, and its delimiters' contexts are so too */
 abstract class Effects extends Control:
-  /** the context under a handler of `E` here, at its answer `S2`: the row `E +: R`, the monad `Inner` */
-  type Handled[E[_], S2] <: Effects { type M[I, O, A] = Effects.this.Inner[E +: Effects.this.Effs, I, O, A]; type Effs = E +: Effects.this.Effs; type S = S2 }
-  type Reset[S2] <: Effects { type M[I, O, A] = Effects.this.Inner[Effects.this.Effs, I, O, A]; type Effs = Effects.this.Effs; type S = S2 }
+  /** the monad of the body of a handler of `E` here: over the row `E +: Effs`, one level in */
+  type Handling[E[_], I, O, A]
+  /** the context under a handler of `E` here, at its answer `S2`: the row `E +: R`, the monad `Handling` */
+  type Handled[E[_], S2] <: Effects { type M[I, O, A] = Effects.this.Handling[E, I, O, A]; type Effs = E +: Effects.this.Effs; type S = S2 }
+  type Reset[S2] <: Effects { type M[I, O, A] = Effects.this.Within[I, O, A]; type Effs = Effects.this.Effs; type S = S2 }
   type Answer[S2] <: Effects { type M[I, O, A] = Effects.this.M[I, O, A]; type Effs = Effects.this.Effs; type S = S2 }
   /** a handler of `E`'s body here, of value `A`, at the handler's answer `Ans`: in its context, one level in */
-  type Body[E[_], Ans, A] = Handled[E, Ans] ?=> Inner[E +: Effs, Ans, Ans, A]
+  type Body[E[_], Ans, A] = Handled[E, Ans] ?=> Handling[E, Ans, Ans, A]
   def perform[E[_], S2, X](op: E[X], in: In[E, Effs]): M[S2, S2, X]
   /** a handler of `E` here: the body in its context, over `E +: R` at the answer `Ans`; its answers read by `h` */
-  def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: Handled[E, Ans] ?=> Inner[E +: Effs, Ans, Ans, A]): M[S, S, Ans]
+  def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: Handled[E, Ans] ?=> Handling[E, Ans, Ans, A]): M[S, S, Ans]
   /** an INTERCEPTOR of `E`, an effect already in this row at `in`: the body in a context of its own, the row the
    * same, at the answer `Ans` — its operations at `in` to `h`'s clauses, `k` the rest under the interceptor again
    * (deep), every other operation on outside as it is; a clause runs outside it, so an operation of `E` there is the
    * handler's at `in`. A delimiter, as a reset: a `shift` in the body reaches it. What `local` and `handleWith` are
    * (tofu's `WithLocal`, `Handle`), and a handler over an effect anywhere in a row */
-  def intercept[E[_], A, Ans](in: In[E, Effs], h: Handler[Prog, E, A, Ans])(body: Reset[Ans] ?=> Inner[Effs, Ans, Ans, A]): M[S, S, Ans]
+  def intercept[E[_], A, Ans](in: In[E, Effs], h: Handler[Prog, E, A, Ans])(body: Reset[Ans] ?=> Within[Ans, Ans, A]): M[S, S, Ans]
   /** this context with the paths of the effects a program needs: the context of an `A ! Es` */
   type Needing[Es <: AnyKind] <: Needs[Es] { type M[I, O, A] = Effects.this.M[I, O, A]; type Effs = Effects.this.Effs; type S = Effects.this.S }
   def needing[Es <: AnyKind](p: Paths[Es, Effs]): Needing[Es]
@@ -72,7 +75,7 @@ object Effects:
     c.handle(h)(body)
   /** `intercept(h)(body)` in context: `E`, already in the context's row, handled again for the body */
   def intercept[E[_], A, Ans](using c: Effects, in: In[E, c.Effs])(h: Handler[c.Prog, E, A, Ans])
-               (body: c.Reset[Ans] ?=> c.Inner[c.Effs, Ans, Ans, A]): c.Prog[Ans] =
+               (body: c.Reset[Ans] ?=> c.Within[Ans, Ans, A]): c.Prog[Ans] =
     c.intercept(in, h)(body)
 
 /** A HANDLER of the effect `E`, its clauses over the programs `P` outside it, whatever the monad: the body's value

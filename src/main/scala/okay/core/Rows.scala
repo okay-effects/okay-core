@@ -101,3 +101,40 @@ object Paths:
   given one[E0[_], R <: Row](using head: In[E0, R]): Paths[E0, R] = One(head)
   given row[Es <: Row, R <: Row](using sub: Sub[Es, R]): Paths[Es, R] = Of(sub)
 
+
+/** A PATH IN `RV` MADE ONE IN `RC`: what a context seen over one row and run over another translates its operations
+ * by (`View`) */
+trait Tr[RV <: Row, RC <: Row]:
+  def apply[E[_]](in: In[E, RV]): In[E, RC]
+object Tr:
+  /** the same row: each path as it is */
+  def same[R <: Row]: Tr[R, R] = new Tr[R, R]:
+    def apply[E[_]](in: In[E, R]): In[E, R] = in
+  /** under a handler of `E`, in front of both rows: its own path the same, another's translated */
+  def under[E[_], RV <: Row, RC <: Row](t: Tr[RV, RC]): Tr[E +: RV, E +: RC] = new Tr[E +: RV, E +: RC]:
+    def apply[X[_]](in: In[X, E +: RV]): In[X, E +: RC] = in match
+      case In.Here() => In.Here()
+      case In.There(out) => In.There(t(out))
+
+/** `E` IN THE ROW `R`, BY ITS POSITION — okay's `Removed`: the row without it, `Out`, and every path in `R` as a path in
+ * `E +: Out`, the row a handler of `E` makes over `Out` — so a handler takes its effect off wherever it is in a row.
+ * The compiler builds it: at the head, first by priority, or through the tail */
+trait Removed[E[_], R <: Row]:
+  type Out <: Row
+  def tr: Tr[R, E +: Out]
+object Removed extends RemovedLow:
+  /** the proof with its `Out` named, so a handler's result row is known where it is called */
+  type Aux[E[_], R <: Row, O <: Row] = Removed[E, R] { type Out = O }
+  given here[E[_], T <: Row]: Aux[E, E +: T, T] = new Removed[E, E +: T]:
+    type Out = T
+    def tr: Tr[E +: T, E +: T] = Tr.same
+sealed trait RemovedLow:
+  given there[E[_], H[_], T <: Row, O <: Row](using r: Removed.Aux[E, T, O]): Removed.Aux[E, H +: T, H +: O] = new Removed[E, H +: T]:
+    type Out = H +: O
+    // `H`, in front: one past `E`; a path in the tail: as the tail's, `E` in front, then `H` after it
+    def tr: Tr[H +: T, E +: H +: O] = new Tr[H +: T, E +: H +: O]:
+      def apply[X[_]](in: In[X, H +: T]): In[X, E +: H +: O] = in match
+        case In.Here() => In.There(In.Here())
+        case In.There(out) => r.tr(out) match
+          case In.Here() => In.Here()
+          case In.There(rest) => In.There(In.There(rest))

@@ -7,10 +7,11 @@ import okay.core
 
 /** OKAY.ZERO AS AN INSTANCE of master's `Effects`: a context of `okay.core` whose programs are `Eff` — the
  * programs written over master's `Effects` and `Control`, `okay.std` among them, run on `Cont0`. Its monad is `Eff`
- * at its level `J0`; a delimiter's body is one level in, `Inner`, the level `Level[R0, J0, T0]` */
+ * at its level `J0`; a delimiter's body is one level in, `Within` and `Handling`, the level `Level[R0, J0, T0]` */
 class At[R0 <: Row, J0, T0] private[zero] () extends core.Effects with Paths.Keep[R0, At[R0, J0, T0]]:
   type M[I, O, A] = Eff[R0, J0, I, O, A]
-  type Inner[X <: Row, I, O, A] = Eff[X, Level[R0, J0, T0], I, O, A]
+  type Within[I, O, A] = Eff[R0, Level[R0, J0, T0], I, O, A]
+  type Handling[E[_], I, O, A] = Eff[E +: R0, Level[R0, J0, T0], I, O, A]
   type Effs = R0
   type S = T0
   type Handled[E[_], S2] = At[E +: R0, Level[R0, J0, T0], S2]
@@ -26,14 +27,14 @@ class At[R0 <: Row, J0, T0] private[zero] () extends core.Effects with Paths.Kee
     def map[B](f: A => B): M[I, O, B] = okay.zero.map(m)(f)
 
   def perform[E[_], S2, X](op: E[X], in: In[E, R0]): M[S2, S2, X] = request(op, in)
-  def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: At[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
+  def handle[E[_], A, Ans](h: core.Handler[Prog, E, A, Ans])(body: At[E +: R0, Level[R0, J0, T0], Ans] ?=> Handling[E, Ans, Ans, A])
       : M[T0, T0, Ans] =
     handleNode(h, body(using At()))
-  def intercept[E[_], A, Ans](in: In[E, R0], h: core.Handler[Prog, E, A, Ans])(body: At[R0, Level[R0, J0, T0], Ans] ?=> Inner[R0, Ans, Ans, A])
+  def intercept[E[_], A, Ans](in: In[E, R0], h: core.Handler[Prog, E, A, Ans])(body: At[R0, Level[R0, J0, T0], Ans] ?=> Within[Ans, Ans, A])
       : M[T0, T0, Ans] =
     interceptNode(in, h, body(using At()))
   def shift[I, O, A](f: (A => M[O, O, I]) => M[O, O, O], same: (I =:= O) | Null): M[I, O, A] = control(f, same)
-  def reset[S2, O](body: At[R0, Level[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[T0, T0, O] =
+  def reset[S2, O](body: At[R0, Level[R0, J0, T0], S2] ?=> Within[S2, O, S2]): M[T0, T0, O] =
     resetNode(body(using At()))
 
   type Needing[Es <: AnyKind] = At[R0, J0, T0] & core.Needs[Es]
