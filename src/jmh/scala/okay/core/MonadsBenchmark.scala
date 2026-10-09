@@ -207,7 +207,17 @@ class MonadsBenchmark:
   @Benchmark
   def forwarded4(): Boolean = run(Effects.handle(ticking)(skips(4)))
 
-  def safe(col: Int, placed: List[Int]) = placed.zipWithIndex.forall((c, d) => c != col && math.abs(c - col) != d + 1)
+  /** a column safe from the queens placed, the nearest first — a loop, not `zipWithIndex`: that one's pairs, made or
+   * not as the JIT inlines it, were most of the run and its spread, the monad's part a few percent */
+  def safe(col: Int, placed: List[Int]): Boolean =
+    var rest = placed
+    var d = 1
+    while rest.nonEmpty do
+      val c = rest.head
+      if c == col || math.abs(c - col) == d then return false
+      rest = rest.tail
+      d += 1
+    true
   def place(row: Int, placed: List[Int])(using c: Effects, ch: Choose :? c.Effs): c.Prog[List[Int]] =
     if row == 8 then c.pure(placed) else among((0 until 8).filter(safe(_, placed))).flatMap(col => place(row + 1, col :: placed))
 
