@@ -12,5 +12,6 @@
 - Measured: `MonadsBenchmark.queens` a loop, not `zipWithIndex` — the pairs, made or not as the JIT inlined it, were
   most of the run and its spread.
 - Then one type for every monad: `Top` at any answer (`type M[J, I, O, A]`, `at[J]`, `run[J]`), and
-  `stream(top)(body): LazyList[W]` in okay.std — each element a run of the rest at the top, once. `okay.cont.Gen`
+  `Stream[W]` in okay.std, `Next(w, rest: () => Stream[W])` or `Done()`: the rest closed over its top's run, so
+  the type names no monad; `stream(top)(body)` makes one, `take(n)` pulls in a loop. `okay.cont.Gen`
   and `okay.zero.Gen` gone; `TestStreamOn` on Cont, Cont0, Ref and Cps0.

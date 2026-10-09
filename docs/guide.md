@@ -86,7 +86,7 @@ At the top `run` sometimes needs the answer named: `okay.cont.run[Int](...)`.
 | `Writer[W]` | `tell(w)` | `writer[W, A](body)` → `(List[W], A)` |
 | `Throws[E]` | `raise[E, A](e)` | `throws[E, A](body)` → `Either[E, A]` |
 | `Choose` | `among(as)` — multi-shot | `choose[A](body)` → `Seq[A]`, every path |
-| `Emit[W]` | `yield_(w)` | `collect(body)` → `(List[W], A)`; `stream(top)(body)` → `LazyList[W]`; `generate(next, done)(body)` — lazy |
+| `Emit[W]` | `yield_(w)` | `collect(body)` → `(List[W], A)`; `stream(top)(body)` → `Stream[W]`; `generate(next, done)(body)` — lazy |
 | `PState` | `st.get[S]`, `st.put[S](s2)` | `pstate(s0)(st => body)` — the state's *type* may change |
 | `Async` | `async(a)`, `await(register)` | `Async.run(body)` on the context's own monad |
 
@@ -210,16 +210,17 @@ pstate(7)(st => st.get[Int].flatMap(n => st.put[Int]("x" * n)).flatMap(_ => st.g
 
 ## Generators
 
-`stream(top)(body)` makes the body a `LazyList` of its elements, on the monad of the top given — `okay.zero.top`,
-`okay.cont.top`, or a context's own `c.top`. Nothing runs until an element is pulled; each is pulled by a run of
-the rest, once.
+`stream(top)(body)` makes the body a `Stream[W]` of its elements, on the monad of the top given — `okay.zero.top`,
+`okay.cont.top`, or a context's own `c.top`. `Stream` is one type whatever the monad: `Next(w, rest)` or `Done()`,
+`rest: () => Stream[W]` the rest of the body closed over its top's run (`Top.run`), so nothing names the monad.
+Nothing runs past an element until the rest is pulled; `take(n)` pulls in a loop.
 
 ```scala
 def fibs(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
   yield_(a).flatMap(_ => fibs(b, a + b))
 
-stream[Long](okay.zero.top)(fibs(0, 1)).take(8).toList   // List(0, 1, 1, 2, 3, 5, 8, 13)
-stream[Long](okay.cont.top)(fibs(0, 1)).take(8).toList   // the same, on Cont
+stream[Long](okay.zero.top)(fibs(0, 1)).take(8)   // List(0, 1, 1, 2, 3, 5, 8, 13)
+stream[Long](okay.cont.top)(fibs(0, 1)).take(8)   // the same, on Cont
 ```
 
 Under effects still to be handled, `generate(next, done)(body)`: a generator of the consumer's own type, each

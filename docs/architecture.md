@@ -58,7 +58,7 @@ abstract class Effects extends Control:
   (`Paths.kept`), so an operation finds its path in one call.
 - **`Top`.** A monad's context at the top, at any answer (`at[J]`), and a run of a program of it: what a library
   re-entering the top takes — `Async`, a run going on in a callback's thread; `stream`, a run an element, so a
-  generator is a `LazyList` whatever the monad. Every context has its monad's, `c.top`.
+  generator is one `Stream` whatever the monad. Every context has its monad's, `c.top`.
 
 ## `okay.cont` — `Cont`
 

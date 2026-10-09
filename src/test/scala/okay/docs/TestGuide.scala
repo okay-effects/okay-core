@@ -88,5 +88,5 @@ class TestGuide extends munit.FunSuite:
   test("guide: a stream, one type on every monad"):
     def fibs(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
       yield_(a).flatMap(_ => fibs(b, a + b))
-    assertEquals(stream[Long](okay.zero.top)(fibs(0, 1)).take(8).toList, List(0L, 1, 1, 2, 3, 5, 8, 13))
-    assertEquals(stream[Long](okay.cont.top)(fibs(0, 1)).take(8).toList, List(0L, 1, 1, 2, 3, 5, 8, 13))
+    assertEquals(stream[Long](okay.zero.top)(fibs(0, 1)).take(8), List(0L, 1, 1, 2, 3, 5, 8, 13))
+    assertEquals(stream[Long](okay.cont.top)(fibs(0, 1)).take(8), List(0L, 1, 1, 2, 3, 5, 8, 13))
