@@ -4,15 +4,12 @@ package okay.zero
  * request to the nearest delimiter; a handler is a delimiter that answers its own and passes the others on
  * outside, one handler shorter — so the handler is the one the program RUNS under, and a reset between passes it */
 
-/** a handler of `E` over programs `P` outside it: the body's value to `Ans`, each operation with the rest — deep */
-trait Handler[P[_], E[_], A, Ans]:
-  def ret(a: A): Ans
-  def apply[X](op: E[X], k: X => P[Ans]): P[Ans]
+/** a handler of `E` over programs `P` outside it: the body's value to `Ans`, each operation with the rest — deep.
+ * Master's clauses, `okay.core.Clauses`: a master's handler in a context of `Fx` is one as it is */
+type Handler[P[_], E[_], A, Ans] = okay.core.Clauses[P, E, A, Ans]
 
-/** a TAIL-RESUMPTIVE handler: each clause `k(value(op))`, the value of the operation alone */
-trait Answering[P[_], E[_], A, Ans] extends Handler[P, E, A, Ans]:
-  def value[X](op: E[X]): X
-  final def apply[X](op: E[X], k: X => P[Ans]): P[Ans] = k(value(op))
+/** a TAIL-RESUMPTIVE handler: each clause `k(value(op))`, the value of the operation alone — `okay.core.Answers` */
+type Answering[P[_], E[_], A, Ans] = okay.core.Answers[P, E, A, Ans]
 
 /** `perform(op)`: an operation of `E`, in the context — its row has `E` */
 def perform[E[_], X](op: E[X])(using c: Ctx, in: In[E, c.R]): c.P[X] = request(op, in)

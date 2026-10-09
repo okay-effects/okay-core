@@ -24,7 +24,7 @@ class Fx[R0 <: Row, J0, T0] private[zero] () extends core.Delimited:
   def perform[E[_], R2 <: Row, S2, X](op: E[X], in: In[E, R2]): M[R2, S2, S2, X] = request(op, in)
   def handle[E[_], A, Ans](h: core.Handler[M, E, R0, T0, A, Ans])(body: Fx[E +: R0, Level[R0, J0, T0], Ans] ?=> Inner[E +: R0, Ans, Ans, A])
       : M[R0, T0, T0, Ans] =
-    handleNode(Fx.clauses(h), body(using Fx()))
+    handleNode(h, body(using Fx()))
   def shift[I, O, A](f: (A => M[R0, O, O, I]) => M[R0, O, O, O], same: (I =:= O) | Null): M[R0, I, O, A] = control(f, same)
   def reset[S2, O](body: Fx[R0, Level[R0, J0, T0], S2] ?=> Inner[R0, S2, O, S2]): M[R0, T0, T0, O] =
     resetNode(body(using Fx()))
@@ -39,15 +39,3 @@ object Fx:
   /** a context with the paths of the effects a program needs */
   final class Needy[R0 <: Row, J0, T0, Es <: AnyKind](p: Paths[Es, R0]) extends Fx[R0, J0, T0] with core.Needs[Es]:
     def find[E[_]](r: Req[E, Es]): In[E, R0] = p.find(r)
-
-  /** master's handler as this package's: its clauses, an answering one's value — answered in place still */
-  private def clauses[R0 <: Row, J0, T0, E[_], A, Ans](h: core.Handler[[X <: Row, I, O, B] =>> Eff[X, J0, I, O, B], E, R0, T0, A, Ans])
-      : Handler[[X] =>> Eff[R0, J0, T0, T0, X], E, A, Ans] = h match
-    case a: core.Answering[[X <: Row, I, O, B] =>> Eff[X, J0, I, O, B], E, R0, T0, A, Ans] =>
-      new Answering[[X] =>> Eff[R0, J0, T0, T0, X], E, A, Ans]:
-        def ret(x: A): Ans = a.ret(x)
-        def value[X](op: E[X]): X = a.value(op)
-    case _ =>
-      new Handler[[X] =>> Eff[R0, J0, T0, T0, X], E, A, Ans]:
-        def ret(x: A): Ans = h.ret(x)
-        def apply[X](op: E[X], k: X => Eff[R0, J0, T0, T0, Ans]): Eff[R0, J0, T0, T0, Ans] = h(op, k)

@@ -172,16 +172,28 @@ object Effects:
  * delimiter: the body's value `A` to the answer `Ans`; each operation with the rest of the body up to the
  * delimiter, `k`, deep — the handler stays in force through a resumption. Not a node: `handle` folds the tree
  * with it; an operation of another effect goes on outside, its path one shorter */
-trait Handler[M[_ <: Row, _, _, _], E[_], T <: Row, Q, A, Ans]:
+trait Handler[M[_ <: Row, _, _, _], E[_], T <: Row, Q, A, Ans] extends Clauses[[Z] =>> M[T, Q, Q, Z], E, A, Ans]
+
+/** A HANDLER'S CLAUSES over the programs `P` outside it, whatever the monad: the body's value to `Ans`, each
+ * operation with the rest — what a handler is to a monad that runs it. `Handler` is them over `M` at the row `T`
+ * and the answer `Q`; a monad of its own (`okay.zero`'s) takes them as they are */
+trait Clauses[P[_], E[_], A, Ans]:
   def ret(a: A): Ans
-  def apply[X](op: E[X], k: X => M[T, Q, Q, Ans]): M[T, Q, Q, Ans]
+  def apply[X](op: E[X], k: X => P[Ans]): P[Ans]
+
+/** an operation's value, by the operation alone */
+trait Value[E[_]]:
+  def value[X](op: E[X]): X
+
+/** clauses each `k(value(op))`: an operation answered in place, by its value alone */
+trait Answers[P[_], E[_], A, Ans] extends Clauses[P, E, A, Ans] with Value[E]:
+  final def apply[X](op: E[X], k: X => P[Ans]): P[Ans] = k(value(op))
 
 /** a TAIL-RESUMPTIVE handler: each clause is `k(value(op))`, the value of the operation alone — so the operation is
  * ANSWERED IN PLACE: the fold goes on with the rest of the body at once, in its own loop, no resumption built,
  * nothing handed out (Koka's, Effekt's optimisation; here by the handler's declaration) */
-trait Answering[M[_ <: Row, _, _, _], E[_], T <: Row, Q, A, Ans] extends Handler[M, E, T, Q, A, Ans]:
-  def value[X](op: E[X]): X
-  final def apply[X](op: E[X], k: X => M[T, Q, Q, Ans]): M[T, Q, Q, Ans] = k(value(op))
+trait Answering[M[_ <: Row, _, _, _], E[_], T <: Row, Q, A, Ans] extends Handler[M, E, T, Q, A, Ans]
+  with Answers[[Z] =>> M[T, Q, Q, Z], E, A, Ans]
 
 extension [E[_], T <: Row, A, Ans](body: Cont[E +: T, Ans, Ans, A])
   /** `body.handle(h)`: the tree folded at its head — a value answered by `ret`, an operation of `E` by its

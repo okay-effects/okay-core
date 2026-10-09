@@ -14,12 +14,12 @@ import Cont0.*
 private[zero] enum Ev[+R <: Row]:
   case Unknown extends Ev[Nothing]
   /** a handler of `E` in front of the others, `answers` it if it answers in place — found once, when entered */
-  case Entry[E[_], T <: Row](outer: Ev[T], answers: Answering[?, E, ?, ?] | Null) extends Ev[E +: T]
+  case Entry[E[_], T <: Row](outer: Ev[T], answers: okay.core.Value[E] | Null) extends Ev[E +: T]
 
 /** the handlers in force inside a handler `h` entered with `ev` outside: `h` in front — or, if it answers nothing
  * in place and nothing is known outside, nothing known still: a lookup through it finds the same */
-private def within[E[_], R <: Row](h: Handler[?, E, ?, ?], ev: Ev[R]): Ev[E +: R] = h match
-  case a: Answering[?, E, ?, ?] => Ev.Entry(ev, a)
+private def within[P[_], E[_], R <: Row](h: Handler[P, E, ?, ?], ev: Ev[R]): Ev[E +: R] = h match
+  case a: Answering[P, E, ?, ?] => Ev.Entry(ev, a)
   case _ => ev match
     case Ev.Unknown => Ev.Unknown
     case _ => Ev.Entry(ev, null)
@@ -33,7 +33,7 @@ private def outside[E[_], R <: Row](ev: Ev[E +: R]): Ev[R] = ev match
 private inline val Nested = 64
 
 /** the handler at the path, if it answers in place — `shift0 k. k(v)` is `v` */
-@tailrec private def inPlace[E[_], R <: Row](in: In[E, R], ev: Ev[R]): Answering[?, E, ?, ?] | Null = ev match
+@tailrec private def inPlace[E[_], R <: Row](in: In[E, R], ev: Ev[R]): okay.core.Value[E] | Null = ev match
   case e: Ev.Entry[e, t] => in match
     case In.Here() => e.answers
     case In.There(out) => inPlace(out, e.outer)
