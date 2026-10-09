@@ -11,7 +11,8 @@ import scala.util.Random
  *
  * A program is data, made first, then built — so every run builds the same. The paths to the effects are made as
  * the handlers nest, at run time: a test's casts, not the library's. A shift is made only where its nearest
- * delimiter is a reset: up to a handler `Cont` and `Cont0` differ by design (`TestMonads`) */
+ * delimiter is a reset: up to a handler `Cont` and `Cont0` differ by design (`TestMonads`). A program they disagree
+ * on is shrunk before it is shown: cut, a step at a time, to one no step smaller of which disagrees */
 class TestAgree extends munit.FunSuite:
 
   enum Kind:
@@ -74,6 +75,38 @@ class TestAgree extends munit.FunSuite:
         case Kind.Rd => reader[Int](n)(build(body, inner))
         case Kind.Rst => reset[Int](build(body, inner)).map(_ + n)
 
+  /** a program's run on each monad: its value, or the failure's class — what they must agree on */
+  def outcomes(p: P): List[Any] =
+    def on(run: => Int): Any = try run catch case e: RuntimeException => e.getClass
+    List(
+      on(Backend.cont.run[Int](build(p, Nil))),
+      on(ZeroBackend.run[Int](build(p, Nil))),
+      on(RefBackend.run[Int](build(p, Nil))),
+      on(BackendSuite.onLargeStack(Backend.cps0.run[Int](build(p, Nil)))))
+
+  def disagree(p: P): Boolean = outcomes(p).distinct.size > 1
+
+  /** the programs one step smaller: a handler its body, a part a value, a sequence one of its halves, a number 0 */
+  def smaller(p: P): List[P] = p match
+    case P.Pure(n) => if n != 0 then List(P.Pure(0)) else Nil
+    case P.Op(i, n) => P.Pure(n) :: (if n != 0 then List(P.Op(i, 0)) else Nil)
+    case P.Seq(a, b) => a :: b :: smaller(a).map(P.Seq(_, b)) ::: smaller(b).map(P.Seq(a, _))
+    case P.Handle(k, n, body) =>
+      unwrap(body, 0) :: P.Pure(0) :: (if n != 0 then List(P.Handle(k, 0, body)) else Nil) ::: smaller(body).map(P.Handle(k, n, _))
+
+  /** the body of a handler taken out of it, `d` handlers deep in the body: an operation of the handler a value, one of
+   * a handler further out one index nearer */
+  def unwrap(p: P, d: Int): P = p match
+    case P.Pure(_) => p
+    case P.Op(i, n) => if i == d then P.Pure(n) else if i > d then P.Op(i - 1, n) else p
+    case P.Seq(a, b) => P.Seq(unwrap(a, d), unwrap(b, d))
+    case P.Handle(k, n, body) => P.Handle(k, n, unwrap(body, d + 1))
+
+  /** a disagreeing program cut greedily to one no step smaller of which disagrees */
+  @annotation.tailrec final def shrink(p: P): P = smaller(p).find(disagree) match
+    case Some(q) => shrink(q)
+    case None => p
+
   def count(p: P): (Int, Int) = p match
     case P.Pure(_) => (0, 0)
     case P.Op(i, _) => (0, if i > 0 then 1 else 0)
@@ -89,10 +122,8 @@ class TestAgree extends munit.FunSuite:
       val (h, c) = count(p)
       handlers += h
       crossing += c
-      val onCont = Backend.cont.run[Int](build(p, Nil))
-      val onZero = ZeroBackend.run[Int](build(p, Nil))
-      val onRef = RefBackend.run[Int](build(p, Nil))
-      val onCps0 = BackendSuite.onLargeStack(Backend.cps0.run[Int](build(p, Nil)))
-      assertEquals((onZero, onRef, onCps0), (onCont, onCont, onCont), p.toString)
+      if disagree(p) then
+        val small = shrink(p)
+        fail(s"the monads disagree: ${outcomes(small)} on\n$small\nshrunk from\n$p")
     // the programs are not trivial: handlers nested, operations crossing them
     assert(handlers > 3000 && crossing > 500, s"$handlers handlers, $crossing operations crossing one")
