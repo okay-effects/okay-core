@@ -29,4 +29,4 @@ abstract class TestNestingOn(on: Backend, deep: Boolean = false) extends Backend
       assert(overflows(run(readers(100000))), "nested handlers no longer overflow: the limit is gone, unpin it")
       assert(overflows(run(resets(100000))), "nested resets no longer overflow: the limit is gone, unpin it")
 
-class TestNesting extends TestNestingOn(Backend.cont)
+class TestNesting extends TestNestingOn(Backend.cont, deep = true)
