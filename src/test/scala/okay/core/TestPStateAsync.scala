@@ -24,10 +24,6 @@ abstract class TestPStateOn(on: Backend) extends munit.FunSuite:
 /** on `Cont`, and `Async`: a run that waits on callbacks */
 class TestPStateAsync extends TestPStateOn(Backend.cont):
 
-  /** an async run at the top, its failure the `Left` */
-  def runIO[A](body: Effects.At[Async +: Async.Fails, Unit] ?=> Free[Async +: Async.Fails, A]): Either[Throwable, A] =
-    Effects.run(throws[Throwable, A](Async.run(body)))
-
   test("pstate under an effect of the row: an operation between the moves, at the answer there"):
     // in the body the answer moves, so an operation is the answer-polymorphic node, not `ask` at the context's answer
     // the context passed by hand, the same to `pstate` and to the body: `PState` is over that very context
@@ -38,36 +34,40 @@ class TestPStateAsync extends TestPStateOn(Backend.cont):
       pstate(1)(using c)(body(c)))
     assertEquals(r, ("6", 0))
 
+/** `Async` on any monad that runs it: `runIO` the run, at the top, its failure the `Left` */
+abstract class TestAsyncOn extends munit.FunSuite:
+  def runIO[A](body: (c: Effects { type R = Async +: Async.Fails; type S = Unit }) ?=> c.P[A]): Either[Throwable, A]
+
   test("async: computations run in order, their values bound"):
-    assertEquals(runIO(async(20).flatMap(a => async(a + 1)).map(_ * 2)), Right(42))
+    assertEquals(runIO[Int](async(20).flatMap(a => async(a + 1)).map(_ * 2)), Right(42))
 
   test("await: a callback from another thread, the run going on in it"):
     val pool = Executors.newFixedThreadPool(2)
     try
       def later(x: Int)(using c: Effects, has: Async :? c.R): c.P[Int] =
         await[Int](cb => pool.execute(() => { Thread.sleep(1); cb(Right(x)) }))
-      assertEquals(runIO(later(1).flatMap(a => later(2).map(_ + a)).flatMap(a => later(3).map(_ + a))), Right(6))
+      assertEquals(runIO[Int](later(1).flatMap(a => later(2).map(_ + a)).flatMap(a => later(3).map(_ + a))), Right(6))
     finally pool.shutdown()
 
   test("await: 100 000 callbacks answered at once, in constant stack"):
     def loop(i: Int, acc: Int)(using c: Effects, has: Async :? c.R): c.P[Int] =
       if i == 0 then c.pure(acc) else await[Int](cb => cb(Right(1))).flatMap(x => loop(i - 1, acc + x))
-    assertEquals(runIO(loop(100000, 0)), Right(100000))
+    assertEquals(runIO[Int](loop(100000, 0)), Right(100000))
 
   test("async: a failure — a Left at a callback, a throw in a computation — raised, the rest never runs, the rest never runs"):
     var ran = false
-    val e1 = runIO(await[Int](cb => cb(Left(IllegalStateException("cb")))).map(x => { ran = true; x }))
-    val e2 = runIO(async(1 / 0).map(x => { ran = true; x }))
+    val e1 = runIO[Int](await[Int](cb => cb(Left(IllegalStateException("cb")))).map(x => { ran = true; x }))
+    val e2 = runIO[Int](async(1 / 0).map(x => { ran = true; x }))
     assertEquals((e1.left.map(_.getMessage), ran), (Left("cb"), false))
     assertEquals(e2.left.map(_.getMessage), Left("/ by zero"))
 
   test("async: the program's own raise, a Throws of the row, fails the run"):
-    assertEquals(runIO(async(1).flatMap(_ => raise[Throwable, Int](IllegalStateException("own")))).left.map(_.getMessage), Left("own"))
+    assertEquals(runIO[Int](async(1).flatMap(_ => raise[Throwable, Int](IllegalStateException("own")))).left.map(_.getMessage), Left("own"))
 
   test("async with state inside: the state's handler goes on through the callbacks"):
     val pool = Executors.newSingleThreadExecutor()
     try
-      val r = runIO(state[Int](0)(
+      val r = runIO[(Int, Int)](state[Int](0)(
         await[Int](cb => pool.execute(() => cb(Right(5)))).flatMap(x => modify[Int](_ + x)).flatMap(_ =>
           await[Int](cb => pool.execute(() => cb(Right(7)))).flatMap(y => modify[Int](_ + y)))))
       assertEquals(r, Right((12, 12)))
@@ -75,4 +75,9 @@ class TestPStateAsync extends TestPStateOn(Backend.cont):
 
   def bang: Int ! Reader % Int +: Async +: Pure = ask[Int].flatMap(a => async(a + 1))
   test("async in A ! Es"):
-    assertEquals(runIO(reader(41)(bang)), Right(42))
+    assertEquals(runIO[Int](reader(41)(bang)), Right(42))
+
+/** on `Cont` */
+class TestAsync extends TestAsyncOn:
+  def runIO[A](body: (c: Effects { type R = Async +: Async.Fails; type S = Unit }) ?=> c.P[A]): Either[Throwable, A] =
+    Effects.run(throws[Throwable, A](Async.run(body(using summon[Effects.At[Async +: Async.Fails, Unit]]))))

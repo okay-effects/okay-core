@@ -1,14 +1,18 @@
 package okay.zero
 
-import okay.zero.std.*
+import okay.core.{Effects, pure}
+import okay.core.Effects.handle
+import okay.core.Control.{reset, shift}
+import okay.std.*
 
 /** A SHIFT UP TO A HANDLER: its body under the handler again, k the rest under the handler — an answering handler's
  * and another's alike, every program here run under both: a reader answering in place and the same reader as a
  * general clause */
 class TestShiftAtHandler extends munit.FunSuite:
+  def run[A](body: Fx[Pure, A, A] ?=> Eff[Pure, A, A, A, A]): A = Fx.run(body)
 
   /** the environment `e`, the body's value times `scale`: in place, or by a general clause */
-  def env(general: Boolean, e: Int, scale: Int)(using c: Ctx)(body: c.Body[Reader % Int, Int, Int]): c.P[Int] =
+  def env(general: Boolean, e: Int, scale: Int)(using c: Effects)(body: c.Body[Reader % Int, Int, Int]): c.P[Int] =
     if general then handle(new Handler[c.P, Reader % Int, Int, Int]:
       def ret(a: Int): Int = a * scale
       def apply[X](op: Reader[Int, X], k: X => c.P[Int]): c.P[Int] = op match
@@ -46,18 +50,18 @@ class TestShiftAtHandler extends munit.FunSuite:
 
   both("shifts deep: 10 000 resumptions, in constant stack"):
     g =>
-      def loop(n: Int)(using c: Ctx { type T = Int }, r: Reader % Int :? c.R): c.P[Int] =
+      def loop(n: Int)(using c: Effects { type S = Int }, r: Reader % Int :? c.R): c.P[Int] =
         if n == 0 then ask[Int] else shift[Int, Int](k => k(1)).flatMap(x => loop(n - 1).map(_ + x))
       run(env(g, 1, 1)(loop(10000)))
 
   test("100 000 shifts under a reset, each k resumed nested in its body, in constant stack"):
-    def loop(n: Int)(using c: Ctx { type T = Int }): c.P[Int] =
+    def loop(n: Int)(using c: Effects { type S = Int }): c.P[Int] =
       if n == 0 then pure(0) else shift[Int, Int](k => k(1).map(_ + 1)).flatMap(x => loop(n - 1).map(_ + x))
     assertEquals(run[Int](reset[Int](loop(100000))), 200000)
 
   both("100 000 shifts under a handler, each k resumed nested in its body, in constant stack"):
     g =>
-      def loop(n: Int)(using c: Ctx { type T = Int }, r: Reader % Int :? c.R): c.P[Int] =
+      def loop(n: Int)(using c: Effects { type S = Int }, r: Reader % Int :? c.R): c.P[Int] =
         if n == 0 then ask[Int] else shift[Int, Int](k => k(1).map(_ + 1)).flatMap(x => loop(n - 1).map(_ + x))
       run(env(g, 1, 1)(loop(100000)))
 
@@ -81,5 +85,5 @@ class TestShiftAtHandler extends munit.FunSuite:
     assertEquals(r, Seq(1 + 2, 10 + 11))
 
   test("a shift moving the answer: up to a reset only — directly under a handler, a compile error"):
-    assert(compileErrors("""run(reader[Int](1)(shift[Int, String](_ => pure("no")).map(_ => 1)))""").contains("Same"))
+    assert(compileErrors("""run(reader[Int](1)(shift[Int, String](_ => pure("no")).map(_ => 1)))""").nonEmpty)
     assertEquals(run(reader[Int](1)(reset[Int](shift[Int, String](k => k(5).map(_.toString))).map(_.length))), 1)

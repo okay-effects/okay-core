@@ -32,6 +32,16 @@ class Fx[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
   type Needing[Es <: AnyKind] = Fx[R0, J0, T0] & core.Needs[Es]
   def needing[Es <: AnyKind](p: Paths[Es, R0]): Fx[R0, J0, T0] & core.Needs[Es] = Fx.Needy(p)
 
+/** `shift0[A, O](k => body)` up to the nearest reset — `Cont0`'s own, beyond master's: as `shift`, but the body runs
+ * OUTSIDE the reset, in its place, in the context outside — so a shift0 in it reaches the next reset out. `k` the
+ * rest under the reset again. Its context a reset's of `Fx`: a handler's row is one longer than its level's, so
+ * under a handler it does not compile */
+def shift0[A, O]: Shift0To[A, O] = Shift0To()
+final class Shift0To[A, O] private[zero] ():
+  def apply[R <: Row, J, T, S](using r: Fx[R, Level[R, J, T], S])(f: Fx[R, J, T] ?=> (A => Eff[R, J, T, T, S]) => Eff[R, J, T, T, O])
+      : Eff[R, Level[R, J, T], S, O, A] =
+    shift0Node[R, J, T, A, S, O](f(using Fx()))
+
 object Fx:
   /** `run(body)`: a program written over master's `Effects` and `Control`, at the top, on `Cont0` */
   def run[A](body: Fx[Pure, A, A] ?=> Eff[Pure, A, A, A, A]): A = okay.zero.run(body(using Fx()))

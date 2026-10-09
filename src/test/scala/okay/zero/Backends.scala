@@ -25,3 +25,17 @@ class TestPStateOnZero extends okay.core.TestPStateOn(ZeroBackend)
 class TestEffectsOnRef extends okay.core.TestEffectsOn(RefBackend)
 class TestContextOnRef extends okay.core.TestContextOn(RefBackend)
 class TestPStateOnRef extends okay.core.TestPStateOn(RefBackend)
+
+class TestTogetherOnZero extends okay.core.TestTogetherOn(ZeroBackend)
+class TestTogetherOnRef extends okay.core.TestTogetherOn(RefBackend)
+
+class TestDynamicOnZero extends okay.core.TestDynamicOn(ZeroBackend)
+class TestDynamicOnRef extends okay.core.TestDynamicOn(RefBackend)
+
+class TestControlOnZero extends okay.core.TestControlOn(ZeroBackend)
+class TestControlOnRef extends okay.core.TestControlOn(RefBackend)
+
+/** master's tests of `Async` on `Cont0`: `okay.zero.Async` its run */
+class TestAsyncOnZero extends okay.core.TestAsyncOn:
+  def runIO[A](body: (c: Effects { type R = okay.std.Async +: okay.std.Async.Fails; type S = Unit }) ?=> c.P[A]): Either[Throwable, A] =
+    Fx.run(okay.std.throws[Throwable, A](Async.run(body(using summon[Async.Body]))))

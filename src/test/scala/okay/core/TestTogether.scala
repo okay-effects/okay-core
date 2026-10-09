@@ -1,10 +1,13 @@
-package okay.zero
+package okay.core
 
-import okay.zero.std.*
+import Effects.handle
+import Control.{reset, shift}
+import okay.std.*
 
 /** CONTROL AND EFFECTS TOGETHER, beyond master's: a reset passes every operation on, a shift's body and its k
  * perform, a handler's body resets with the answer modified */
-class TestTogether extends munit.FunSuite:
+abstract class TestTogetherOn(on: Backend) extends munit.FunSuite:
+  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.P[A]): A = on.run(body)
 
   test("k resumed twice, each path telling: the writer outside sees both paths, in order"):
     val r = run(writer[String, Int](reset[Int](shift[Int, Int](k => k(1).flatMap(a => k(2).map(b => a + b))).flatMap(x => tell(s"x=$x").map(_ => x)))))
@@ -18,11 +21,14 @@ class TestTogether extends munit.FunSuite:
     assertEquals(run(reader[String](4)(reset[Int](shift[Int, String](k => k(1).map(n => s"<$n>")).flatMap(x => ask[Int].map(_ * x))))), "<4>")
 
   test("control written for any context, used alone and under a handler"):
-    def twice(using c: Ctx): c.P[Int] = reset[Int](shift[Int, Int](k => k(10).flatMap(k)).map(_ + 1))
+    def twice(using c: Effects): c.P[Int] = reset[Int](shift[Int, Int](k => k(10).flatMap(k)).map(_ + 1))
     assertEquals(run[Int](twice), 12)
     assertEquals(run(reader[Int](3)(twice.flatMap(x => ask[Int].map(_ + x)))), 15)
 
   test("100 000 operations passed on by one reset, in constant stack"):
-    def asks(n: Int, acc: Int)(using c: Ctx, r: Reader % Int :? c.R): c.P[Int] =
+    def asks(n: Int, acc: Int)(using c: Effects, r: Reader % Int :? c.R): c.P[Int] =
       if n == 0 then pure(acc) else ask[Int].flatMap(x => asks(n - 1, acc + x))
     assertEquals(run(reader[Int](1)(reset[Int](asks(100000, 0)))), 100000)
+
+/** on `Cont` */
+class TestTogether extends TestTogetherOn(Backend.cont)

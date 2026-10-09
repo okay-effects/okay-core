@@ -1,5 +1,5 @@
 package okay.zero
 
-/** ROWS: master's, one for both monads — `Row`, `+:`, `Pure` (the empty row), `In` and `:?`, `%`, `Sub`, `Req`,
- * `Paths`: a program's effects named the same on `Cont` and on `Cont0` */
-export okay.core.{Row, +:, Pure, In, :?, %, Sub, Req, Paths}
+/** master's rows and handlers, one for every monad — `Row`, `+:`, `Pure`, `In` and `:?`, `%`, `Sub`, `Req`, `Paths`;
+ * `Handler`, `Answering`, `Value`: a program's effects and their handlers named the same on `Cont` and on `Cont0` */
+export okay.core.{Row, +:, Pure, In, :?, %, Sub, Req, Paths, Handler, Answering, Value}

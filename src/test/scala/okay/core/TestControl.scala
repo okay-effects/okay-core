@@ -1,7 +1,10 @@
-package okay.zero
+package okay.core
+
+import Control.{reset, shift}
 
 /** CONTROL alone, beyond master's: Danvy–Filinski's shift in a shift's body, k lazy, shift0's hierarchy */
-class TestControl extends munit.FunSuite:
+abstract class TestControlOn(on: Backend) extends munit.FunSuite:
+  def run[A](body: (c: Effects { type R = Pure; type S = A }) ?=> c.P[A]): A = on.run(body)
 
   test("a body dropping k aborts the reset: the rest never runs"):
     var ran = false
@@ -22,23 +25,10 @@ class TestControl extends munit.FunSuite:
     var ran = false
     assertEquals(run[Int](reset[Int](shift[Int, Int](k => { k(1); pure(if ran then 1 else 0) }).flatMap(x => { ran = true; pure(x) }))), 0)
 
-  test("shift0: the body outside the reset — a shift0 in it reaches the next reset out"):
-    // reset(reset(shift0 k1. let v = k1 1 in shift0 k2. k2(k2 v)) + 10) * 2): k1 = _ + 10, k2 = _ * 2 — 44. The outer
-    // reset's context named for the inner body's shift0: the nearer reset's is in scope
-    val r = run[Int](reset[Int] {
-      val outer = summon[InReset[Pure, Int, Int, Int]]
-      reset[Int](shift0[Int, Int](k1 => k1(1).flatMap(v => shift0[Int, Int].apply(using outer)(k2 => k2(v).flatMap(k2)))).map(_ + 10)).map(_ * 2)
-    })
-    assertEquals(r, 44)
-
-  test("shift0 two deep, a body dropping both: both resets aborted"):
-    val r = run[Int](reset[Int] {
-      val outer = summon[InReset[Pure, Int, Int, Int]]
-      reset[Int](shift0[Int, Int](_ => shift0[Int, Int].apply(using outer)(_ => pure(-1))).map(_ + 10)).map(_ * 2)
-    })
-    assertEquals(r, -1)
-
   test("100 000 resets and shifts in constant stack"):
-    def many(n: Int, acc: Int)(using c: Ctx): c.P[Int] =
+    def many(n: Int, acc: Int)(using c: Effects): c.P[Int] =
       if n == 0 then pure(acc) else reset[Int](shift[Int, Int](k => k(1)).map(_ + 1)).flatMap(x => many(n - 1, acc + x))
     assertEquals(run[Int](many(100000, 0)), 200000)
+
+/** on `Cont` */
+class TestControl extends TestControlOn(Backend.cont)

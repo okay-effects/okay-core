@@ -107,16 +107,53 @@ class MonadsBenchmark:
   @Benchmark
   def collect(): Long = run(okay.std.collect[Long, Unit](fibs(n, 0, 1)))._1.sum
 
-  def shots(using c: Control)(k: Unit => c.M[c.R, Int, Int, Int], i: Int, acc: Int): c.M[c.R, Int, Int, Int] =
-    if i == 0 then c.pure(acc) else k(()).flatMap(r => shots(using c)(k, i - 1, acc + r))
-
-  def captured(using c: Control { type S = Int }): c.M[c.R, Int, Int, Int] =
-    var p = shift[Unit, Int](k => shots(using c)(k, 8, 0)).map(_ => 1)
+  def leftMapping(using c: Effects): c.P[Int] =
+    var p: c.P[Int] = c.pure(0)
     var i = 0
-    while i < 16 do
+    while i < n do
       p = p.map(_ + 1)
       i += 1
     p
 
   @Benchmark
-  def capture(): Int = run[Int](reset[Int](captured))
+  def leftMaps(): Int = run(leftMapping)
+
+  def rightMapping(i: Int)(using c: Effects): c.P[Int] = if i == 0 then c.pure(0) else c.delay(rightMapping(i - 1)).map(_ + 1)
+
+  @Benchmark
+  def rightMaps(): Int = run(rightMapping(n))
+
+  def shots(using c: Control)(k: Unit => c.P[Int], i: Int, acc: Int): c.P[Int] =
+    if i == 0 then c.pure(acc) else k(()).flatMap(r => shots(using c)(k, i - 1, acc + r))
+
+  /** a shift up to the nearest delimiter, `k` `times` times, the rest `depth` maps */
+  def captured(depth: Int, times: Int)(using c: Control { type S = Int }): c.P[Int] =
+    var p = shift[Unit, Int](k => shots(using c)(k, times, 0)).map(_ => 1)
+    var i = 0
+    while i < depth do
+      p = p.map(_ + 1)
+      i += 1
+    p
+
+  /** under a reset, the rest 16 maps, `k` 8 times; the rest one map */
+  @Benchmark
+  def capture(): Int = run[Int](reset[Int](captured(16, 8)))
+  @Benchmark
+  def captureShallow(): Int = run[Int](reset[Int](captured(1, 8)))
+
+  def nop[A](using c: Effects): Handler[c.P, Skip, A, A] = new Answering[c.P, Skip, A, A]:
+    def ret(a: A): A = a
+    def value[X](op: Skip[X]): X = op match
+      case Skip.Value(a) => a
+  def nopK[A](using c: Effects): Handler[c.P, Skip, A, A] = new Handler[c.P, Skip, A, A]:
+    def ret(a: A): A = a
+    def apply[X](op: Skip[X], k: X => c.P[A]): c.P[A] = op match
+      case Skip.Value(a) => k(a)
+
+  /** directly under a handler, answering and general, the rest 16 maps or one, `k` 8 times */
+  @Benchmark
+  def captureHandled(): Int = run[Int](Effects.handle(nop[Int])(captured(16, 8)))
+  @Benchmark
+  def captureHandledShallow(): Int = run[Int](Effects.handle(nop[Int])(captured(1, 8)))
+  @Benchmark
+  def captureHandledGeneral(): Int = run[Int](Effects.handle(nopK[Int])(captured(16, 8)))

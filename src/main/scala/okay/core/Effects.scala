@@ -264,3 +264,6 @@ private final class Resume[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T,
 
 /** `perform(op)`: an operation of `E`, in the context — its row has `E`, its answer is the operation's */
 def perform[E[_], X](op: E[X])(using c: Effects, in: In[E, c.R]): c.P[X] = c.perform(op, in)
+
+/** `pure(a)`: the value, a program here */
+def pure[A](a: A)(using c: Context): c.P[A] = c.pure(a)

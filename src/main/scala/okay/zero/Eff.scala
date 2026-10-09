@@ -22,50 +22,22 @@ opaque type Level[R <: Row, J, V] = Cont0[J, J, Res[R, J, V]]
  * and handlers — over the kernel, and no bridge to it: no raw `shift0` or `$` reaches a request */
 opaque type Eff[R <: Row, J, I, O, A] = Cont0[Level[R, J, I], Level[R, J, O], A]
 
-/** THE CONTEXT a program is written in, as master's: its row `R`, its nearest delimiter's outside `J`, the answer at
- * this point `T` — what an operation, a handler, a reset and a shift take their types from, by its members. The
- * nearest wins: a delimiter gives its body one of its own. A type, nothing at run time; made here only */
-abstract class Ctx private[zero] ():
-  type R <: Row
-  type J
-  type T
-  /** a program here, pure in the answer */
-  type P[A] = Eff[R, J, T, T, A]
-  /** the level a delimiter here gives its body */
-  type Inner = Level[R, J, T]
-  /** the context under a handler of `E` here, at its answer `Ans` */
-  type Handled[E[_], Ans] = At[E +: R, Inner, Ans]
-  /** a handler's body here: in its context, of value `A`, at its answer `Ans` */
-  type Body[E[_], Ans, A] = Handled[E, Ans] ?=> Eff[E +: R, Inner, Ans, Ans, A]
-  /** the context in a reset here, its body written at `S` */
-  type Reset[S] = InReset[R, J, T, S]
-  /** this context at the answer `O`: a shift's body */
-  type Answer[O] = At[R, J, O]
-
-/** contexts made in this package: a library's own runner (`Async.runAsync`) re-entering at the top */
-private[zero] object Ctxs:
-  def at[R0 <: Row, J0, T0]: At[R0, J0, T0] = At()
-
-/** a context at `R0`, `J0`, `T0` */
-class At[R0 <: Row, J0, T0] private[zero] () extends Ctx:
-  type R = R0
-  type J = J0
-  type T = T0
+// THE PROGRAMS' OPERATIONS, for the contexts of `Fx` and `FxRef` (Fx.scala): master's interface the way in
 
 extension [R <: Row, J, I, O, A](p: Eff[R, J, I, O, A])
-  def flatMap[I2, B](f: A => Eff[R, J, I2, I, B]): Eff[R, J, I2, O, B] = p.flatMap(f)
-  def map[B](f: A => B): Eff[R, J, I, O, B] = p.map(f)
+  private[zero] def flatMap[I2, B](f: A => Eff[R, J, I2, I, B]): Eff[R, J, I2, O, B] = p.flatMap(f)
+  private[zero] def map[B](f: A => B): Eff[R, J, I, O, B] = p.map(f)
 
-def pure[R <: Row, J, T, A](a: A): Eff[R, J, T, T, A] = Return(a)
+private[zero] def pure[R <: Row, J, T, A](a: A): Eff[R, J, T, T, A] = Return(a)
 
 /** `delay(p)`: the program `p`, built when the loop gets to it — a tail call */
-def delay[R <: Row, J, I, O, A](p: => Eff[R, J, I, O, A]): Eff[R, J, I, O, A] = Delay(() => p)
+private[zero] def delay[R <: Row, J, I, O, A](p: => Eff[R, J, I, O, A]): Eff[R, J, I, O, A] = Delay(() => p)
 
-/** `run(body)`: the body at the top, under a delimiter of its own — the top's: nothing to ask over `Pure`, a `shift`
- * up to it the body's — its answer its value */
-def run[A](body: At[Pure, A, A] ?=> Eff[Pure, A, A, A, A]): A =
+/** `run(p)`: the program at the top, under a delimiter of its own — the top's: nothing to ask over `Pure`, a `shift`
+ * up to it the program's — its answer its value */
+private[zero] def run[A](p: Eff[Pure, A, A, A, A]): A =
   // to the head first: its value — no shift up to the top, the common case — or a capture up to the top, the top's
-  step(body(using At()), Frames.End()) match
+  step(p, Frames.End()) match
     case Head.Done(a) => a
     case c: Head.Cut[i, i1, o1, x1, o, x, a] => top(c.f(x => Dollar(resumed(x, c.k), (a: A) => Return(Res.Done[Pure, A, A](a))))).value
 
