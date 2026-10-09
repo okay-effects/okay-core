@@ -39,12 +39,12 @@ private[zero] def runTop[A](p: Eff[Pure, A, A, A, A]): A =
   // to the head first: its value — no shift up to the top, the common case — or a capture up to the top, the top's
   step(p, Frames.End()) match
     case Head.Done(a) => a
-    case c: Head.Cut[i, i1, o1, x1, o, x, a] => top(c.f(x => Dollar(resumed(x, c.k), (a: A) => Return(Res.Done[Pure, A, A](a))))).value
+    case c: Head.Cut[i, i1, o1, x1, o, x, a] => atTop(c.f(x => Dollar(resumed(x, c.k), (a: A) => Return(Res.Done[Pure, A, A](a))))).value
 
-private def top[A](out: Cont0[A, A, Res[Pure, A, A]]): Cont0[A, A, A] =
+private def atTop[A](out: Cont0[A, A, Res[Pure, A, A]]): Cont0[A, A, A] =
   Bind(out, (res: Res[Pure, A, A]) => res match
     case Res.Done(a) => Return[A, A](a)
-    case c: Res.Ctl[r, j, v, a, i] => top(again(c)))
+    case c: Res.Ctl[r, j, v, a, i] => atTop(again(c)))
 
 // THE NODES Control and Effects are written with: an operation, a `shift`, a handler, a reset, a raw capture
 

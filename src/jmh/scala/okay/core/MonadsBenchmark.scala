@@ -1,11 +1,26 @@
 package okay.core
 
-import okay.cont.{Cont, Free, At}
+import okay.cont.Cont
+import okay.cont.Cont.value
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import Control.{reset, shift}
 import okay.std.*
+
+/** an operation answered with its value; one crossed by every `Tick`, performed never */
+enum Tick[+A]:
+  case Value[A](a: A) extends Tick[A]
+enum Skip[+A]:
+  case Value[A](a: A) extends Skip[A]
+
+/** a generator's consumer type on each monad: the rest a program of its own */
+enum GCont:
+  case Next(w: Long, rest: Cont[Pure, GCont, GCont, GCont])
+  case Done
+enum GZero:
+  case Next(w: Long, rest: okay.zero.Eff[Pure, GZero, GZero, GZero, GZero])
+  case Done
 
 /**
  * THE SAME PROGRAMS ON EACH MONAD: written once over master's `Effects` and `Control` and `okay.std`, run on the
@@ -156,3 +171,77 @@ class MonadsBenchmark:
   def captureHandledShallow(): Int = run[Int](Effects.handle(nop[Int])(captured(1, 8)))
   @Benchmark
   def captureHandledGeneral(): Int = run[Int](Effects.handle(nopK[Int])(captured(16, 8)))
+
+  @Benchmark
+  def tailcallDelay(): Boolean = run(evenDelayed(n))
+  def evenDelayed(i: Int)(using c: Effects): c.Prog[Boolean] = if i == 0 then c.pure(true) else c.delay(oddDelayed(i - 1))
+  def oddDelayed(i: Int)(using c: Effects): c.Prog[Boolean] = if i == 0 then c.pure(false) else c.delay(evenDelayed(i - 1))
+
+  def leftBinding(using c: Effects): c.Prog[Int] =
+    var p: c.Prog[Int] = c.pure(0)
+    var i = 0
+    while i < n do
+      p = p.flatMap(x => c.pure(x + 1))
+      i += 1
+    p
+
+  @Benchmark
+  def leftBinds(): Int = run(leftBinding)
+
+  def sums(i: Int, a: Long, b: Long, acc: Long)(using c: Effects): c.Prog[Long] =
+    if i == 0 then c.pure(acc) else c.pure(()).flatMap(_ => sums(i - 1, b, a + b, acc + a))
+
+  @Benchmark
+  def fib(): Long = run(sums(n, 0, 1, 0))
+
+  /** `Int ! State % Int`: the path found through the program's context, per call; found once, the loop `counting` */
+  def countingBang(i: Int): Int ! State % Int =
+    if i == 0 then get[Int] else get[Int].flatMap(x => put(x + 1)).flatMap(_ => countingBang(i - 1))
+  def countingHoisted(i: Int): Int ! State % Int = counting(i)
+
+  @Benchmark
+  def stateBang(): Int = run(okay.std.state[Int](0)(countingBang(n)))._1
+  @Benchmark
+  def stateHoisted(): Int = run(okay.std.state[Int](0)(countingHoisted(n)))._1
+
+  @Benchmark
+  def forwarded4(): Boolean = run(Effects.handle(ticking)(skips(4)))
+
+  def safe(col: Int, placed: List[Int]) = placed.zipWithIndex.forall((c, d) => c != col && math.abs(c - col) != d + 1)
+  def place(row: Int, placed: List[Int])(using c: Effects, ch: Choose :? c.Effs): c.Prog[List[Int]] =
+    if row == 8 then c.pure(placed) else among((0 until 8).filter(safe(_, placed))).flatMap(col => place(row + 1, col :: placed))
+
+  /** the 92 solutions of 8 queens by choose — not divided by `n` */
+  @Benchmark
+  def queens(): Int = run(okay.std.choose[List[Int]](place(0, Nil))).length
+
+  def forever(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
+    yield_(a).flatMap(_ => forever(b, a + b))
+
+  /** `n` elements of an infinite generator pulled, each a run of the rest: the consumer's type the monad's own */
+  @Benchmark
+  def generate(): Long = backend match
+    case "cont" =>
+      var g = okay.cont.run[GCont](okay.std.generate[Long, GCont](GCont.Next(_, _), GCont.Done)(forever(0, 1)))
+      var i = 0
+      var sum = 0L
+      while i < n do
+        g match
+          case GCont.Next(w, rest) => sum += w; g = rest.value; i += 1
+          case GCont.Done => i = n
+      sum
+    case _ =>
+      var g = okay.zero.run[GZero](okay.std.generate[Long, GZero](GZero.Next(_, _), GZero.Done)(forever(0, 1)))
+      var i = 0
+      var sum = 0L
+      while i < n do
+        g match
+          case GZero.Next(w, rest) => sum += w; g = okay.zero.run(rest); i += 1
+          case GZero.Done => i = n
+      sum
+
+  /** a shift under a reset: the rest 256 maps, `k` 8 times; the rest one map, `k` once */
+  @Benchmark
+  def captureDeep(): Int = run[Int](reset[Int](captured(256, 8)))
+  @Benchmark
+  def captureOnce(): Int = run[Int](reset[Int](captured(1, 1)))

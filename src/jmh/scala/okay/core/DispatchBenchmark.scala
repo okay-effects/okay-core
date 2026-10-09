@@ -79,3 +79,7 @@ class DispatchBenchmark:
 
   @Benchmark
   def tagless(): Boolean = evenT(n)(using okay.cont.At[T, Boolean](), summon).handle(ticking).value
+
+  /** the baseline, no monad: Fibonacci by a plain iterator */
+  @Benchmark
+  def fibIterator(): Long = Iterator.iterate((0L, 1L))((a, b) => (b, a + b)).map(_._1).take(n).sum
