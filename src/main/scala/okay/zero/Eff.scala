@@ -102,6 +102,17 @@ private[zero] def shift0Program[R <: Row, J, T, A, S, O](c: Ctl0[R, J, T, A, S, 
   Shift0[Level[R, J, T], Level[R, J, T], Res[R, Level[R, J, T], S], Level[R, Level[R, J, T], O], A](
     k => c.f(a => passAll(k(a))).map(o => Res.Done(o)))
 
+// THE DELIMITERS AS THEIR shift0 PROGRAMS, no machine: a handler, a reset, a `$` whose answers are read
+
+/** a handler of `E`: `Done∘h.ret $ body`, its answers read by `h` */
+private[zero] def handleRead[E[_], R <: Row, J, T, A, Ans](h: Handler[[X] =>> Eff[R, J, T, T, X], E, A, Ans],
+    body: Eff[E +: R, Level[R, J, T], Ans, Ans, A]): Eff[R, J, T, T, Ans] =
+  readHand[E, R, J, T, Ans](Dollar(body, (a: A) => Return(Res.Done[E +: R, Level[R, J, T], Ans](h.ret(a)))), h)
+
+/** a reset: `Done $ body`, every operation passed on */
+private[zero] def resetRead[R <: Row, J, T, S, O](body: Eff[R, Level[R, J, T], S, O, S]): Eff[R, J, T, T, O] =
+  passAll[R, J, T, O](Dollar(body, (s: S) => Return(Res.Done[R, Level[R, J, T], S](s))))
+
 // THE BRIDGE from the machine (Machine.scala) to the reading below
 
 /** what the loop does not take, a raw capture: the rest under the delimiter as a `$` of the kernel, its

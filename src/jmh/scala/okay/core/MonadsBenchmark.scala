@@ -8,7 +8,8 @@ import okay.zero.Fx
 
 /**
  * THE SAME PROGRAMS ON EACH MONAD: written once over master's `Effects` and `Control` and `okay.std`, run on the
- * monad `backend` — `cont` (`Cont`, `Effects.At`) or `zero` (`Cont0`, `okay.zero.Fx`); `n` operations a run.
+ * monad `backend` — `cont` (`Cont`, `Effects.At`), `zero` (`Cont0`, `okay.zero.Fx`) or `ref` (`Cont0` by the kernel
+ * alone, `okay.zero.FxRef`, the reference); `n` operations a run.
  *
  *  - pure: `n` binds, tail calls, no effect
  *  - answered / general / forwarded: `n` operations of a handler answering in place, of its clause written out,
@@ -25,14 +26,17 @@ import okay.zero.Fx
 @Fork(2)
 class MonadsBenchmark:
 
-  @Param(Array("cont", "zero"))
+  @Param(Array("cont", "zero", "ref"))
   var backend: String = ""
 
   @Param(Array("1000"))
   var n: Int = 0
 
   def run[A](body: (c: Delimited { type R = Pure; type S = A }) ?=> c.M[Pure, A, A, A]): A =
-    if backend == "cont" then Effects.run(body(using summon[Effects.At[Pure, A]])) else Fx.run(body(using summon[Fx[Pure, A, A]]))
+    backend match
+      case "cont" => Effects.run(body(using summon[Effects.At[Pure, A]]))
+      case "zero" => Fx.run(body(using summon[Fx[Pure, A, A]]))
+      case _ => okay.zero.FxRef.run(body(using summon[okay.zero.FxRef[Pure, A, A]]))
 
   def isEven(i: Int)(using c: Effects): c.M[c.R, c.S, c.S, Boolean] =
     if i == 0 then c.pure(true) else c.pure(()).flatMap(_ => isOdd(i - 1))
