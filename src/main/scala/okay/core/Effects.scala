@@ -1,33 +1,27 @@
 package okay.core
 
-
-/** AN INDEXED MONAD, `M[R, I, O, A]`: a program over the row `R` of value `A` which, with a continuation answering
- * `I`, answers `O` — Atkey's parameterised monad, the answer moved from `O` to `I`. What a context's programs are
- * values of; `Cont` is one, a test's CPS functions another. Final tagless: a program is written against the
- * operations, not the tree */
-abstract class IxMonad:
+/** THE CONTEXT a program is written in: its monad, an indexed one — `M[R, I, O, A]` a program over the row `R` of
+ * value `A` which, with a continuation answering `I`, answers `O` (Atkey's parameterised monad, the answer moved from
+ * `O` to `I`) — the row `Effs` here and the answer `S` at this point: what an operation and a `shift` take their types
+ * from. The context IS the instance: a program asks for one, `(using c: Effects)`, and is a value of `c.Prog`. A
+ * delimiter gives its body one of its own: a handler's has the handler's effect in front of what the handler
+ * leaves, `E +: c.Effs`, so the row is built by the handlers, outside in, and never named. The nearest context wins —
+ * a nested scope's given is preferred. Its monad is `Inner`, the monad ONE LEVEL IN: `Cont`'s the same, `M`; a monad
+ * whose answers are programs of the level outside (`okay.zero`'s) one level deeper */
+abstract class Context:
   type M[R <: Row, I, O, A]
-  def pure[R <: Row, S, A](a: A): M[R, S, S, A]
-  /** `delay(m)`: the program `m`, built when it is run — a tail call */
-  def delay[R <: Row, I, O, A](m: => M[R, I, O, A]): M[R, I, O, A]
-  extension [R <: Row, I, O, A](m: M[R, I, O, A])
-    def flatMap[I2, B](f: A => M[R, I2, I, B]): M[R, I2, O, B]
-    def map[B](f: A => B): M[R, I, O, B]
-
-/** THE CONTEXT a program is written in: the monad, the row `R` there and the answer `S` at this point — what an
- * operation and a `shift` take their types from, by its members: `c.M`, `c.Effs`, `c.S`. The context IS the
- * instance: a program asks for one, `(using c: Effects)`, and is a value of `c.M`. A delimiter gives its body
- * one of its own: a handler's has the handler's effect in front of what the handler leaves, `E +: c.Effs`, so the row
- * is built by the handlers, outside in, and never named. The nearest context wins — a nested scope's given is
- * preferred. Its monad is `Inner`, the monad ONE LEVEL IN: `Cont`'s the same, `M`; a monad whose answers are
- * programs of the level outside (`okay.zero`'s) one level deeper */
-abstract class Context extends IxMonad:
   type Effs <: Row
   type S
   /** the monad of the bodies of the delimiters here: a handler's, a reset's */
   type Inner[X <: Row, I, O, A]
   /** a program here, the answer kept: what most programs are */
   type Prog[A] = M[Effs, S, S, A]
+  def pure[R <: Row, S2, A](a: A): M[R, S2, S2, A]
+  /** `delay(m)`: the program `m`, built when it is run — a tail call */
+  def delay[R <: Row, I, O, A](m: => M[R, I, O, A]): M[R, I, O, A]
+  extension [R <: Row, I, O, A](m: M[R, I, O, A])
+    def flatMap[I2, B](f: A => M[R, I2, I, B]): M[R, I2, O, B]
+    def map[B](f: A => B): M[R, I, O, B]
 
 /** EFFECTS over the monad: an operation at its path in the row, and a handler — a delimiter that answers the
  * operations of its effect; a reset is one that answers none. So effects are control with handlers: every context
