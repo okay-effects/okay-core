@@ -1,5 +1,8 @@
 package okay.zero
 
+// the rows and handlers, okay.core's: imported, not exported — Scala 2's TASTy reader fails on an export of a sealed trait
+import okay.core.{Row, +:, Pure, In, :?, %, Sub, Req, Paths, Handler, Answering, Value}
+
 import scala.annotation.tailrec
 import Cont0.*
 

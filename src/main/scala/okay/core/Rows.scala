@@ -94,3 +94,4 @@ object Paths:
     def kept[C](make: Keep[R, C]): C & Needs[Es] = make.row(sub)
   given one[E0[_], R <: Row](using head: In[E0, R]): Paths[E0, R] = One(head)
   given row[Es <: Row, R <: Row](using sub: Sub[Es, R]): Paths[Es, R] = Of(sub)
+
