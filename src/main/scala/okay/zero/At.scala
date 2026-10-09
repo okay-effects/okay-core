@@ -8,7 +8,7 @@ import okay.core
 /** OKAY.ZERO AS AN INSTANCE of master's `Effects`: a context of `okay.core` whose programs are `Eff` — the
  * programs written over master's `Effects` and `Control`, `okay.std` among them, run on `Cont0`. Its monad is `Eff`
  * at its level `J0`; a delimiter's body is one level in, `Inner`, the level `Level[R0, J0, T0]` */
-class At[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
+class At[R0 <: Row, J0, T0] private[zero] () extends core.Effects with Paths.Keep[R0, At[R0, J0, T0]]:
   type M[I, O, A] = Eff[R0, J0, I, O, A]
   type Inner[X <: Row, I, O, A] = Eff[X, Level[R0, J0, T0], I, O, A]
   type Effs = R0
@@ -37,7 +37,10 @@ class At[R0 <: Row, J0, T0] private[zero] () extends core.Effects:
     resetNode(body(using At()))
 
   type Needing[Es <: AnyKind] = At[R0, J0, T0] & core.Needs[Es]
-  def needing[Es <: AnyKind](p: Paths[Es, R0]): At[R0, J0, T0] & core.Needs[Es] = At.Needy(p)
+  // the path kept in the context itself, no `Paths` between: one load an operation, not two
+  def needing[Es <: AnyKind](p: Paths[Es, R0]): At[R0, J0, T0] & core.Needs[Es] = p.kept(this)
+  def one[E0[_]](head: In[E0, R0]): At[R0, J0, T0] & core.Needs[E0] = At.NeedyOne(head)
+  def row[Es <: Row](sub: Sub[Es, R0]): At[R0, J0, T0] & core.Needs[Es] = At.NeedyRow(sub)
 
 /** `shift0[A, O](k => body)` up to the nearest reset — `Cont0`'s own, beyond master's: as `shift`, but the body runs
  * OUTSIDE the reset, in its place, in the context outside — so a shift0 in it reaches the next reset out. `k` the
@@ -53,9 +56,16 @@ final class Shift0To[A, O] private[zero] ():
 def run[A](body: At[Pure, A, A] ?=> Eff[Pure, A, A, A, A]): A = runTop(body(using At()))
 
 object At:
-  /** a context with the paths of the effects a program needs */
-  final class Needy[R0 <: Row, J0, T0, Es <: AnyKind](p: Paths[Es, R0]) extends At[R0, J0, T0] with core.Needs[Es]:
-    def find[E[_]](r: Req[E, Es]): In[E, R0] = p.find(r)
+  /** a context with the path of the one effect a program needs */
+  final class NeedyOne[R0 <: Row, J0, T0, E0[_]](head: In[E0, R0]) extends At[R0, J0, T0] with core.Needs[E0]:
+    // `Only`, as in `Paths.One`
+    def find[E[_]](r: Req[E, E0]): In[E, R0] = (r: @unchecked) match
+      case Req.Only() => head
+  /** a context with the paths of the row of effects a program needs */
+  final class NeedyRow[R0 <: Row, J0, T0, Es <: Row](sub: Sub[Es, R0]) extends At[R0, J0, T0] with core.Needs[Es]:
+    // `Path`, as in `Paths.Of`
+    def find[E[_]](r: Req[E, Es]): In[E, R0] = (r: @unchecked) match
+      case Req.Path(in) => sub(in)
 
 /** `Cont0`'s top, for a library re-entering it */
 object top extends core.Top:
