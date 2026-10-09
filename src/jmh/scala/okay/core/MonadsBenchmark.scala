@@ -222,20 +222,27 @@ class MonadsBenchmark:
   /** `n` elements of an infinite generator pulled, each a run of the rest: one `Stream` on either monad */
   @Benchmark
   def generate(): Long = backend match
-    case "cont" => sum(okay.std.stream[Long](okay.cont.top)(forever(0, 1)).start)
-    case _ => sum(okay.std.stream[Long](okay.zero.top)(forever(0, 1)).start)
+    case "cont" => sum(okay.std.source[Long](okay.cont.top)(forever(0, 1)).start)
+    case _ => sum(okay.std.source[Long](okay.zero.top)(forever(0, 1)).start)
 
   /** the same, each element mapped in the generator's handler: `Source.map`, fused */
   @Benchmark
   def generateMapped(): Long = backend match
-    case "cont" => sum(okay.std.stream[Long](okay.cont.top)(forever(0, 1)).map(_ + 1).start)
-    case _ => sum(okay.std.stream[Long](okay.zero.top)(forever(0, 1)).map(_ + 1).start)
+    case "cont" => sum(okay.std.source[Long](okay.cont.top)(forever(0, 1)).map(_ + 1).start)
+    case _ => sum(okay.std.source[Long](okay.zero.top)(forever(0, 1)).map(_ + 1).start)
+
+  /** `n` elements of an infinite generator taken: each element's rest run in place by the handler, the rest after
+   * the `n`th dropped */
+  @Benchmark
+  def generateTaken(): Long = backend match
+    case "cont" => okay.std.source[Long](okay.cont.top)(forever(0, 1)).take(n).sum
+    case _ => okay.std.source[Long](okay.zero.top)(forever(0, 1)).take(n).sum
 
   /** `n` elements of a finite generator summed, pushed: each where it is yielded, no rest captured */
   @Benchmark
   def generatePushed(): Long = backend match
-    case "cont" => okay.std.stream[Long](okay.cont.top)(fibs(n, 0, 1)).fold(0L)(_ + _)
-    case _ => okay.std.stream[Long](okay.zero.top)(fibs(n, 0, 1)).fold(0L)(_ + _)
+    case "cont" => okay.std.source[Long](okay.cont.top)(fibs(n, 0, 1)).fold(0L)(_ + _)
+    case _ => okay.std.source[Long](okay.zero.top)(fibs(n, 0, 1)).fold(0L)(_ + _)
 
   /** the first `n` elements summed, each pulled by a run of the rest: no list made */
   private def sum(s0: okay.std.Stream[Long]): Long =

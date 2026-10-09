@@ -39,3 +39,10 @@
   with `more()`, the demand for the next — a `yield_` an `await` of it, so the body never runs ahead of its consumer;
   a consumer asking in place a loop (100 000 elements in constant stack). `Async.iterator` the same, blocking.
   `TestAsyncStreamOn` on Cont, Cont0, Ref and Cps0.
+- Then one `Source[W]` for every source: consumed pushed (`foreach`, `fold`, `toList`) or pulled (`take`,
+  `iterator`, closeable), with `map`, `filter`, `flatMap`, `Source.of`. `source(top)(body)` a `Generator` (`stream`
+  renamed), `Async.source(top)(body)` an `Async.Generator` — each fusing `map` and `filter` into its handler.
+  `Async.Step`, `Async.stream`, `Async.iterator` gone: `subscribe(f)(done)` the push not waiting; a pulled async
+  source cancelled by `take` or `close()`, the run aborted where it waits (`Async.Cancelled`). `Generator.take` drops
+  the rest in the handler — no `Stream` an element: 216 / 184 B an element against 296 / 280 B pulled into a list;
+  times on a loaded machine (load 9.5) only roughly: 15.4 / 14.8 ns against 25.9 / 21.1 before.

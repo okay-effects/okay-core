@@ -64,46 +64,93 @@ object Async:
   /** a stream's body over `Async`: a program yielding `W`, waiting when it will */
   type Yields[W] = (c: Effects { type Effs = Emit % W +: Async +: Fails; type S = Unit }) ?=> c.Prog[Unit]
 
-  /** what an asynchronous stream hands its consumer: an element, and `more()` to ask for the next — the body waits
-   * at its `yield_` until asked, so it never runs ahead of the consumer; or the end; or the failure */
-  enum Step[W]:
-    case Next(w: W, more: () => Unit)
-    case Done()
-    case Failed(e: Throwable)
+  /** a context of `runAsync`'s body */
+  type In = Effects { type Effs = Async +: Fails; type S = Unit }
 
-  /** `stream(t)(body)(on)`: the body run on the monad of `t`, each element given to `on` with the demand for the
-   * next, `more` — called in place or later, from any thread; the run goes on in the thread that asks. A `yield_` is
-   * an `await` of the consumer's demand, so a consumer asking at once is a loop, not a frame */
-  def stream[W](t: Top)(body: Yields[W])(on: Step[W] => Unit): Unit =
-    runAsync(using t)(emitting(on)(body))(r => on(r.fold(Step.Failed(_), _ => Step.Done())))
-  private def emitting[W](on: Step[W] => Unit)(body: Yields[W])(using c: Effects { type Effs = Async +: Fails; type S = Unit })
-      : c.Prog[Unit] =
-    Effects.handle(new Handler[c.Prog, Emit % W, Unit, Unit]:
-      def ret(u: Unit): Unit = ()
-      def apply[X](op: Emit[W, X], k: X => c.Prog[Unit]): c.Prog[Unit] = op match
-        case Emit.Yield(w) => await[Unit](cb => on(Step.Next(w, () => cb(Right(()))))).flatMap(_ => k(())))(body)
+  /** the end of a stream's run asked by its consumer: the failure of the `yield_` it waits at, the run aborted
+   * there as by any failure; a run ended by it is a stream ended */
+  object Cancelled extends RuntimeException("Async source cancelled", null, false, false)
 
-  /** `iterator(t)(body)`: an asynchronous stream as a blocking `Iterator` — `hasNext` asks for the next element and
-   * waits for it; nothing runs ahead of it. A failure thrown by `hasNext` */
-  def iterator[W](t: Top)(body: Yields[W]): Iterator[W] = new Iterator[W]:
-    private val steps = java.util.concurrent.LinkedBlockingQueue[Step[W]]()
-    private var started = false
-    private var current: Step[W] | Null = null
-    private var more: () => Unit = () => ()
-    def hasNext: Boolean =
-      if current == null then
-        if !started then { started = true; stream(t)(body)(steps.put) } else more()
+  /** AN ASYNCHRONOUS GENERATOR, NOT STARTED: a body that yields and waits, on the monad of `top`. `map` and `filter`
+   * fused into what its handler does with an element. Pulled (`iterator`, `take`): a `yield_` waits until the next
+   * element is asked for — never ahead of its consumer — and `close()` cancels the rest. Pushed (`subscribe`, not
+   * waiting; `foreach`, `fold`, `toList`, waiting for the end) */
+  abstract class Generator[W] extends Source[W]:
+    val top: Top
+    /** the body under its `Emit` handler, each element and the rest through `out` */
+    def handled(out: (c: In) ?=> (W, c.Prog[Unit]) => c.Prog[Unit])(using c: In): c.Prog[Unit]
+
+    /** each element to `f` where it is yielded, in the thread the run is in; `done` at the end, once */
+    def subscribe(f: W => Unit)(done: Either[Throwable, Unit] => Unit): Unit =
+      runAsync(using top)(handled((w, rest) => { f(w); rest }))(done)
+    def push(f: W => Unit): Unit =
+      val result = java.util.concurrent.CompletableFuture[Either[Throwable, Unit]]()
+      subscribe(f)(result.complete)
+      result.get().fold(e => throw e, identity)
+
+    def iterator: Source.Iter[W] = new Source.Iter[W]:
+      private enum Step:
+        case Next(w: W, resume: Either[Throwable, Unit] => Unit)
+        case End(r: Either[Throwable, Unit])
+      private val steps = java.util.concurrent.LinkedBlockingQueue[Step]()
+      @volatile private var cancelled = false
+      private var started = false
+      private var current: Step | Null = null
+      private var resume: Either[Throwable, Unit] => Unit = _ => ()
+      private def ask(): Unit =
+        if !started then
+          started = true
+          runAsync(using top)(handled((w, rest) =>
+            await[Unit](cb => if cancelled then cb(Left(Cancelled)) else steps.put(Step.Next(w, cb))).flatMap(_ => rest)))(r =>
+            steps.put(Step.End(r)))
+        else resume(Right(()))
         current = steps.take()
-      current match
-        case Step.Next(_, m) => more = m; true
-        case Step.Done() => false
-        case Step.Failed(e) => throw e
-        case null => false
-    def next(): W =
-      if !hasNext then throw java.util.NoSuchElementException("Async.Step.Done")
-      current match
-        case Step.Next(w, _) => current = null; w
-        case _ => throw java.util.NoSuchElementException("Async.Step.Done")
+      def hasNext: Boolean =
+        if current == null then ask()
+        current match
+          case Step.Next(_, cb) => resume = cb; true
+          case Step.End(Left(e)) if e ne Cancelled => throw e
+          case _ => false
+      def next(): W =
+        if !hasNext then throw java.util.NoSuchElementException("Async.Generator")
+        current match
+          case Step.Next(w, _) => current = null; w
+          case _ => throw java.util.NoSuchElementException("Async.Generator")
+      /** the run cancelled where it waits, and waited for to its end */
+      override def close(): Unit =
+        if started && !cancelled then
+          cancelled = true
+          var step: Step = current match
+            case null => resume(Left(Cancelled)); steps.take()
+            case s: Step => s
+          while step match
+              case Step.Next(_, cb) => cb(Left(Cancelled)); step = steps.take(); true
+              case _ => false
+          do ()
+          current = step
+
+    override def map[B](f: W => B): Generator[B] =
+      val src = this
+      new Generator[B]:
+        val top: src.top.type = src.top
+        def handled(out: (c: In) ?=> (B, c.Prog[Unit]) => c.Prog[Unit])(using c: In): c.Prog[Unit] =
+          src.handled((w, rest) => out(f(w), rest))
+    override def filter(p: W => Boolean): Generator[W] =
+      val src = this
+      new Generator[W]:
+        val top: src.top.type = src.top
+        def handled(out: (c: In) ?=> (W, c.Prog[Unit]) => c.Prog[Unit])(using c: In): c.Prog[Unit] =
+          src.handled((w, rest) => if p(w) then out(w, rest) else rest)
+    override def withFilter(p: W => Boolean): Generator[W] = filter(p)
+
+  /** `source(t)(body)`: the body, yielding and waiting, as an asynchronous `Generator` on the monad of `t` */
+  def source[W](t: Top)(body: Yields[W]): Generator[W] = new Generator[W]:
+    val top: t.type = t
+    def handled(out: (c: In) ?=> (W, c.Prog[Unit]) => c.Prog[Unit])(using c: In): c.Prog[Unit] =
+      Effects.handle(new Handler[c.Prog, Emit % W, Unit, Unit]:
+        def ret(u: Unit): Unit = ()
+        def apply[X](op: Emit[W, X], k: X => c.Prog[Unit]): c.Prog[Unit] = op match
+          case Emit.Yield(w) => out(w, k(())))(body)
 
   /** `run(body)`: the body's value, run on the context's monad — at its top, `c.top` — this thread waiting for it,
    * at the edge of a program only; its failure raised in the context */
