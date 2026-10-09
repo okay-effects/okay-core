@@ -20,15 +20,15 @@ reported and is not stack recursion. The inventory, 2026-10-09 (30 rows):
 | `core/Program.scala` `flatMap`, `map` | the composed bind | bounded: `Program.Fused`, 64 binds composed, then a bind on the bind, its left built by `delay` |
 | `zero/Machine.scala` `masked` | direct | bounded: the path's length, the row's at most |
 | `zero/Machine.scala` `deliver` ↔ `shiftAtReset`, `shiftAtHandler` | mutual | bounded: a resumption run nested in a shift's body up to `Nested`, 64, then out and back |
-| `cont/Cont.scala` `step` ↔ `loop0` ↔ `loop` ↔ `delimited` | mutual | **not bounded**: a `reset` at a body's head stepped in a loop of its own |
-| `cont/At.scala`, `cont/Cont.scala` `handle` → `fold0` | (through the body's building) | **not bounded**: a handler is a fold made at once, so one at the head of another's body is folded inside it |
+| `cont/Cont.scala` `run` | — | one loop with a metacontinuation (`Meta`): a reset, a handler (`Fold`), an interceptor pushed (was `loop` ↔ `delimited` and a fold made at once, not bounded) |
 | `zero/Cont0.scala` `step` → `go` | — | the kernel's metacontinuation (`KMeta`): a `$` pushed, not entered by a call (was `delimit`, not bounded) |
 | `zero/Machine.scala` `deliver` ↔ `enter`, `enterHandle`, `enterIntercept`, `enterReset` | mutual | bounded: entered nested up to `Deep`, 32; past it pushed on the machine's metacontinuation (`Meta`) |
 
 ## Delimiters nested deep
 
-On `Cont0` (and `Ref`) done — the metacontinuation below, `changelog.d/metacontinuation.md`; `Cont` still has the
-limit. What follows is the account of it.
+Done on every monad — `Cont0`'s machine and kernel, `Ref`, `Cont` — the metacontinuation below,
+`changelog.d/metacontinuation.md`; `TestNestingOn` runs 100 000 nested handlers and resets on each. What follows is
+the account of how it was.
 
 The rows marked not bounded are one thing: a delimiter — a handler, a reset, an interceptor — at the head of
 another's body is entered by a call, a few frames a level. A program nesting delimiters by recursion — a function
