@@ -86,6 +86,13 @@ object Cont0:
   @tailrec private[zero] def step[I, T, O, X, A](c: Cont0[T, O, X], k: Frames[X, I, T, A]): Head[I, O, A] = c match
     case b: Bind[i, t, o, a, bb] => b.m match
       case r: Return[s, aa] => step(b.f(r.a), k)
+      // a handler or a reset bound: entered at once — its value, the usual, bound with no frame pushed
+      case h: Handle[e, r, j, tt, a2, ans] => enterHandle(h, Ev.Unknown, 0) match
+        case v: Return[s, vv] => step(b.f(v.a), k)
+        case m => step(m, Frames.Then(b.f, k))
+      case s: Reset[r, j, tt, sv, ov] => enterReset(s, Ev.Unknown, 0) match
+        case v: Return[s2, vv] => step(b.f(v.a), k)
+        case m => step(m, Frames.Then(b.f, k))
       case _ => step(b.m, Frames.Then(b.f, k))
     case Return(a) => k match
       case Frames.End() => Head.Done(a)

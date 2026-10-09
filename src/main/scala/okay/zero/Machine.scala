@@ -45,6 +45,13 @@ private inline val Nested = 64
     k: Frames[X, Cont0[L, L, Res[RB, L, I0]], T, A], d: Delim[RB, L, I0, V, A], ev: Ev[RB], n: Int): Cont0[L, L, V] = c match
   case b: Bind[i, t, o, a, bb] => b.m match
     case r: Return[s, aa] => deliver[RB, L, I0, V, A, T, X](b.f(r.a), k, d, ev, n)
+    // a handler or a reset bound: entered at once — its value, the usual, bound with no frame pushed
+    case h: Handle[e, r, j, tt, a2, ans] => enterHandle[e, r, j, tt, a2, ans](h, ev, n) match
+      case v: Return[s, vv] => deliver[RB, L, I0, V, A, T, X](b.f(v.a), k, d, ev, n)
+      case m => deliver[RB, L, I0, V, A, t, a](m, Frames.Then(b.f, k), d, ev, n)
+    case s: Reset[r, j, tt, sv, ov] => enterReset[r, j, tt, sv, ov](s, ev, n) match
+      case v: Return[s2, vv] => deliver[RB, L, I0, V, A, T, X](b.f(v.a), k, d, ev, n)
+      case m => deliver[RB, L, I0, V, A, t, a](m, Frames.Then(b.f, k), d, ev, n)
     case _ => deliver[RB, L, I0, V, A, t, a](b.m, Frames.Then(b.f, k), d, ev, n)
   case r: Return[s, x] => k match
     case Frames.End() => Return[L, V](ret(d, r.a))
