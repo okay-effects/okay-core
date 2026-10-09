@@ -222,8 +222,7 @@ rest a function. Nothing runs past an element until the rest is pulled; `take(n)
 `iterator` gives the collections' own operations; empties skipped by `flatMap` and `filter` in a loop.
 
 ```scala
-for n <- stream[Long](okay.zero.top)(fibs(0, 1)) if n % 2 == 0; s <- Stream.of(n, -n) yield s
-// 0, 0, 2, -2, 8, -8, ...
+(for n <- stream[Long](okay.zero.top)(fibs(0, 1)) if n % 2 == 0; s <- Stream.of(n, -n) yield s).take(6)   // List(0, 0, 2, -2, 8, -8)
 ```
 
 ```scala
