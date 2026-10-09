@@ -116,7 +116,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
     var produced = 0
     def from(n: Int)(using c: Effects, e: Emit % Int :? c.R): c.P[Unit] =
       yield_(n).flatMap(_ => { produced += 1; from(n + 1) })
-    val gen: Cont[Pure, G, G, G] = generate[Int](using At[Pure, G]())(from(0))
+    val gen: Cont[Pure, G, G, G] = generate[Int, G](using At[Pure, G]())(Gen.Next(_, _), Gen.Done())(from(0))
     def take(n: Int, g: Cont[Pure, G, G, G]): List[Int] = if n == 0 then Nil else g.value match
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: take(n - 1, rest)
@@ -130,7 +130,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: all(rest)
     val gen: Cont[F, G, G, G] =
-      generate[Int](using At[F, G]())(ask[Int].flatMap(n => yield_(n)).flatMap(_ => ask[Int].flatMap(n => yield_(n * 2))))
+      generate[Int, G](using At[F, G]())(Gen.Next(_, _), Gen.Done())(ask[Int].flatMap(n => yield_(n)).flatMap(_ => ask[Int].flatMap(n => yield_(n * 2))))
     assertEquals(all(gen), List(7, 14))
 
   test("Fibonacci: collected and generated agree, the generator infinite, and 10 000 of them in constant stack"):
@@ -144,7 +144,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
       case Gen.Next(w, rest) => w :: take(n - 1, rest)
     val first = List(0L, 1, 1, 2, 3, 5, 8, 13, 21, 34)
     assertEquals(Effects.run(collect[Long, Unit](fibs(10, 0, 1)))._1, first)
-    assertEquals(take(10, generate[Long](using At[Pure, G]())(forever(0, 1))), first)
+    assertEquals(take(10, generate[Long, G](using At[Pure, G]())(Gen.Next(_, _), Gen.Done())(forever(0, 1))), first)
     assertEquals(Effects.run(collect[Long, Unit](fibs(10000, 0, 1)))._1.length, 10000)
 
   test("generate stays lazy over a forwarded effect: an infinite body asking at every step, three pulled"):
@@ -156,7 +156,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
     def take(i: Int, g: Cont[F, G, G, G]): List[Int] = if i == 0 then Nil else Effects.run(reader[G](10)(g)) match
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: take(i - 1, rest)
-    assertEquals(take(3, generate[Int](using At[F, G]())(from(1))), List(10, 20, 30))
+    assertEquals(take(3, generate[Int, G](using At[F, G]())(Gen.Next(_, _), Gen.Done())(from(1))), List(10, 20, 30))
     assertEquals(produced, 2)
 
   test("handlers are dynamic: a generator's rest asks the reader it is run under, not the one it was built under"):
@@ -165,7 +165,7 @@ class TestEffects extends TestEffectsOn(Backend.cont):
     // built under reader(7): its rest is still a program over Reader — its type says it needs one — and the
     // consumer runs it under reader(8). A handler found where the program was BUILT (evidence passing) would say 7
     val gen: Cont[Pure, G, G, G] =
-      reader[G](using At[Pure, G]())(7)(generate[Int](ask[Int].flatMap(yield_(_)).flatMap(_ => ask[Int].flatMap(yield_(_)))))
+      reader[G](using At[Pure, G]())(7)(generate[Int, G](Gen.Next(_, _), Gen.Done())(ask[Int].flatMap(yield_(_)).flatMap(_ => ask[Int].flatMap(yield_(_)))))
     gen.value match
       case Gen.Next(first, rest) =>
         assertEquals(first, 7)

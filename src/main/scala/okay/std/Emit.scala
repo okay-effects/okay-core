@@ -28,14 +28,11 @@ def collect[W, A](using c: Effects)(body: c.Body[Emit % W, (List[W], A), A])
 enum Gen[M[_ <: Row, _, _, _], W, R <: Row]:
   case Next(w: W, rest: M[R, Gen[M, W, R], Gen[M, W, R], Gen[M, W, R]])
   case Done()
-/** `generate[W](body)`: the body as a lazy generator — nothing runs until the consumer pulls. The generator is a
- * program at its own answer, `Gen`, so it is written in a context at that answer; at the top, `run` pulls its
- * next element */
-def generate[W](using c: Effects)(body: c.Body[Emit % W, Gen[c.M, W, c.R], Unit])
-         (using c.S =:= Gen[c.M, W, c.R]): c.P[Gen[c.M, W, c.R]] =
-  type G = Gen[c.M, W, c.R]
-  val same = summon[c.S =:= G]
+/** `generate[W, G](next, done)(body)`: the body as a lazy generator — nothing runs until the consumer pulls — of
+ * the consumer's own type `G`: each element with the rest, a program here of `G`, by `next`; the end, `done`. Any
+ * type will do; `Gen` is one, at a context whose answer it is */
+def generate[W, G](using c: Effects)(next: (W, c.P[G]) => G, done: G)(body: c.Body[Emit % W, G, Unit]): c.P[G] =
   c.handle(new Handler[c.P, Emit % W, Unit, G]:
-    def ret(a: Unit): G = Gen.Done()
+    def ret(u: Unit): G = done
     def apply[X](op: Emit[W, X], k: X => c.P[G]): c.P[G] = op match
-      case Emit.Yield(w) => c.pure(Gen.Next(w, same.substituteCo[[Q] =>> c.M[c.R, Q, Q, G]](k(())))))(body)
+      case Emit.Yield(w) => c.pure(next(w, k(()))))(body)

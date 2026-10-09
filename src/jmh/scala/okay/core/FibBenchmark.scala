@@ -53,7 +53,7 @@ class FibBenchmark:
 
   @Benchmark
   def fibGenerate(): Long =
-    var g: Cont[Pure, G, G, G] = generate[Long](using At[Pure, G]())(forever(0, 1))
+    var g: Cont[Pure, G, G, G] = generate[Long, G](using At[Pure, G]())(Gen.Next(_, _), Gen.Done())(forever(0, 1))
     var i = 0
     var sum = 0L
     while i < n do
