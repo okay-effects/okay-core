@@ -41,3 +41,8 @@ over `F[_]` (tofu). They meet in two additions:
   keeps its row. okay's `TestEffectsRows`, over okay's interface `Effects[M[_ <: Row, _]]` written over `Program`,
   and the handlers in every order, nested ones translated through both, `local` and `handleWith` in a view, 100 000
   operations deep in a row: `TestAnywhereOn` on Cont, Cont0, Ref and Cps0. Read by Scala 2 too.
+- Measured, ns an operation (Cont / Cont0): `state`'s loop as a `Program`, the state first in the row 22.6 / 23.3
+  (a view at the head translates nothing); third in the row, handled first 42.9 / 43.9, 679 B → 39.4 / 39.7, 487 B
+  with a view's translations kept by the path's depth, checked by `In.same` — no object an operation. Kept by the
+  path's identity it was worse (52 ns): a path is the compiler's given, made anew each call. What is left is the
+  paths themselves, `There(There(Here()))` made by the given each call.

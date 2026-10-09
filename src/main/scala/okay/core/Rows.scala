@@ -44,6 +44,9 @@ enum Same[E1[_], E2[_]]:
   case Refl[E[_]]() extends Same[E, E]
   def apply[X](op: E1[X]): E2[X] = this match
     case Refl() => op
+  /** a path to one, a path to the other */
+  def in[R <: Row](path: In[E1, R]): In[E2, R] = this match
+    case Refl() => path
 sealed trait InLow:
   given there[E[_], E2[_], T <: Row](using in: In[E, T]): In[E, E2 +: T] = In.There(in)
 

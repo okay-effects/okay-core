@@ -100,6 +100,14 @@ class MonadsBenchmark:
   @Benchmark
   def stateProgram(): Int = Program.run(top)(Programs.state(0)(countingP(n)))._1
 
+  type Deep = Reader % Int +: Writer % Int +: State % Int +: Pure
+  def countingDeep(i: Int): Program[Deep, Int] =
+    if i == 0 then Programs.get[Deep, Int]
+    else Programs.get[Deep, Int].flatMap(x => Programs.put[Deep, Int](x + 1)).flatMap(_ => countingDeep(i - 1))
+  /** the same, the state third in the row and handled first: its paths translated in the handler's view */
+  @Benchmark
+  def stateProgramDeep(): Int = Program.run(top)(Programs.reader(0)(Programs.writer[Int](Programs.state(0)(countingDeep(n)))))._2._1
+
   def asks(i: Int, acc: Int)(using c: Effects, r: Reader % Int :? c.Effs): c.Prog[Int] =
     if i == 0 then c.pure(acc) else ask[Int].flatMap(v => asks(i - 1, acc + v))
 
