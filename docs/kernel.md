@@ -36,7 +36,9 @@ captured when a program was built.
 `Handle`, Cont's `Fold`), its clauses a `KHandler` — an okay-core `Answering`, so the machines keep it among the
 handlers in force whatever its shape; okay-core's typed operations never reach it (their paths go to their own).
 `Answering` is answered in place; `Aborting` is answered in place by a signal that unwinds to it (its finalizers run
-on the way); `General` is a clause with the machine's `k`; `Returning`'s return is the machine's `ret` itself, a value,
+on the way); `Translating` is a clause running the operation's translation outside the handler, then the machine's
+`k` once with its value — as okay-core's own `Effects.translate` (no `k` written, nothing captured but the rest the
+machine hands any clause); `General` is a clause with the machine's `k`; `Returning`'s return is the machine's `ret` itself, a value,
 its failure a signal read where the handler is left. A `General` return (a program) makes the handler's answer that
 program, run when it is left.
 
@@ -94,7 +96,7 @@ of a `Returning`'s answer or of a map's function travels as a value to the next 
   `recover`; export, multi-shot `k`, `k.cancel`; import from the other machine — 6 on each machine.
 - `kernel/` (the JVM's, tests only): the reference machine's twelve checks, a `k` under other handlers, a round trip
   through the reference machine (`Steps`) — 14 on each machine; okay-kernel's TCK (`TckSuite`, nesting through
-  `Steps`) — 13 on each machine. 54 in all.
+  `Steps`) — 16 on each machine. 60 in all.
 
 ## Measured
 

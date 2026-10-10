@@ -1,7 +1,7 @@
 package okay.core.kernel
 
 import okay.kernel.{Aborting, Answering, Answers, Computation, Effects, Fn, General, Handler, Op, Prog, Program, Resume,
-  Returning, Step, Thunk, Type}
+  Returning, Step, Thunk, Translating, Type}
 import scala.util.control.NonFatal
 
 /**
@@ -110,6 +110,7 @@ final class OnCore private[okay] (name: String, m: Machine) extends Effects:
     val clauses: Of = h match
       case a: Answering[?, ?] => new KAnswering(h, body, trust(a))
       case a: Aborting[?, ?] => new KAborting(h, body, trust(a))
+      case t: Translating[?, ?] => new KTranslating(h, body, trust(t))
       case _ => new KGeneral(h, body)
     val node = m.handle(clauses)
     if clauses.flat then m.bind(node, flatten) else node
@@ -175,6 +176,14 @@ final class OnCore private[okay] (name: String, m: Machine) extends Effects:
         case s: AbortSig => m.pure(s.answer)
         case _ => m.raise(u.why)
       case _ => k(value(op))
+
+  /** `Translating`: each operation a program outside the handler, the rest of the body then resumed with its value —
+   * the machine's `k` applied once, last, as okay-core's own `Effects.translate` does; nothing captured beyond the
+   * rest the machine hands a clause */
+  private final class KTranslating(h: Handler[?, ?], body: Program[?], t: Translating[Any, Any]) extends Of(h, body, false):
+    def clause(op: Op[?], k: Any => AnyRef, region: Boolean): AnyRef = op match
+      case s: Shift0Op => shift0At(s, k, flat)
+      case _ => m.bind(guard(t.translate(trust(op)).in(OnCore.this)), k)
 
   /** `General` — or no clause at all (a `Returning` alone: its operation fails where it was performed) */
   private final class KGeneral(h: Handler[?, ?], body: Program[?]) extends Of(h, body, false):
