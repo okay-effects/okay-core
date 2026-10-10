@@ -16,9 +16,9 @@ private[okay] object ContMachine extends Machine:
   def delay(p: () => AnyRef): okay.kernel.Prog[Any] = Delay[Pure, Any, Any, Any](p.asInstanceOf[() => C])
   def perform(op: okay.kernel.Op[?]): okay.kernel.Prog[Any] = KInject[Pure, Any, Any](op)
   def performThen(op: okay.kernel.Op[?], k: Any => AnyRef): okay.kernel.Prog[Any] = KSuspend[Pure, Any, Any, Any](op, false, k.asInstanceOf[Any => C])
-  def handle(h: KHandler, body: () => AnyRef): okay.kernel.Prog[Any] =
+  def handle(h: KHandler): okay.kernel.Prog[Any] =
     val ch = h.asInstanceOf[okay.core.Handler[[Z] =>> Cont[Pure, Any, Any, Z], Dyn, Any, Any]]
-    Fold[Dyn, Pure, Any, Any, Any, Any](body.asInstanceOf[() => Cont[Dyn +: Pure, Any, Any, Any]], a => h.ret(a), ch,
+    Fold[Dyn, Pure, Any, Any, Any, Any](h.asInstanceOf[() => Cont[Dyn +: Pure, Any, Any, Any]], h, ch,
       h.asInstanceOf[okay.core.Value[Dyn]])
   def run(p: AnyRef): Any = c(p).value
   def owns(p: Any): Boolean = p.isInstanceOf[Cont[?, ?, ?, ?]]

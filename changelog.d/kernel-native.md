@@ -74,3 +74,13 @@ JDK 26, `-f 2 -wi 5 -i 5 -prof gc`, µs (cont / zero), B an order:
 The typed front unchanged. The kernel's program at the bridge's (219 / 248) — and bimodal by build: a change the
 JIT takes differently moves one machine by ±35% (cont 246 or 318, zero 250 or 340 across builds), each build steady
 across forks.
+
+## Round 2: a kernel handler one object
+
+A kernel handler's clauses (`KHandler`) are its node's body thunk and its return function too (`Function0`,
+`Function1`: Cont's `Fold` takes a `ret`), its return's shape fields of its own — no closure for its body, its
+return, Cont's `ret` a handler. 100 KB (cont), 69 KB (zero) less a run: 2022 / 1864 B an order; the time the same,
+231.1 / 255.0 µs (`-f 2`) — allocation is not what bounds it. The kernel's files only: the typed loops' bytecode the
+same. Profiled after it (zero, inclusive): the kernel's standard handlers' own code 14%, interface dispatch (itable
+stubs) 11%, lambda captures the JIT did not inline (`allocateInstance`, in the program's own lambdas) 7%; the walk of
+the handlers in force 5%, routing an operation to a clause 9% with the clause's own code, building handlers 6%.

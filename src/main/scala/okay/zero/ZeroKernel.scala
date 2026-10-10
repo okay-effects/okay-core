@@ -17,8 +17,8 @@ private[okay] object ZeroMachine extends Machine:
   def delay(p: () => AnyRef): okay.kernel.Prog[Any] = Delay[Any, Any, Any](p.asInstanceOf[() => C])
   def perform(op: okay.kernel.Op[?]): okay.kernel.Prog[Any] = KOp[Any, Any, Any](op)
   def performThen(op: okay.kernel.Op[?], k: Any => AnyRef): okay.kernel.Prog[Any] = KOpK[Any, Any, Any](op, false, k.asInstanceOf[Any => C])
-  def handle(h: KHandler, body: () => AnyRef): okay.kernel.Prog[Any] =
-    Handle[Dyn, Pure, Any, Any, Any, Any](body.asInstanceOf[() => Cont0[Cont0[Cont0[Any, Any, Res[Pure, Any, Any]], Cont0[Any, Any, Res[Pure, Any, Any]], Res[Dyn +: Pure, Cont0[Any, Any, Res[Pure, Any, Any]], Any]], Cont0[Cont0[Any, Any, Res[Pure, Any, Any]], Cont0[Any, Any, Res[Pure, Any, Any]], Res[Dyn +: Pure, Cont0[Any, Any, Res[Pure, Any, Any]], Any]], Any]],
+  def handle(h: KHandler): okay.kernel.Prog[Any] =
+    Handle[Dyn, Pure, Any, Any, Any, Any](h.asInstanceOf[() => Cont0[Cont0[Cont0[Any, Any, Res[Pure, Any, Any]], Cont0[Any, Any, Res[Pure, Any, Any]], Res[Dyn +: Pure, Cont0[Any, Any, Res[Pure, Any, Any]], Any]], Cont0[Cont0[Any, Any, Res[Pure, Any, Any]], Cont0[Any, Any, Res[Pure, Any, Any]], Res[Dyn +: Pure, Cont0[Any, Any, Res[Pure, Any, Any]], Any]], Any]],
       h.asInstanceOf[okay.core.Handler[[X] =>> Cont0[Cont0[Any, Any, Res[Pure, Any, Any]], Cont0[Any, Any, Res[Pure, Any, Any]], X], Dyn, Any, Any]])
   def run(p: AnyRef): Any = runTop(p.asInstanceOf[Eff[Pure, Any, Any, Any, Any]])
   def owns(p: Any): Boolean = p.isInstanceOf[Cont0[?, ?, ?]]
