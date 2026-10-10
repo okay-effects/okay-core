@@ -164,26 +164,14 @@ object Cont:
       case u: Meta.Under[r, i, t, o, a, b, p2, z] => run[r, i, t, o, a, b, p2, Z](p, u.k, u.d, u.ev, u.up, u.ex, depth)
     c match
     case Return(a) => k match
-      case Frames.End() => d match
-        case _: TopOf[r, i, o, b] => leave(Head.Done[R, I, B](a))
-        case dr: ByReset[r, q, s, o, a1] => leave(Return[r, q, o](dr.ret(a)))
-        case df: ByFold[e, t, q, s, ans, a1] => leave(Return[t, q, ans](df.ret(a)))
-        case di: ByIcept[e, r, q, s, ans, a1] => leave(Return[r, q, ans](di.ret(a)))
+      case Frames.End() => leave(returned[R, I, B, P](a, d))
       case Frames.Then(f, next) => run(f(a), next, d, ev, m, ex, depth)
       case Frames.Mapped(f, next) => next match
         case Frames.End() => run(Return(f(a)), Frames.End(), d, ev, m, ex, depth)
         case Frames.Then(g, rest) => run(g(f(a)), rest, d, ev, m, ex, depth)
         case Frames.Mapped(g, rest) => run(Return(g(f(a))), rest, d, ev, m, ex, depth)
     case Inject(op, in) => inPlace(in, ev) match
-      case null => d match
-        case _: TopOf[r, i, o, b] => leave(in.op(op, k))
-        case dr: ByReset[r, q, s, o, a1] => leave(in.bind(op, Redelimit[r, q, s, o, a1, A](k, dr.ret)))
-        case df: ByFold[e, t, q, s, ans, a1] => in match
-          case In.Here() => leave(df.h(op, Resume[e, t, q, s, ans, a1, A](k, df)))
-          case In.There(out) => leave(out.bind(op, Refold[e, t, q, s, ans, a1, A](k, df)))
-        case di: ByIcept[e, r, q, s, ans, a1] => In.same(in, di.in) match
-          case null => leave(in.bind(op, Reintercept[e, r, q, s, ans, a1, A](k, di)))
-          case same => leave(di.h(same(op), Reintercept[e, r, q, s, ans, a1, A](k, di)))
+      case null => leave(performed(op, in, k, d))
       case v => run(Return(v.value(op)), k, d, ev, m, ex, depth)
     case sp: Suspend[e0, r0, i0, o0, x, a0] => inPlace(sp.in, ev) match
       case null =>
@@ -191,15 +179,7 @@ object Cont:
         val g: x => Cont[R, I, O, B] = k match
           case Frames.End() => sp.k
           case _ => Frames.Then(sp.k, k)
-        d match
-          case _: TopOf[r, i, o, b] => leave(sp.in.op(sp.op, g))
-          case dr: ByReset[r, q, s, o, a1] => leave(sp.in.bind(sp.op, Redelimit[r, q, s, o, a1, x](g, dr.ret)))
-          case df: ByFold[e, t, q, s, ans, a1] => sp.in match
-            case In.Here() => leave(df.h(sp.op, Resume[e, t, q, s, ans, a1, x](g, df)))
-            case In.There(out) => leave(out.bind(sp.op, Refold[e, t, q, s, ans, a1, x](g, df)))
-          case di: ByIcept[e, r, q, s, ans, a1] => In.same(sp.in, di.in) match
-            case null => leave(sp.in.bind(sp.op, Reintercept[e, r, q, s, ans, a1, x](g, di)))
-            case same => leave(di.h(same(sp.op), Reintercept[e, r, q, s, ans, a1, x](g, di)))
+        leave(performed(sp.op, sp.in, g, d))
       case v => run(sp.k(v.value(sp.op)), k, d, ev, m, ex, depth)
     // a capture: up to the innermost delimiter — its body in place of the rest, under the delimiter again, the rest
     // under a delimiter of its own with `ret` as `k`
@@ -236,6 +216,27 @@ object Cont:
     case Bind(mm, g) => mm match
       case Return(a) => run(g(a), k, d, ev, m, ex, depth)
       case _ => run(mm, Frames.Then(g, k), d, ev, m, ex, depth)
+
+  /** the program leaving the delimiter `d` with the value `a`: its `ret` applied — out of `run`, so the loop stays
+   * small enough for the JIT to compile it whole */
+  private def returned[R <: Row, S, B, P](a: B, d: Delim[R, S, S, B, P]): P = d match
+    case _: TopOf[r, i, o, b] => Head.Done[R, S, B](a)
+    case dr: ByReset[r, q, s, o, a1] => Return[r, q, o](dr.ret(a))
+    case df: ByFold[e, t, q, s, ans, a1] => Return[t, q, ans](df.ret(a))
+    case di: ByIcept[e, r, q, s, ans, a1] => Return[r, q, ans](di.ret(a))
+
+  /** the program leaving the delimiter `d` with an operation not answered in place, `g` the rest: to the head at the
+   * top, on outside past a reset, to the clause at a handler of its effect or on outside one effect shorter, to the
+   * clause at an interceptor at its path or on outside */
+  private def performed[E[_], R <: Row, I, O, B, P, X](op: E[X], in: In[E, R], g: X => Cont[R, I, O, B], d: Delim[R, I, O, B, P]): P = d match
+    case _: TopOf[r, i, o, b] => in.op(op, g)
+    case dr: ByReset[r, q, s, o, a1] => in.bind(op, Redelimit[r, q, s, o, a1, X](g, dr.ret))
+    case df: ByFold[e, t, q, s, ans, a1] => in match
+      case In.Here() => df.h(op, Resume[e, t, q, s, ans, a1, X](g, df))
+      case In.There(out) => out.bind(op, Refold[e, t, q, s, ans, a1, X](g, df))
+    case di: ByIcept[e, r, q, s, ans, a1] => In.same(in, di.in) match
+      case null => in.bind(op, Reintercept[e, r, q, s, ans, a1, X](g, di))
+      case same => di.h(same(op), Reintercept[e, r, q, s, ans, a1, X](g, di))
 
   /** a delimiter's body run nested, a JVM frame — up to `Deep` of them — its leaving program the result */
   private def nested[R <: Row, I, T, O, A, B, P, Z](c: Cont[R, T, O, A], k: Frames[R, A, I, T, B], d: Delim[R, I, O, B, P],
