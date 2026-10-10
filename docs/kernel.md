@@ -83,8 +83,9 @@ cancellation waiting cancels), export with multi-shot `k` from any thread, the h
 Approximated: nothing known to the TCK or to these suites. The bridge's one approximation — what was decided in place
 when a program was translated kept that place — is gone with the translation.
 
-Cost: a kernel operation answered in place walks the handlers in force to the nearest of its effect (no cache, as a
-typed path has); an `Answering` handler's operations otherwise cost what okay-core's do.
+Cost: a kernel operation answered in place walks the handlers in force to the nearest of its effect — a field compared
+a handler, no cache as a typed path has; a bind or a map over an operation is one node, as a typed one is; a failure
+of a `Returning`'s answer or of a map's function travels as a value to the next bind or handler's return.
 
 ## Tests
 
@@ -98,5 +99,17 @@ typed path has); an `Answering` handler's operations otherwise cost what okay-co
 ## Measured
 
 `KernelMixedBenchmark` (src/jmh): okay-kernel's mixed program, written once over the kernel's `Effects` (okay-kernel's
-bench/MixedBenchmark, the same code), on okay-core's machines natively — against `MixedBenchmark`, the same program in
-okay-core's own words. See the numbers in changelog.d/kernel-native.md.
+bench/MixedBenchmark, the same code), on okay-core's machines natively and on okay-kernel's reference machine —
+against `MixedBenchmark`, the same program in okay-core's own words. JDK 26, `-f 2 -wi 5 -i 5`, µs for 1000 orders
+(cont / zero):
+
+| | µs | B an order |
+|---|---|---|
+| okay-core's own program (`MixedBenchmark`) | 141.9 / 127.2 | 1456 / 1309 |
+| the kernel's program, native | 231.1 / 255.0 | 2022 / 1864 |
+| the kernel's program, through the bridge (2fa6876) | 489.9 / 470.5 | 4103 / 3781 |
+| the kernel's program, on `Steps` | 522.9 | 2414 |
+
+The kernel's program costs more than okay-core's own above all by itself: its standard handlers' own code, a
+`Program` and an `Fn` around every step, its lambdas — the machine's and the native layer's part is about a quarter
+(profiled, changelog.d/kernel-native.md).
