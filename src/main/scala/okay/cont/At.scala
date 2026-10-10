@@ -21,7 +21,7 @@ class At[R0 <: Row, S0] extends Effects with Paths.Keep[R0, At[R0, S0]]:
   def perform[E[_], S2, X](op: E[X], in: In[E, R0]): Cont[R0, S2, S2, X] = Inject(op, in)
   def handle[E[_], A, Ans](h: Handler[[Z] =>> Cont[R0, S0, S0, Z], E, A, Ans])(body: At[E +: R0, Ans] ?=> Cont[E +: R0, Ans, Ans, A]): Cont[R0, S0, S0, Ans] =
     // a node: the body built when the loop enters it — handlers nested by recursion in constant stack
-    Fold(() => body(using At()), h.ret, h)
+    Fold(() => body(using At()), h.ret, h, Cont.answers(h))
   def intercept[E[_], A, Ans](in: In[E, R0], h: Handler[[Z] =>> Cont[R0, S0, S0, Z], E, A, Ans])(body: At[R0, Ans] ?=> Cont[R0, Ans, Ans, A])
       : Cont[R0, S0, S0, Ans] =
     Icept(() => body(using At()), h.ret, in, h)
@@ -54,7 +54,7 @@ extension [E[_], T <: Row, A, Ans](body: Cont[E +: T, Ans, Ans, A])
   /** `body.handle(h)`: a handler over the body, a node the loop folds — a value answered by `ret`, an operation of
    * `E` by its clause with the rest of the body under the handler again, lazily, another effect's forwarded; a
    * capture's body in place of the rest, the rest under a delimiter of its own as `k` */
-  def handle[Q](h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, A, Ans]): Cont[T, Q, Q, Ans] = Fold(() => body, h.ret, h)
+  def handle[Q](h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, A, Ans]): Cont[T, Q, Q, Ans] = Fold(() => body, h.ret, h, Cont.answers(h))
 
 /** `Cont`'s top, for a library re-entering it */
 object top extends Top:

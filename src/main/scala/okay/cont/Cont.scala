@@ -32,28 +32,63 @@ enum Cont[R <: Row, I, O, A]:
   case Delay[R <: Row, I, O, A](c: () => Cont[R, I, O, A]) extends Cont[R, I, O, A]
   /** the delimiter: the body's value to its initial answer `S` by `ret`, its final answer `O` the delimiter's
    * value outside, at the answer `Q` there. An operation inside goes out as it is, the rest re-delimited */
-  case Reset[R <: Row, Q, S, O, A](body: Cont[R, S, O, A], ret: A => S) extends Cont[R, Q, Q, O]
+  case Reset[R <: Row, Q, S, O, A](body: Cont[R, S, O, A], ret: A => S) extends Cont[R, Q, Q, O] with ByReset[R, Q, S, O, A]
   /** `m` with the rest as a stack already: what applying a captured `k` makes — `Bind(m, k)`, where the loop can
    * take `k` as its stack as it is, not as a function to push. Only `Frames` make it */
   case Push[R <: Row, I, T, O, A, B](m: Cont[R, T, O, A], k: Frames[R, A, I, T, B]) extends Cont[R, I, O, B]
   /** a HANDLER of `E` over its body, a node: the body built when the loop enters it, its value to `S` by `ret`, an
    * operation of `E` given to `h`'s clause — answered in place if it answers so — another's on outside, one effect
    * shorter: the fold the loop does there */
-  case Fold[E[_], T <: Row, Q, S, Ans, A](body: () => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans])
-    extends Cont[T, Q, Q, Ans]
+  case Fold[E[_], T <: Row, Q, S, Ans, A](body: () => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans],
+      an: Value[E] | Null) extends Cont[T, Q, Q, Ans] with ByFold[E, T, Q, S, Ans, A]
   /** a handler's body resumed: `k` applied to `x` under the handler again — a clause's `k`, a forwarded operation's
    * rest — one node, no closure */
-  case FoldK[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], x: X, ret: A => S, h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans])
-    extends Cont[T, Q, Q, Ans]
+  case FoldK[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], x: X, ret: A => S, h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans],
+      an: Value[E] | Null) extends Cont[T, Q, Q, Ans] with ByFold[E, T, Q, S, Ans, A]
   /** an INTERCEPTOR of `E` at `in`, over its body, a node: the row the same, an operation at `in` given to `h`'s
    * clause, another on outside as it is */
   case Icept[E[_], R <: Row, Q, S, Ans, A](body: () => Cont[R, S, Ans, A], ret: A => S, in: In[E, R], h: Handler[[Z] =>> Cont[R, Q, Q, Z], E, ?, Ans])
-    extends Cont[R, Q, Q, Ans]
+    extends Cont[R, Q, Q, Ans] with ByIcept[E, R, Q, S, Ans, A]
 
   def flatMap[I2, B](f: A => Cont[R, I2, I, B]): Cont[R, I2, O, B] = this match
     case i: Inject[e, r, s, x] => Cont.bound(i, f)
     case _ => Bind(this, f)
   def map[B](f: A => B): Cont[R, I, O, B] = Map(this, f)
+
+/** A DELIMITER the loop reads: its body over `R`, of type `Cont[R, I, O, B]`, the program leaving it `P` — a node
+ * itself (a reset, a handler, an interceptor), one the loop makes for a shift's body, or the top */
+private[cont] sealed trait Delim[R <: Row, I, O, B, P]
+/** a reset's: its body's value to `S` by `ret`, every operation passed on */
+private[cont] sealed trait ByReset[R <: Row, Q, S, O, A] extends Delim[R, S, O, A, Cont[R, Q, Q, O]]:
+  def ret: A => S
+/** a handler's of `E`: its body over `E +: T`, its clauses `h`, `an` them as answering in place if they are */
+private[cont] sealed trait ByFold[E[_], T <: Row, Q, S, Ans, A] extends Delim[E +: T, S, Ans, A, Cont[T, Q, Q, Ans]]:
+  def ret: A => S
+  def h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans]
+  def an: Value[E] | Null
+/** an interceptor's of `E` at `in` */
+private[cont] sealed trait ByIcept[E[_], R <: Row, Q, S, Ans, A] extends Delim[R, S, Ans, A, Cont[R, Q, Q, Ans]]:
+  def ret: A => S
+  def in: In[E, R]
+  def h: Handler[[Z] =>> Cont[R, Q, Q, Z], E, ?, Ans]
+/** the top: what leaves it is the head of the program, for `step`'s caller */
+private[cont] final class TopOf[R <: Row, I, O, B]() extends Delim[R, I, O, B, Head[R, I, O, B]]
+/** a reset's, a handler's, an interceptor's made by the loop for a shift's body run in their place: `ret` the
+ * identity, the shift's body the delimiter's answer */
+private[cont] final class Rs[R <: Row, Q, O]() extends ByReset[R, Q, O, O, O]:
+  def ret: O => O = identity
+private[cont] final class Hd[E[_], T <: Row, Q, Ans](val h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans], val an: Value[E] | Null)
+    extends ByFold[E, T, Q, Ans, Ans, Ans]:
+  def ret: Ans => Ans = identity
+private[cont] final class Ic[E[_], R <: Row, Q, Ans](val in: In[E, R], val h: Handler[[Z] =>> Cont[R, Q, Q, Z], E, ?, Ans])
+    extends ByIcept[E, R, Q, Ans, Ans, Ans]:
+  def ret: Ans => Ans = identity
+
+/** THE HANDLERS IN FORCE around the loop as it runs, innermost first, one per effect of its row — or not known: an
+ * operation then goes the way it always may, to the delimiters */
+private[cont] enum Ev[+R <: Row]:
+  case Unknown extends Ev[Nothing]
+  case Entry[E[_], T <: Row](outer: Ev[T], answers: Value[E] | Null) extends Ev[E +: T]
 
 /** a program over the row `R` whose answer is nothing, `Unit`, before and after: the free monad of the row's
  * effects — no capture moves its answer, its value only a handler's */
@@ -105,108 +140,132 @@ object Cont:
 
   extension [R <: Row, I, O, A](c: Cont[R, I, O, A])
     /** to the head: binds reassociated and followed, delimiters entered, in constant stack */
-    def step: Head[R, I, O, A] = run[R, I, I, O, A, A, Head[R, I, O, A]](c, Frames.End(), Meta.Top())
+    def step: Head[R, I, O, A] = run[R, I, I, O, A, A, Head[R, I, O, A], Head[R, I, O, A]](c, Frames.End(), TopOf(), Ev.Unknown, null, <:<.refl, 0)
 
-  /** THE DELIMITERS THE LOOP IS INSIDE, innermost first — its METACONTINUATION: what takes the head of the innermost
-   * one's body, of type `Head[R, I, O, B]`, toward the loop's result `Z`. At the top, the caller; under a reset, a
-   * handler (its fold), an interceptor: its reading of the head, then on in the frames outside it, in the same loop —
-   * so delimiters nested to any depth run in constant stack */
-  private[cont] enum Meta[R <: Row, I, O, B, Z]:
-    case Top[R <: Row, I, O, B]() extends Meta[R, I, O, B, Head[R, I, O, B]]
-    case InReset[R <: Row, Q, S, O, A, I1, B1, Z](ret: A => S, k: Frames[R, O, I1, Q, B1], up: Meta[R, I1, Q, B1, Z])
-      extends Meta[R, S, O, A, Z]
-    case InFold[E[_], T <: Row, Q, S, Ans, A, I1, B1, Z](ret: A => S, h: Handler[[X] =>> Cont[T, Q, Q, X], E, ?, Ans],
-        an: Value[E] | Null, k: Frames[T, Ans, I1, Q, B1], up: Meta[T, I1, Q, B1, Z]) extends Meta[E +: T, S, Ans, A, Z]
-    case InIcept[E[_], R <: Row, Q, S, Ans, A, I1, B1, Z](ret: A => S, in: In[E, R], h: Handler[[X] =>> Cont[R, Q, Q, X], E, ?, Ans],
-        k: Frames[R, Ans, I1, Q, B1], up: Meta[R, I1, Q, B1, Z]) extends Meta[R, S, Ans, A, Z]
+  /** how deep the loop runs delimiters it enters nested in itself, a JVM frame each — the cheapest way, nothing
+   * pushed; past it, pushed on the metacontinuation (`Meta`): any depth in constant stack */
+  private inline val Deep = 32
 
-  /** THE LOOP: `c` with the frames `k` inside the delimiters `m` — to the head of the outermost's body, or on: a
-   * delimiter entered pushed; its body's value, an operation, a capture read by it — the program leaving it run in
-   * the frames outside it; an operation a handler answers in place answered where it is */
-  @tailrec private[cont] def run[R <: Row, I, T, O, A, B, Z](c: Cont[R, T, O, A], k: Frames[R, A, I, T, B], m: Meta[R, I, O, B, Z]): Z =
+  /** THE DELIMITERS OUTSIDE THE INNERMOST, pushed — the loop's METACONTINUATION: what takes the program leaving the
+   * innermost one, `P` — run in the frames `k` under the delimiter `d` outside it, the handlers in force there `ev`.
+   * None (`null`): the loop's caller takes it, `ex` the proof it is the loop's result */
+  private[cont] enum Meta[P, Z]:
+    case Under[R <: Row, I, T, O, A, B, P2, Z](k: Frames[R, A, I, T, B], d: Delim[R, I, O, B, P2], ev: Ev[R],
+        up: Meta[P2, Z] | Null, ex: (P2 <:< Z) | Null) extends Meta[Cont[R, T, O, A], Z]
+
+  /** THE LOOP: `c` with the frames `k` under the delimiter `d`, the handlers in force `ev`, the delimiters outside
+   * `m` — what reaches the delimiter read by it, the program leaving it run outside; a delimiter met entered, nested
+   * up to `Deep`, pushed past it; an operation whose handler answers in place answered where it is */
+  @tailrec private[cont] def run[R <: Row, I, T, O, A, B, P, Z](c: Cont[R, T, O, A], k: Frames[R, A, I, T, B], d: Delim[R, I, O, B, P],
+      ev: Ev[R], m: Meta[P, Z] | Null, ex: (P <:< Z) | Null, depth: Int): Z =
+    // `p`, the program leaving the delimiter: to the caller, or on in the delimiter outside — the same loop
+    inline def leave(p: P): Z = m match
+      case null => ex.nn(p)
+      case u: Meta.Under[r, i, t, o, a, b, p2, z] => run[r, i, t, o, a, b, p2, Z](p, u.k, u.d, u.ev, u.up, u.ex, depth)
     c match
     case Return(a) => k match
-      case Frames.End() => m match
-        case _: Meta.Top[r, i, o, b] => Head.Done[R, I, B](a)
-        case d: Meta.InReset[r, q, s, o, a1, i1, b1, z] => run(Return[r, q, o](d.ret(a)), d.k, d.up)
-        case d: Meta.InFold[e, t, q, s, ans, a1, i1, b1, z] => run(Return[t, q, ans](d.ret(a)), d.k, d.up)
-        case d: Meta.InIcept[e, r, q, s, ans, a1, i1, b1, z] => run(Return[r, q, ans](d.ret(a)), d.k, d.up)
-      case Frames.Then(f, next) => run(f(a), next, m)
+      case Frames.End() => d match
+        case _: TopOf[r, i, o, b] => leave(Head.Done[R, I, B](a))
+        case dr: ByReset[r, q, s, o, a1] => leave(Return[r, q, o](dr.ret(a)))
+        case df: ByFold[e, t, q, s, ans, a1] => leave(Return[t, q, ans](df.ret(a)))
+        case di: ByIcept[e, r, q, s, ans, a1] => leave(Return[r, q, ans](di.ret(a)))
+      case Frames.Then(f, next) => run(f(a), next, d, ev, m, ex, depth)
       case Frames.Mapped(f, next) => next match
-        case Frames.End() => run(Return(f(a)), Frames.End(), m)
-        case Frames.Then(g, rest) => run(g(f(a)), rest, m)
-        case Frames.Mapped(g, rest) => run(Return(g(f(a))), rest, m)
-    case Inject(op, in) => m match
-      case _: Meta.Top[r, i, o, b] => in.op(op, k)
-      case d: Meta.InReset[r, q, s, o, a1, i1, b1, z] => run(in.bind(op, Redelimit[r, q, s, o, a1, A](k, d.ret)), d.k, d.up)
-      case d: Meta.InFold[e, t, q, s, ans, a1, i1, b1, z] => in match
-        case In.Here() => d.an match
-          case null => run(d.h(op, Resume[e, t, q, s, ans, a1, A](k, d.ret, d.h)), d.k, d.up)
-          case an => run(Return(an.value(op)), k, m)
-        // a handler further out answering in place, found through the handlers in force: answered here
-        case In.There(out) => inPlace(out, d.up) match
-          case null => run(out.bind(op, Refold[e, t, q, s, ans, a1, A](k, d.ret, d.h)), d.k, d.up)
-          case v => run(Return(v.value(op)), k, m)
-      case d: Meta.InIcept[e, r, q, s, ans, a1, i1, b1, z] => In.same(in, d.in) match
-        case null => run(in.bind(op, Reintercept[e, r, q, s, ans, a1, A](k, d.ret, d.in, d.h)), d.k, d.up)
-        case same => run(d.h(same(op), Reintercept[e, r, q, s, ans, a1, A](k, d.ret, d.in, d.h)), d.k, d.up)
-    case sp: Suspend[e0, r0, i0, o0, x, a0] =>
-      // the rest, the operation's own then the frames: made only where the operation leaves — one answered in place
-      // goes on with its own rest and the frames as they are
-      inline def g: x => Cont[R, I, O, B] = k match
-        case Frames.End() => sp.k
-        case _ => Frames.Then(sp.k, k)
-      m match
-        case _: Meta.Top[r, i, o, b] => sp.in.op(sp.op, g)
-        case d: Meta.InReset[r, q, s, o, a1, i1, b1, z] => run(sp.in.bind(sp.op, Redelimit[r, q, s, o, a1, x](g, d.ret)), d.k, d.up)
-        case d: Meta.InFold[e, t, q, s, ans, a1, i1, b1, z] => sp.in match
-          case In.Here() => d.an match
-            case null => run(d.h(sp.op, Resume[e, t, q, s, ans, a1, x](g, d.ret, d.h)), d.k, d.up)
-            case an => run(sp.k(an.value(sp.op)), k, m)
-          case In.There(out) => inPlace(out, d.up) match
-            case null => run(out.bind(sp.op, Refold[e, t, q, s, ans, a1, x](g, d.ret, d.h)), d.k, d.up)
-            case v => run(sp.k(v.value(sp.op)), k, m)
-        case d: Meta.InIcept[e, r, q, s, ans, a1, i1, b1, z] => In.same(sp.in, d.in) match
-          case null => run(sp.in.bind(sp.op, Reintercept[e, r, q, s, ans, a1, x](g, d.ret, d.in, d.h)), d.k, d.up)
-          case same => run(d.h(same(sp.op), Reintercept[e, r, q, s, ans, a1, x](g, d.ret, d.in, d.h)), d.k, d.up)
+        case Frames.End() => run(Return(f(a)), Frames.End(), d, ev, m, ex, depth)
+        case Frames.Then(g, rest) => run(g(f(a)), rest, d, ev, m, ex, depth)
+        case Frames.Mapped(g, rest) => run(Return(g(f(a))), rest, d, ev, m, ex, depth)
+    case Inject(op, in) => inPlace(in, ev) match
+      case null => d match
+        case _: TopOf[r, i, o, b] => leave(in.op(op, k))
+        case dr: ByReset[r, q, s, o, a1] => leave(in.bind(op, Redelimit[r, q, s, o, a1, A](k, dr.ret)))
+        case df: ByFold[e, t, q, s, ans, a1] => in match
+          case In.Here() => leave(df.h(op, Resume[e, t, q, s, ans, a1, A](k, df)))
+          case In.There(out) => leave(out.bind(op, Refold[e, t, q, s, ans, a1, A](k, df)))
+        case di: ByIcept[e, r, q, s, ans, a1] => In.same(in, di.in) match
+          case null => leave(in.bind(op, Reintercept[e, r, q, s, ans, a1, A](k, di)))
+          case same => leave(di.h(same(op), Reintercept[e, r, q, s, ans, a1, A](k, di)))
+      case v => run(Return(v.value(op)), k, d, ev, m, ex, depth)
+    case sp: Suspend[e0, r0, i0, o0, x, a0] => inPlace(sp.in, ev) match
+      case null =>
+        // the rest, the operation's own then the frames: made only where the operation leaves
+        val g: x => Cont[R, I, O, B] = k match
+          case Frames.End() => sp.k
+          case _ => Frames.Then(sp.k, k)
+        d match
+          case _: TopOf[r, i, o, b] => leave(sp.in.op(sp.op, g))
+          case dr: ByReset[r, q, s, o, a1] => leave(sp.in.bind(sp.op, Redelimit[r, q, s, o, a1, x](g, dr.ret)))
+          case df: ByFold[e, t, q, s, ans, a1] => sp.in match
+            case In.Here() => leave(df.h(sp.op, Resume[e, t, q, s, ans, a1, x](g, df)))
+            case In.There(out) => leave(out.bind(sp.op, Refold[e, t, q, s, ans, a1, x](g, df)))
+          case di: ByIcept[e, r, q, s, ans, a1] => In.same(sp.in, di.in) match
+            case null => leave(sp.in.bind(sp.op, Reintercept[e, r, q, s, ans, a1, x](g, di)))
+            case same => leave(di.h(same(sp.op), Reintercept[e, r, q, s, ans, a1, x](g, di)))
+      case v => run(sp.k(v.value(sp.op)), k, d, ev, m, ex, depth)
     // a capture: up to the innermost delimiter — its body in place of the rest, under the delimiter again, the rest
     // under a delimiter of its own with `ret` as `k`
-    case Shift(f) => m match
-      case _: Meta.Top[r, i, o, b] => Head.Cut(f, k)
-      case d: Meta.InReset[r, q, s, o, a1, i1, b1, z] =>
-        run(f(under(k, d.ret)), Frames.End(), Meta.InReset[r, q, o, o, o, i1, b1, z](identity, d.k, d.up))
-      case d: Meta.InFold[e, t, q, s, ans, a1, i1, b1, z] =>
-        run(f(under(k, d.ret)), Frames.End(), Meta.InFold[e, t, q, ans, ans, ans, i1, b1, z](identity, d.h, d.an, d.k, d.up))
-      case d: Meta.InIcept[e, r, q, s, ans, a1, i1, b1, z] =>
-        run(f(under(k, d.ret)), Frames.End(), Meta.InIcept[e, r, q, ans, ans, ans, i1, b1, z](identity, d.in, d.h, d.k, d.up))
-    // a delimiter: entered, this loop's frames pushed under it
-    case rs: Reset[r, q, s, o, a1] => run(rs.body, Frames.End(), Meta.InReset[r, q, s, o, a1, I, B, Z](rs.ret, k, m))
-    case fo: Fold[e, t, q, s, ans, a1] => run(fo.body(), Frames.End(), Meta.InFold[e, t, q, s, ans, a1, I, B, Z](fo.ret, fo.h, answers(fo.h), k, m))
-    case fo: FoldK[e, t, q, s, ans, a1, x] => run(fo.k(fo.x), Frames.End(), Meta.InFold[e, t, q, s, ans, a1, I, B, Z](fo.ret, fo.h, answers(fo.h), k, m))
-    case ic: Icept[e, r, q, s, ans, a1] => run(ic.body(), Frames.End(), Meta.InIcept[e, r, q, s, ans, a1, I, B, Z](ic.ret, ic.in, ic.h, k, m))
-    case Delay(t) => run(t(), k, m)
-    case Map(mm, f) => run(mm, Frames.Mapped(f, k), m)
+    case Shift(f) => d match
+      case _: TopOf[r, i, o, b] => leave(Head.Cut(f, k))
+      case dr: ByReset[r, q, s, o, a1] => run(f(under(k, dr.ret)), Frames.End(), Rs[r, q, o](), ev, m, ex, depth)
+      case df: ByFold[e, t, q, s, ans, a1] => run(f(under(k, df.ret)), Frames.End(), Hd[e, t, q, ans](df.h, df.an), ev, m, ex, depth)
+      case di: ByIcept[e, r, q, s, ans, a1] => run(f(under(k, di.ret)), Frames.End(), Ic[e, r, q, ans](di.in, di.h), ev, m, ex, depth)
+    // a delimiter: entered — nested, a JVM frame, its program run on here; past `Deep`, this loop pushed under it
+    case rs: Reset[r, q, s, o, a1] =>
+      if depth < Deep then
+        run(nested[r, s, s, o, a1, a1, Cont[r, q, q, o], Cont[r, q, q, o]](rs.body, Frames.End(), rs, ev, null, <:<.refl, depth + 1), k, d, ev, m, ex, depth)
+      else run[r, s, s, o, a1, a1, Cont[r, q, q, o], Z](rs.body, Frames.End(), rs, ev, Meta.Under(k, d, ev, m, ex), null, depth)
+    case fo: Fold[e, t, q, s, ans, a1] =>
+      val inner = within(fo.an, ev)
+      if depth < Deep then
+        run(nested[e +: t, s, s, ans, a1, a1, Cont[t, q, q, ans], Cont[t, q, q, ans]](fo.body(), Frames.End(), fo, inner, null, <:<.refl, depth + 1), k, d, ev, m, ex, depth)
+      else run[e +: t, s, s, ans, a1, a1, Cont[t, q, q, ans], Z](fo.body(), Frames.End(), fo, inner, Meta.Under(k, d, ev, m, ex), null, depth)
+    case fo: FoldK[e, t, q, s, ans, a1, x] =>
+      val inner = within(fo.an, ev)
+      if depth < Deep then
+        run(nested[e +: t, s, s, ans, a1, a1, Cont[t, q, q, ans], Cont[t, q, q, ans]](fo.k(fo.x), Frames.End(), fo, inner, null, <:<.refl, depth + 1), k, d, ev, m, ex, depth)
+      else run[e +: t, s, s, ans, a1, a1, Cont[t, q, q, ans], Z](fo.k(fo.x), Frames.End(), fo, inner, Meta.Under(k, d, ev, m, ex), null, depth)
+    case ic: Icept[e, r, q, s, ans, a1] =>
+      val inner = masked(ev, ic.in)
+      if depth < Deep then
+        run(nested[r, s, s, ans, a1, a1, Cont[r, q, q, ans], Cont[r, q, q, ans]](ic.body(), Frames.End(), ic, inner, null, <:<.refl, depth + 1), k, d, ev, m, ex, depth)
+      else run[r, s, s, ans, a1, a1, Cont[r, q, q, ans], Z](ic.body(), Frames.End(), ic, inner, Meta.Under(k, d, ev, m, ex), null, depth)
+    case Delay(t) => run(t(), k, d, ev, m, ex, depth)
+    case Map(mm, f) => run(mm, Frames.Mapped(f, k), d, ev, m, ex, depth)
     case Push(mm, ks) => k match
-      case Frames.End() => run(mm, ks, m)
-      case _ => run(mm, Frames.Then(ks, k), m)
+      case Frames.End() => run(mm, ks, d, ev, m, ex, depth)
+      case _ => run(mm, Frames.Then(ks, k), d, ev, m, ex, depth)
     case Bind(mm, g) => mm match
-      case Return(a) => run(g(a), k, m)
-      case _ => run(mm, Frames.Then(g, k), m)
+      case Return(a) => run(g(a), k, d, ev, m, ex, depth)
+      case _ => run(mm, Frames.Then(g, k), d, ev, m, ex, depth)
 
-  /** the handler at the path among the delimiters `m`, if it answers in place — a reset passed, an interceptor of
-   * the path stops the walk (its clauses are not the handler's); a walk as long as the path */
-  @tailrec private def inPlace[E[_], R <: Row, I, O, B, Z](in: In[E, R], m: Meta[R, I, O, B, Z]): Value[E] | Null = m match
-    case d: Meta.InFold[e, t, q, s, ans, a1, i1, b1, z] => in match
-      case In.Here() => d.an
-      case In.There(out) => inPlace(out, d.up)
-    case d: Meta.InReset[r, q, s, o, a1, i1, b1, z] => inPlace(in, d.up)
-    case d: Meta.InIcept[e, r, q, s, ans, a1, i1, b1, z] => In.same(in, d.in) match
-      case null => inPlace(in, d.up)
-      case _ => null
+  /** a delimiter's body run nested, a JVM frame — up to `Deep` of them — its leaving program the result */
+  private def nested[R <: Row, I, T, O, A, B, P, Z](c: Cont[R, T, O, A], k: Frames[R, A, I, T, B], d: Delim[R, I, O, B, P],
+      ev: Ev[R], m: Meta[P, Z] | Null, ex: (P <:< Z) | Null, depth: Int): Z = run(c, k, d, ev, m, ex, depth)
+
+  /** the handler at the path, if it answers in place — through the handlers in force; not known so, `null` */
+  @tailrec private def inPlace[E[_], R <: Row](in: In[E, R], ev: Ev[R]): Value[E] | Null = ev match
+    case e: Ev.Entry[e, t] => in match
+      case In.Here() => e.answers
+      case In.There(out) => inPlace(out, e.outer)
     case _ => null
 
+  /** the handlers in force inside a handler that answers in place by `an`, if it does: it in front — or, if it does
+   * not and nothing is known outside, nothing known still */
+  private def within[E[_], R <: Row](an: Value[E] | Null, ev: Ev[R]): Ev[E +: R] = an match
+    case null => ev match
+      case Ev.Unknown => Ev.Unknown
+      case _ => Ev.Entry(ev, null)
+    case _ => Ev.Entry(ev, an)
+
+  /** the handlers in force inside an interceptor at `in`: the one at `in` answering nothing in place — its
+   * operations go to the interceptor. A walk as long as the path */
+  private def masked[E[_], R <: Row](ev: Ev[R], in: In[E, R]): Ev[R] = ev match
+    case e: Ev.Entry[e, t] => in match
+      case In.Here() => Ev.Entry[e, t](e.outer, null)
+      case In.There(out) => Ev.Entry[e, t](masked(e.outer, out), e.answers)
+    case _ => ev
+
   /** a handler's clauses as one that answers in place, if it is one */
-  private def answers[P[_], E[_]](h: Handler[P, E, ?, ?]): Value[E] | Null = h match
+  private[cont] def answers[P[_], E[_]](h: Handler[P, E, ?, ?]): Value[E] | Null = h match
     case a: Answering[P, E, ?, ?] => a
     case _ => null
 
@@ -219,17 +278,17 @@ object Cont:
     def apply(x: X): Cont[R, Q, Q, O] = Reset(k(x), ret)
   /** a clause's `k`: the rest of the body under the handler again, built when stepped — a clause that keeps `k` (a
    * generator's next step) runs nothing by making it */
-  private final class Resume[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans])
+  private final class Resume[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], d: ByFold[E, T, Q, S, Ans, A])
       extends (X => Cont[T, Q, Q, Ans]):
-    def apply(x: X): Cont[T, Q, Q, Ans] = FoldK(k, x, ret, h)
+    def apply(x: X): Cont[T, Q, Q, Ans] = FoldK(k, x, d.ret, d.h, d.an)
   /** the rest of a handler's body, once an operation it passed on is answered outside: under the handler again */
-  private final class Refold[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], ret: A => S, h: Handler[[Z] =>> Cont[T, Q, Q, Z], E, ?, Ans])
+  private final class Refold[E[_], T <: Row, Q, S, Ans, A, X](k: X => Cont[E +: T, S, Ans, A], d: ByFold[E, T, Q, S, Ans, A])
       extends (X => Cont[T, Q, Q, Ans]):
-    def apply(x: X): Cont[T, Q, Q, Ans] = FoldK(k, x, ret, h)
+    def apply(x: X): Cont[T, Q, Q, Ans] = FoldK(k, x, d.ret, d.h, d.an)
   /** the rest of an interceptor's body: under the interceptor again */
-  private final class Reintercept[E[_], R <: Row, Q, S, Ans, A, X](k: X => Cont[R, S, Ans, A], ret: A => S, in: In[E, R],
-      h: Handler[[Z] =>> Cont[R, Q, Q, Z], E, ?, Ans]) extends (X => Cont[R, Q, Q, Ans]):
-    def apply(x: X): Cont[R, Q, Q, Ans] = Icept(() => k(x), ret, in, h)
+  private final class Reintercept[E[_], R <: Row, Q, S, Ans, A, X](k: X => Cont[R, S, Ans, A], d: ByIcept[E, R, Q, S, Ans, A])
+      extends (X => Cont[R, Q, Q, Ans]):
+    def apply(x: X): Cont[R, Q, Q, Ans] = Icept(() => k(x), d.ret, d.in, d.h)
 
   extension [A](c: Cont[Pure, A, A, A])
     /** a program at the top, nothing to perform, its answer its value: the value — the top is a delimiter; a
