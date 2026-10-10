@@ -99,12 +99,6 @@ private[zero] enum Meta[L, V, Z]:
     case ic: Icpt[e, r, j, tt, a2, ans] if depth < Deep => enterIntercept[e, r, j, tt, a2, ans](ic, ev, n, depth + 1) match
       case v: Return[s2, vv] => deliver[RB, L, I0, V, A, T, X, Z](b.f(v.a), k, d, ev, n, depth, meta)
       case m => deliver[RB, L, I0, V, A, t, a, Z](m, Frames.Then(b.f, k), d, ev, n, depth, meta)
-    // a clause's k(x) bound, the usual clause: resumed at once, nested, as a handler bound is — its value, the usual,
-    // bound with no frame pushed
-    case r: Resume[rb, l, i0, v, a2, x, t1, y] if depth < Deep =>
-      enter(r, inner[rb, RB, L, V, i0, v, a2](r.d, ev, r.ev), n, depth + 1) match
-        case v: Return[s2, vv] => deliver[RB, L, I0, V, A, T, X, Z](b.f(v.a), k, d, ev, n, depth, meta)
-        case m => deliver[RB, L, I0, V, A, t, a, Z](m, Frames.Then(b.f, k), d, ev, n, depth, meta)
     case h: Handle[e, r, j, tt, a2, ans] =>
       deliver[e +: r, Cont0[j, j, Res[r, j, tt]], ans, ans, a2, Cont0[Cont0[j, j, Res[r, j, tt]], Cont0[j, j, Res[r, j, tt]], Res[e +: r, Cont0[j, j, Res[r, j, tt]], ans]], a2, Z](h.body, Frames.End(), h, within(h.h, ev), n, depth, Meta.Under[RB, L, I0, V, A, a, Z](Frames.Then(b.f, k), d, ev, meta))
     case s: Reset[r, j, tt, sv, ov] =>
@@ -128,13 +122,7 @@ private[zero] enum Meta[L, V, Z]:
     case v => k match
       case th: Frames.Then[a1, x1, i1, t1, t2, b1] => deliver[RB, L, I0, V, A, t1, x1, Z](th.f(v.value(o.op)), th.next, d, ev, n, depth, meta)
       case _ => deliver[RB, L, I0, V, A, T, X, Z](Return(v.value(o.op)), k, d, ev, n, depth, meta)
-  case m: Map[i, o, a, b] => m.m match
-    // a clause's k(x) mapped: resumed at once, nested — its value, the usual, mapped with no frame pushed
-    case r: Resume[rb, l, i0, v, a2, x, t1, y] if depth < Deep =>
-      enter(r, inner[rb, RB, L, V, i0, v, a2](r.d, ev, r.ev), n, depth + 1) match
-        case v: Return[s2, vv] => deliver[RB, L, I0, V, A, T, X, Z](Return(m.f(v.a)), k, d, ev, n, depth, meta)
-        case mm => deliver[RB, L, I0, V, A, T, a, Z](mm, Frames.Mapped(m.f, k), d, ev, n, depth, meta)
-    case _ => deliver[RB, L, I0, V, A, T, a, Z](m.m, Frames.Mapped(m.f, k), d, ev, n, depth, meta)
+  case m: Map[i, o, a, b] => deliver[RB, L, I0, V, A, T, a, Z](m.m, Frames.Mapped(m.f, k), d, ev, n, depth, meta)
   case dl: Delay[i, o, a] => deliver[RB, L, I0, V, A, T, X, Z](dl.c(), k, d, ev, n, depth, meta)
   // a resumption, a handler, a reset, an interceptor: entered, nested; past `Deep`, this loop pushed under it
   case r: Resume[rb, l, i0, v, a, x, t1, y] if depth < Deep =>
