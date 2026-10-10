@@ -40,6 +40,7 @@ are compiled and run by `TestGuide`.
 - [What `Cont0` does better than `Cont`](docs/cont0-vs-cont.md) — and where it does not.
 - [Architecture](docs/architecture.md) — the interface, `Cont`, `Cont0` and its machine, the references, tests,
   benchmarks.
+- [okay-core as an implementation of okay-kernel](docs/kernel.md) — the bridge, what is exact, what is approximated.
 - The history of the design in [`changelog.d`](changelog.d), the benchmark runs in [`bench.d`](bench.d).
 
 ## Layout
@@ -52,6 +53,7 @@ are compiled and run by `TestGuide`.
 | `okay.zero` | `Cont0` (the kernel, open as a monad of its own), the machine; the instance `At`; `run`; `top`; `shift0` |
 | `okay.async` (module `async/`) | `async`, `await`, `Async.run`, asynchronous streams — and what they race and wait with (`Ref`, `Mailbox`): the core has no thread in it |
 | `okay.interop` (modules `interop/cats`, `interop/tofu`) | cats' monad over `Program` (every platform), tofu's `WithLocal` and `Errors` (the JVM's) |
+| `okay.core.kernel` (module `kernel/`) | `OnCore.zero`, `OnCore.cont`: okay-kernel's `Effects` and protocol on Cont0 and Cont — export, import, the kernel's standard handlers and TCK ([docs/kernel.md](docs/kernel.md)); the JVM's |
 | `okay.scala2` (modules `scala2/prelude`, `scala2/cats`, `scala2/tofu`) | for Scala 2.13: short names of effects and rows, and the same cats and tofu instances compiled by scalac 2.13 |
 
 ## The two monads

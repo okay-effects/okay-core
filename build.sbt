@@ -48,7 +48,7 @@ lazy val allowUnsafe = javaOptions ++= (if (fork.value) Seq(unsafe) else Nil)
 /** the build's root: every platform's core and async, and the Scala 2.13 suites — `sbt test` runs them all */
 lazy val root = (project in file("."))
   .aggregate(core.jvm, core.js, core.native, async.jvm, async.js, async.native, interopCats.jvm, interopCats.js,
-    interopCats.native, interopTofu, scala2Prelude, scala2Cats, scala2Tofu, scala2)
+    interopCats.native, interopTofu, scala2Prelude, scala2Cats, scala2Tofu, scala2, kernel)
   .settings(
     name := "okay-core-root",
     publish / skip := true,
@@ -151,6 +151,24 @@ lazy val interopTofu = (project in file("interop/tofu"))
     Test / sourceGenerators += Def.task {
       GuideDoc.generate(baseDirectory.value.getParentFile.getParentFile / "docs" / "interop.md", (Test / sourceManaged).value / "okay" / "interop" / "InteropDoc.scala", "okay.interop", "InteropDoc")
     }.taskValue
+  )
+
+/**
+ * THE KERNEL'S API ON OKAY-CORE, A MODULE OF ITS OWN (okay.core.kernel, docs/kernel.md): `OnCore.zero` and
+ * `OnCore.cont`, okay-kernel's `Effects` and protocol run on Cont0 and Cont — the core names no library, this module
+ * the kernel's API. The JVM's: the API is a Java jar (in ~/.m2, `publishM2` of okay-kernel); its reference machine
+ * and TCK in the tests
+ */
+lazy val kernel = (project in file("kernel"))
+  .dependsOn(core.jvm)
+  .settings(
+    name := "okay-core-kernel",
+    resolvers += Resolver.mavenLocal,
+    libraryDependencies ++= Seq(
+      "dev.okay" % "okay-kernel-api" % "0.1.0-SNAPSHOT",
+      "dev.okay" %% "okay-kernel-steps" % "0.1.0-SNAPSHOT" % Test,
+      "dev.okay" %% "okay-kernel-tck" % "0.1.0-SNAPSHOT" % Test,
+      "org.scalameta" %% "munit" % "1.2.3" % Test)
   )
 
 // `sbt bench`, or `sbt "bench -f 1 -p n=100000 tailcall"`: JMH's options and a regexp go to `benchRun` (JMH,
