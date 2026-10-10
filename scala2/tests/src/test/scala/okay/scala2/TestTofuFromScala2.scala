@@ -5,7 +5,8 @@ import cats.syntax.all._
 import okay.core._
 import okay.std._
 import tofu.{Errors, WithLocal}
-import OnProgram._
+import CatsProgram._
+import TofuProgram._
 
 final case class Cfg(user: String, depth: Int)
 

@@ -1,11 +1,12 @@
-package okay.tofu
+package okay.interop
 
 import cats.Monad
 import cats.syntax.all.*
 import okay.core.*
 import okay.std.*
 import tofu.{Errors, WithContext, WithLocal}
-import OnProgram.given
+import CatsProgram.given
+import TofuProgram.given
 
 final case class Cfg(user: String, depth: Int)
 

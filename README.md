@@ -55,6 +55,8 @@ outside in; a program names only the effects it needs. These examples are compil
 | `okay.cont` | `Cont`, its loop and fold; the instance `At`; `run`; `top` |
 | `okay.zero` | `Cont0` (the kernel, open as a monad of its own), the machine; the instance `At`; `run`; `top`; `shift0` |
 | `okay.async` (module `async/`) | `async`, `await`, `Async.run`, asynchronous streams — and what they race and wait with (`Swap`, `Mailbox`): the core has no thread in it |
+| `okay.interop` (modules `interop/cats`, `interop/tofu`) | cats' monad over `Program` (every platform), tofu's `WithLocal` and `Errors` (the JVM's) |
+| `okay.scala2` (modules `scala2/prelude`, `scala2/cats`, `scala2/tofu`) | for Scala 2.13: short names of effects and rows, and the same cats and tofu instances compiled by scalac 2.13 |
 
 ## The two monads
 
@@ -93,11 +95,12 @@ either monad). They agree on every suite; where `Cont0` differs by design, `Test
 
 ## With tofu, and from Scala 2
 
-`Program.Of[R]` is an `F[_]`: given tofu's `Monad`, `WithLocal` and `Errors` over it (in the tests, the shape of an
-optional module), code written over `F[_]` with tofu runs on okay's effects, on either monad — `local` and
+`Program.Of[R]` is an `F[_]`: with cats' monad and tofu's `WithLocal` and `Errors` over it (the modules
+`okay-core-cats`, `okay-core-tofu`; for Scala 2, `okay-core-scala2-cats`, `-tofu`), code written over `F[_]` with tofu
+runs on okay's effects, on either monad — `local` and
 `handleWith` by `intercept`, an effect handled again where it is. Scala 2.13 reads the same artifact through its
-TASTy reader; `scala2/` holds the suites that prove it, tofu's 2.13 artifacts included. The core itself names no
-library.
+TASTy reader; `scala2/tests` holds the suites that prove it — one's own effects and handlers, tofu's 2.13 artifacts.
+The core itself names no library.
 
 ## Build
 

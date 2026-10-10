@@ -1,20 +1,17 @@
-package okay.tofu
+package okay.interop
 
-import cats.{Functor, StackSafeMonad}
+import cats.Functor
 import okay.core.*
 import okay.std.*
 import tofu.{Errors, WithLocal}
 
-/** TOFU'S TYPECLASSES OVER `Program[R, *]`: code written over `F[_]` runs on okay's effects, on any monad. The
- * context is a `Reader` in the row, `local` its interceptor; the errors a `Throws`, `handleWith` its interceptor —
- * each `fa` built again under it, which a `Program` is for. The monad stack safe as okay's monads are */
-object OnProgram:
-  given monad[R <: Row]: StackSafeMonad[Program.Of[R]] = new StackSafeMonad[Program.Of[R]]:
-    def pure[A](a: A): Program[R, A] = Program.pure(a)
-    def flatMap[A, B](fa: Program[R, A])(f: A => Program[R, B]): Program[R, B] = fa.flatMap(f)
-
+/** TOFU'S TYPECLASSES OVER `Program[R, *]`: code written over `F[_]` with tofu runs on okay's effects, on any monad.
+ * The context a `Reader` in the row, `local` its interceptor; the errors a `Throws`, `handleWith` its interceptor —
+ * each `fa` built again under it, which a `Program` is for. With `CatsProgram`'s monad:
+ * `import okay.interop.CatsProgram.given, okay.interop.TofuProgram.given` */
+object TofuProgram:
   given withLocal[R <: Row, C](using in: Reader % C :? R): WithLocal[Program.Of[R], C] = new WithLocal[Program.Of[R], C]:
-    def functor: Functor[Program.Of[R]] = monad[R]
+    def functor: Functor[Program.Of[R]] = CatsProgram.monad[R]
     def context: Program[R, C] = Programs.ask[R, C]
     def local[A](fa: Program[R, A])(project: C => C): Program[R, A] = Programs.local(project)(fa)
 

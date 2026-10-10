@@ -286,27 +286,18 @@ Program.run(okay.cont.top)(Programs.throws[String](Programs.reader(-1)(checked))
 Program.run(okay.zero.top)(Programs.reader(21)(Programs.throws[String](checked)))   // Right(42)
 ```
 
-### With tofu
+### With tofu and cats
 
-`Program.Of[R]` is an `F[_]`; given tofu's typeclasses over it — `Monad` (cats), `WithLocal` from a `Reader` in the
-row, `Errors` from a `Throws` — code written over `F[_]` with tofu runs on okay's effects, on any monad. The
-instances are in the tests (`okay.tofu.OnProgram`), the shape of an optional module:
-
-```scala
-import okay.tofu.OnProgram.given
-
-def greeting[F[_]: cats.Monad](using ctx: tofu.WithLocal[F, String], err: tofu.Errors[F, String]): F[String] =
-  cats.Monad[F].flatMap(ctx.local(ctx.context)(_.toUpperCase))(n => if n.isEmpty then err.raise("nobody") else cats.Monad[F].pure(s"hi $n"))
-
-type Row2 = Reader % String +: Throws % String +: Pure
-
-Program.run(okay.zero.top)(Programs.throws[String](Programs.reader("ann")(greeting[Program.Of[Row2]])))   // Right("hi ANN")
-```
+`Program.Of[R]` is an `F[_]`: with cats' monad over it and tofu's typeclasses (`WithLocal` from a `Reader` in the
+row, `Errors` from a `Throws`), code written over `F[_]` with tofu runs on okay's effects, on any monad — the modules
+`okay-core-cats` (`okay.interop.CatsProgram`, every platform) and `okay-core-tofu` (`okay.interop.TofuProgram`, the
+JVM's): [docs/interop.md](interop.md).
 
 ### From Scala 2
 
-The same artifact, read by scalac 2.13 with `-Ytasty-reader` — the build's `scala2/` project is its proof, tofu's
-2.13 artifacts over `Program` included. Scala 2 sees the classes and objects (`Program`, `Programs`, `In`, the
+The same artifact, read by scalac 2.13 with `-Ytasty-reader`; for Scala 2 the short names of `okay-core-scala2-prelude`
+(`import okay.scala2._`: `ReaderOf[E]#L`, `Of[R]#L`) and the same cats and tofu instances compiled by scalac 2.13
+(`okay-core-scala2-cats`, `-tofu`); the build's `scala2/tests` their proof, one's own handlers included. Scala 2 sees the classes and objects (`Program`, `Programs`, `In`, the
 `top`s), not the top-level definitions; an effect of two parameters is a Scala 2 type lambda, and a row is written
 without infix precedence:
 

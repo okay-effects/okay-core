@@ -13,7 +13,9 @@ okay.zero   the monad Cont0         shift0 and $, a machine               — At
 okay.cont   the monad Cont          shift/reset, a handler a fold         — At, run, top           (the second)
 tests       the references          Ref (Cont0 without the machine), Cps0 (textbook CPS); tofu over Program
 okay.async  module async/          Async, its streams, Swap and Mailbox — the core has no thread, wait or callback
-scala2/     Scala 2.13              the core read by scalac 2.13; tofu's 2.13 artifacts over Program
+okay.interop  interop/cats, /tofu    cats' monad over Program (every platform); tofu's WithLocal, Errors (the JVM's)
+scala2/     Scala 2.13              prelude (short names), cats, tofu — compiled by scalac 2.13; tests: one's own
+                                    handlers in Scala 2, tofu over Program
 ```
 
 ## Platforms
@@ -63,9 +65,9 @@ The layers:
   members, not one indexed by a row: `Within` (a reset's, an interceptor's body) and `Handling[E]` (a handler's) —
   so a view keeps its row and takes the monad of the context it views. okay's own `TestEffectsRows`, over okay's
   interface `Effects[M[_ <: Row, _]]` written here over `Program` (`TestAnywhereOn`), passes on the four monads.
-- **Integrations, outside the core.** tofu and cats instances over `Program` are in the tests now
-  (`src/test/scala/okay/tofu`, `scala2/src/test/scala/okay/scala2`): the shape of an optional module, each
-  dependency behind it.
+- **Integrations, outside the core.** Modules of their own, each library behind one: `okay-core-cats`
+  (`okay.interop.CatsProgram`), `okay-core-tofu` (`okay.interop.TofuProgram`); for Scala 2, `okay-core-scala2-prelude`,
+  `-cats`, `-tofu`, compiled by scalac 2.13 against the libraries' 2.13 artifacts.
 
 Scala 2's view, measured: a Scala 2 program sees every class and object of the core (`Program`, `Programs`, `In`
 and its givens as implicits, the monads' `top`s); it does not see top-level definitions — `%`, `:?`, `!`,

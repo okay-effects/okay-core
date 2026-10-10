@@ -6,8 +6,8 @@ def platformDirs(config: String, names: String*) = Def.setting(
 
 /**
  * THE CORE, CROSS-BUILT: the JVM, Scala.js, Scala Native — one source tree, `src/`, shared; a platform's own beside
- * it (`src/test/scala-jvm`, `-js`, `-jvm-native`). The JVM's alone: the benchmarks (JMH), tofu's and cats' tests,
- * docs/guide.md's checked blocks (its tofu example), the JVM's options. On JS no suite of the textbook CPS (`Cps0`):
+ * it (`src/test/scala-jvm`, `-js`, `-jvm-native`). The JVM's alone: the benchmarks (JMH), docs/guide.md's checked
+ * blocks, the JVM's options. On JS no suite of the textbook CPS (`Cps0`):
  * not stack safe, it needs a thread of a large stack, which JS has not
  */
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
@@ -19,13 +19,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .jvmConfigure(_.enablePlugins(JmhPlugin))
   .jvmSettings(
-    libraryDependencies ++= Seq(
-      // tofu's typeclasses over okay's `Program` (src/test/scala-jvm/okay/tofu): test scope — the core names no
-      // library. tofu 0.14.3's Scala 3 artifacts (built on 3.3) read by 3.9, the JVM's only; cats-core the one
-      // tofu-kernel is built against
-      "tf.tofu" %% "tofu-kernel" % "0.14.3" % Test,
-      "org.typelevel" %% "cats-core" % "2.13.0" % Test
-    ),
     Test / unmanagedSourceDirectories ++= platformDirs("test", "jvm", "jvm-native").value,
     // sun.misc.Unsafe's memory access allowed in every forked JVM — run and test when forked, the JMH host
     // (always forked) and its benchmark forks, which inherit the host's options: JDK 24+ warns on the first call
@@ -54,7 +47,8 @@ lazy val allowUnsafe = javaOptions ++= (if (fork.value) Seq(unsafe) else Nil)
 
 /** the build's root: every platform's core and async, and the Scala 2.13 suites — `sbt test` runs them all */
 lazy val root = (project in file("."))
-  .aggregate(core.jvm, core.js, core.native, async.jvm, async.js, async.native, LocalProject("scala2"))
+  .aggregate(core.jvm, core.js, core.native, async.jvm, async.js, async.native, interopCats.jvm, interopCats.js,
+    interopCats.native, interopTofu, scala2Prelude, scala2Cats, scala2Tofu, scala2)
   .settings(
     name := "okay-core-root",
     publish / skip := true,
@@ -98,32 +92,65 @@ lazy val async = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val Scala3Stdlib = config("scala3Stdlib").hide
 
 /**
- * OKAY-CORE FROM SCALA 2.13: suites written in Scala 2 and compiled by scalac 2.13.18, reading the core's TASTy
- * (`-Ytasty-reader`) — the proof that the core stays readable from Scala 2, and tofu's Scala 2 artifacts over it.
+ * SCALA 2.13 READING THE CORE: a project compiled by scalac 2.13.18 against the core's TASTy (`-Ytasty-reader`).
  * Two standard libraries, in this ORDER (okay's finding, okay/specs/scala2-facade.md): 2.13's first to compile —
  * Scala 3.9's carries TASTy, not Scala 2 pickles — and 3.9's behind it, needed to compile and to run
- * (`scala.reflect.Enum`). The core's own dependency on 3.9's stdlib is excluded and appended at the end.
+ * (`scala.reflect.Enum`). The core's own dependency on 3.9's stdlib is excluded and appended at the end
  */
-lazy val scala2 = (project in file("scala2"))
+def scala2Settings: Seq[Def.Setting[?]] = Seq(
+  scalaVersion := "2.13.18",
+  projectDependencies ~= (_.map(_.exclude("org.scala-lang", "scala-library").exclude("org.scala-lang", "scala3-library_3"))),
+  scalacOptions := Seq("-Ytasty-reader", "-deprecation", "-feature", "-Xlint"),
+  ivyConfigurations += Scala3Stdlib,
+  libraryDependencies ++= Seq(
+    "org.scala-lang" % "scala-library" % "3.9.0" % Scala3Stdlib,
+    "org.scala-lang" % "scala3-library_3" % "3.9.0" % Scala3Stdlib)
+) ++ Seq(Compile, Runtime, Test).flatMap(c => Seq(
+  c / dependencyClasspath ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value),
+  c / dependencyClasspathAsJars ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value)))
+
+/** okay-core's short names for Scala 2 (`ReaderOf[E]#L`, `Of[R]#L`): a package object compiled by scalac 2.13 */
+lazy val scala2Prelude = (project in file("scala2/prelude"))
   .dependsOn(core.jvm)
+  .settings(scala2Settings, name := "okay-core-scala2-prelude")
+
+/** cats over `Program` for Scala 2, against cats' 2.13 artifacts */
+lazy val scala2Cats = (project in file("scala2/cats"))
+  .dependsOn(scala2Prelude)
+  .settings(scala2Settings, name := "okay-core-scala2-cats", libraryDependencies += "org.typelevel" %% "cats-core" % "2.13.0")
+
+/** tofu over `Program` for Scala 2, against tofu's 2.13 artifacts */
+lazy val scala2Tofu = (project in file("scala2/tofu"))
+  .dependsOn(scala2Cats)
+  .settings(scala2Settings, name := "okay-core-scala2-tofu", libraryDependencies += "tf.tofu" %% "tofu-kernel" % "0.14.3")
+
+/** THE PROOF that the core and its modules stay readable from Scala 2: suites in Scala 2.13 — one's own effects and
+ * handlers, tofu over `Program` — on Cont0 and Cont */
+lazy val scala2 = (project in file("scala2/tests"))
+  .dependsOn(scala2Tofu)
+  .settings(scala2Settings, name := "okay-core-scala2-tests", publish / skip := true,
+    libraryDependencies += "org.scalameta" %% "munit" % "1.2.3" % Test)
+
+/** cats over `Program` (okay.interop.CatsProgram), a module of its own: the core names no library. Cross-built, as
+ * cats is */
+lazy val interopCats = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("interop/cats"))
+  .dependsOn(core)
+  .settings(name := "okay-core-cats", libraryDependencies ++= Seq(
+    "org.typelevel" %%% "cats-core" % "2.13.0", "org.scalameta" %%% "munit" % "1.2.3" % Test))
+
+/** tofu over `Program` (okay.interop.TofuProgram): the JVM's — tofu has no JS or Native artifacts. Its suites on the
+ * four monads (the core's test helpers), docs/interop.md's blocks compiled and checked */
+lazy val interopTofu = (project in file("interop/tofu"))
+  .dependsOn(interopCats.jvm, core.jvm % "test->test")
   .settings(
-    name := "okay-core-scala2",
-    publish / skip := true,
-    scalaVersion := "2.13.18",
-    projectDependencies ~= (_.map(_.exclude("org.scala-lang", "scala-library").exclude("org.scala-lang", "scala3-library_3"))),
-    scalacOptions := Seq("-Ytasty-reader", "-deprecation", "-feature", "-Xlint"),
-    libraryDependencies ++= Seq(
-      "org.scalameta" %% "munit" % "1.2.3" % Test,
-      "tf.tofu" %% "tofu-kernel" % "0.14.3" % Test,
-      "org.typelevel" %% "cats-core" % "2.13.0" % Test
-    ),
-    ivyConfigurations += Scala3Stdlib,
-    libraryDependencies ++= Seq(
-      "org.scala-lang" % "scala-library" % "3.9.0" % Scala3Stdlib,
-      "org.scala-lang" % "scala3-library_3" % "3.9.0" % Scala3Stdlib),
-    Seq(Compile, Runtime, Test).flatMap(c => Seq(
-      c / dependencyClasspath ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value),
-      c / dependencyClasspathAsJars ++= Classpaths.managedJars(Scala3Stdlib, Set("jar"), update.value)))
+    name := "okay-core-tofu",
+    libraryDependencies ++= Seq("tf.tofu" %% "tofu-kernel" % "0.14.3", "org.scalameta" %% "munit" % "1.2.3" % Test),
+    inConfig(Test)(allowUnsafe),
+    Test / sourceGenerators += Def.task {
+      GuideDoc.generate(baseDirectory.value.getParentFile.getParentFile / "docs" / "interop.md", (Test / sourceManaged).value / "okay" / "interop" / "InteropDoc.scala", "okay.interop", "InteropDoc")
+    }.taskValue
   )
 
 // `sbt bench`, or `sbt "bench -f 1 -p n=100000 tailcall"`: JMH's options and a regexp go to `benchRun` (JMH,
