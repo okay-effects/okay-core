@@ -16,6 +16,15 @@ okay.async  module async/          Async, its streams, Swap and Mailbox — the 
 scala2/     Scala 2.13              the core read by scalac 2.13; tofu's 2.13 artifacts over Program
 ```
 
+## Platforms
+
+The core and `async/` are cross-built — the JVM, Scala.js, Scala Native — from one source tree, `src/` (`CrossType.Pure`;
+`.jvm`, `.js`, `.native` hold only their `target`). A platform's own beside it: `src/test/scala-jvm` (tofu's and
+cats' suites, docs/guide.md's checked blocks — its tofu example), `src/test/scala-js`, `src/test/scala-jvm-native`
+(`LargeStack`, a thread of a large stack — JS has none, so no suite of the textbook `Cps0` there); in `async/`,
+`src/main/scala-js` and `-jvm-native` (`Platform`: whether it can wait) and `src/test/scala-jvm` (its suites with
+threads). The benchmarks and `scala2/` are the JVM's.
+
 ## What it is for, and the layers that follow
 
 Four requirements, one design:

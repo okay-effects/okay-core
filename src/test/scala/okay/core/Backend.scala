@@ -16,13 +16,8 @@ abstract class BackendSuite(on: Backend) extends munit.FunSuite:
     if on.stackSafe then t else t.withBody(() => BackendSuite.onLargeStack(t.body())))
 
 object BackendSuite:
-  /** `a` on a thread of a 2 GB stack, its value or its failure here */
-  def onLargeStack[A](a: => A): A =
-    var result: Option[Either[Throwable, A]] = None
-    val thread = Thread(null, () => result = Some(try Right(a) catch case e: Throwable => Left(e)), "large-stack", 2L << 30)
-    thread.start()
-    thread.join()
-    result.get.fold(e => throw e, identity)
+  /** `a` on a stack large enough for a program as deep as its run, where the platform has one (`LargeStack`) */
+  def onLargeStack[A](a: => A): A = LargeStack(a)
 
 object Backend:
   /** `Cont`: `Effects.At` the context */

@@ -43,7 +43,7 @@ object Bench {
       val (flags, args) = Def.spaceDelimited("<save> <jmh options>").parsed.partition(_ == "save")
       val save = flags.nonEmpty
       val csv = target.value / "jmh" / "results.csv"
-      val history = baseDirectory.value / "bench.d"
+      val history = (LocalRootProject / baseDirectory).value / "bench.d"
       IO.delete(csv)
       IO.createDirectory(csv.getParentFile)
       val start = System.nanoTime()
@@ -57,7 +57,7 @@ object Bench {
             val previous = runs(history)
             val jvm = (Jmh / run / javaHome).value.map(_.getName).getOrElse(System.getProperty("java.version"))
             log.info(s"bench: on the JVM $jvm")
-            val kept = if (save) Some(keep(csv, history, baseDirectory.value, args, elapsed, jvm)) else None
+            val kept = if (save) Some(keep(csv, history, (LocalRootProject / baseDirectory).value, args, elapsed, jvm)) else None
             report(read(csv), previous, elapsed, kept, log)
           }
         }
@@ -65,7 +65,7 @@ object Bench {
     }.evaluated,
     benchHistory := {
       val pattern = Def.spaceDelimited("<regexp>").parsed.mkString(" ").r
-      history(runs(baseDirectory.value / "bench.d"), pattern, streams.value.log)
+      history(runs((LocalRootProject / baseDirectory).value / "bench.d"), pattern, streams.value.log)
     }
   )
 

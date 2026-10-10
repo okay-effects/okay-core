@@ -54,6 +54,8 @@ class TestAgree extends munit.FunSuite:
         P.Handle(k, r.nextInt(10), make(r, k :: scope, budget - 1))
 
   val Handlers: Array[Kind] = Kind.values.filter(_ != Kind.Icp)
+  /** the kinds that add an effect to the row: a reset and an interceptor add none */
+  val InRow: Set[Kind] = Set(Kind.Write, Kind.St, Kind.Ch, Kind.Thr, Kind.Rd)
   /** the effects an interceptor is made for */
   val Intercepted: Set[Kind] = Set(Kind.Rd, Kind.Thr, Kind.Write, Kind.St)
 
@@ -66,7 +68,7 @@ class TestAgree extends munit.FunSuite:
     case P.Seq(a, b) => build(a, scope).flatMap(x => build(b, scope).map(y => x * 3 + y))
     case P.Op(i, n) =>
       // a reset adds no effect to the row, nor an interceptor: the path counts the handlers between
-      val in = path(scope.take(i).count(Handlers.contains))
+      val in = path(scope.take(i).count(InRow))
       scope(i) match
         case Kind.Write => tell[Int](n)(using c, in.asInstanceOf[Writer % Int :? c.Effs]).map(_ => n)
         case Kind.St =>
@@ -93,7 +95,7 @@ class TestAgree extends munit.FunSuite:
         case Kind.Icp => c.pure(n)
     case P.Intercept(t, n, body) =>
       val inner = Kind.Icp :: scope
-      val in = path(scope.take(t).count(Handlers.contains))
+      val in = path(scope.take(t).count(InRow))
       scope(t) match
         case Kind.Rd => local[Int, Int](_ + n)(using c, in.asInstanceOf[Reader % Int :? c.Effs])(build(body, inner))
         case Kind.Thr => handleWith[Int, Int](using c, in.asInstanceOf[Throws % Int :? c.Effs])(build(body, inner))(e => c.pure(e * 2 + n))
@@ -113,7 +115,10 @@ class TestAgree extends munit.FunSuite:
 
   /** a program's run on each monad: its value, or the failure's class — what they must agree on */
   def outcomes(p: P): List[Any] =
-    def on(run: => Int): Any = try run catch case e: RuntimeException => e.getClass
+    // a failure of the program's own is an outcome; one of its making — a path to the wrong handler — is the test's
+    def on(run: => Int): Any = try run catch
+      case e @ (_: MatchError | _: ClassCastException) => throw AssertionError(s"a program made wrong: $e", e)
+      case e: RuntimeException => e.getClass
     List(
       on(Backend.cont.run[Int](build(p, Nil))),
       on(ZeroBackend.run[Int](build(p, Nil))),
