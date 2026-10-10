@@ -160,7 +160,51 @@ private[zero] object Meta:
           shiftAtHandler[e, r2, j2, t2, I0, V, A, a, i](h.clauses, h.rets, same, c, k, ev), Frames.end, Hd[e, r2, j2, t2, V, V, V](h.clauses, v => v), ev, depth, meta)
     // up to an interceptor, rare: its definition
     case _ => leave(bail(c, k, d))
+  // the kernel's operations, by their effect's identity: answered in place by the nearest handler in force taking it,
+  // if it can; else to the delimiter, as an operation is — after every typed node, costing them nothing
+  case o: KOp[t, oo, x] => kernelInPlace(o.op, ev) match
+    case null => leave(kernelRoute(o.op, false, kcheck, k, d, ev))
+    case h => h.value(o.op) match
+      case s: okay.core.kernel.Signal => deliver[RB, L, I0, V, A, T, X, Z](trustK[Cont0[T, Cont0[L, L, Res[RB, L, V]], X]](ZeroMachine.raise(s)), k, d, ev, depth, meta)
+      case v => k match
+        case th: Frames.Then[a1, x1, i1, t1, t2, b1] => deliver[RB, L, I0, V, A, t1, x1, Z](trustK[Cont0[t1, Cont0[L, L, Res[RB, L, V]], x1]](th.f(v.asInstanceOf[a1])), th.next, d, ev, depth, meta)
+        case _ => deliver[RB, L, I0, V, A, T, X, Z](Return(v).asInstanceOf[Cont0[T, Cont0[L, L, Res[RB, L, V]], X]], k, d, ev, depth, meta)
+  case o: KOpK[t, oo, x] => kernelInPlace(o.op, ev) match
+    case null => leave(kernelRoute(o.op, o.region, o.k, k, d, ev))
+    case h => deliver[RB, L, I0, V, A, T, X, Z](trustK[Cont0[T, Cont0[L, L, Res[RB, L, V]], X]](o.k(h.value(o.op))), k, d, ev, depth, meta)
   case _ => leave(bail(c, k, d))
+
+/** THE TRUSTED STEP of the kernel's nodes in the machine: untyped, okay-core's types phantom at run time */
+private inline def trustK[C](p: Any): C = p.asInstanceOf[C]
+
+/** the nearest handler in force taking the kernel operation, if it answers it in place; `HereOp`, the offer of those
+ * known to a foreign computation */
+private def kernelInPlace(op: okay.kernel.Op[?], ev: Ev[?]): okay.core.kernel.KHandler | Null =
+  if op eq okay.core.kernel.HereOp then okay.core.kernel.Machine.here(kernelHandlers(ev))
+  else
+    var e: Ev[?] = ev
+    while e.isInstanceOf[Ev.Entry[?, ?]] do
+      val en = e.asInstanceOf[Ev.Entry[?, ?]]
+      en.answers match
+        case h: okay.core.kernel.KHandler if h.accepts(op) => return if h.answersInPlace(op) then h else null
+        case _ =>
+      e = en.outer
+    null
+
+private def kernelHandlers(ev: Ev[?]): List[okay.core.kernel.KHandler] = ev match
+  case en: Ev.Entry[?, ?] => en.answers match
+    case h: okay.core.kernel.KHandler => h :: kernelHandlers(en.outer)
+    case _ => kernelHandlers(en.outer)
+  case _ => Nil
+
+/** a kernel operation not answered in place, at the delimiter: a handler's that takes it — its clause, `k` the rest
+ * under it again; else on outside, the rest under the delimiter again */
+private def kernelRoute[RB <: Row, L, I0, V, A, T1, Y](op: okay.kernel.Op[?], region: Boolean, f: Any => Cont0[?, ?, ?],
+    k: Frames[Y, Cont0[L, L, Res[RB, L, I0]], T1, A], d: Delim[RB, L, I0, V, A], ev: Ev[RB]): Cont0[L, L, V] =
+  val r = Resumed[RB, L, I0, V, A, Any, T1, Y](trustK[Any => Cont0[T1, Cont0[L, L, Res[RB, L, V]], Y]](f), k, d, ev)
+  d match
+    case h: ByHandler[e, rr, j, t, a, i0, v] => trustK[Cont0[L, L, V]](kernelAt[rr, j, t, v](h.clauses, op, region, r))
+    case _ => trustK[Cont0[L, L, V]](KOpK[Any, Any, Any](op, region, r))
 
 /** a `shift`'s body up to a reset: its body to run under a reset again, `k` the rest under the reset, lifted in */
 private def shiftAtReset[R <: Row, J, T, I0, V, X, Hole](c: Ctl[R, Cont0[J, J, Res[R, J, T]], X, Hole, V],

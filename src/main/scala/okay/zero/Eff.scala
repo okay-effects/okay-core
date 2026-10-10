@@ -15,6 +15,10 @@ object Res:
     extends Res[R, J, V]
   private[zero] final case class Ctl[R <: Row, J, V, A, I](f: (A => Cont0[Cont0[J, J, Res[R, J, V]], Cont0[J, J, Res[R, J, V]], I]) => Cont0[Cont0[J, J, Res[R, J, V]], Cont0[J, J, Res[R, J, V]], V],
                                                            k: A => Cont0[J, J, Res[R, J, I]]) extends Res[R, J, V]
+  /** a kernel operation, no path: its handler the nearest taking it (okay.core.kernel's `KHandler`); `region`, an
+   * `uncancelable` region crossed */
+  private[zero] final case class KReq[R <: Row, J, V](op: okay.kernel.Op[?], region: Boolean, k: Any => Cont0[J, J, Res[R, J, V]])
+    extends Res[R, J, V]
 
 /** A LEVEL: the answer at a point of a body over `R`, its delimiter's outside at `J` — a program there, pure in its
  * answer, yielding the delimiter the body's answer `V`, or a request */
@@ -47,7 +51,9 @@ private[zero] def runTop[A](p: Eff[Pure, A, A, A, A]): A =
 private def atTop[A](out: Cont0[A, A, Res[Pure, A, A]]): Cont0[A, A, A] =
   Bind(out, (res: Res[Pure, A, A]) => res match
     case Res.Done(a) => Return[A, A](a)
-    case c: Res.Ctl[r, j, v, a, i] => atTop(again(c)))
+    case c: Res.Ctl[r, j, v, a, i] => atTop(again(c))
+    // a kernel program runs under its computation's top handler: none at the top
+    case r: Res.KReq[r, j, v] => throw IllegalStateException(s"a kernel operation with no handler: ${r.op}"))
 
 // THE NODES Control and Effects are written with: an operation, a `shift`, a handler, a reset, a raw capture
 
@@ -115,11 +121,25 @@ private[zero] def bail[RB <: Row, L, I0, V, A, T, X](c: Cont0[T, Cont0[L, L, Res
  * by it; a `shift` up to it — Danvy–Filinski's, the same for every delimiter: the shift's body under this delimiter
  * again, `k` the rest resumed inside it */
 private[zero] def read[RB <: Row, R <: Row, J, T, V](out: Eff[R, J, T, T, Res[RB, Level[R, J, T], V]],
-    on: [E[_], X] => (E[X], In[E, RB], X => Eff[R, J, T, T, Res[RB, Level[R, J, T], V]]) => Eff[R, J, T, T, V]): Eff[R, J, T, T, V] =
+    on: [E[_], X] => (E[X], In[E, RB], X => Eff[R, J, T, T, Res[RB, Level[R, J, T], V]]) => Eff[R, J, T, T, V],
+    onK: (okay.kernel.Op[?], Boolean, Any => Eff[R, J, T, T, Res[RB, Level[R, J, T], V]]) => Eff[R, J, T, T, V]): Eff[R, J, T, T, V] =
   Bind(out, (res: Res[RB, Level[R, J, T], V]) => res match
     case Res.Done(v) => Return(v)
     case r: Res.Req[rb, j, v, e, x] => on[e, x](r.op, r.in, r.k)
-    case c: Res.Ctl[rb, j, v, a, i] => read(again(c), on))
+    case c: Res.Ctl[rb, j, v, a, i] => read(again(c), on, onK)
+    case r: Res.KReq[rb, j, v] => onK(r.op, r.region, r.k))
+
+/** a kernel operation on outside, its rest `k` — THE TRUSTED STEP of the kernel's nodes: untyped */
+private[zero] def kernelOut[R <: Row, J, T, V](op: okay.kernel.Op[?], region: Boolean, k: Any => Cont0[?, ?, ?]): Eff[R, J, T, T, V] =
+  KOpK[Level[R, J, T], Level[R, J, T], V](op, region, k)
+
+/** a kernel operation at a handler: its clause if it takes it, else on outside */
+private[zero] def kernelAt[R <: Row, J, T, V](h: AnyRef, op: okay.kernel.Op[?], region: Boolean, k: Any => Cont0[?, ?, ?]): Eff[R, J, T, T, V] =
+  h match
+    case kh: okay.core.kernel.KHandler =>
+      if kh.accepts(op) then kh.clause(op, k.asInstanceOf[Any => AnyRef], region).asInstanceOf[Eff[R, J, T, T, V]]
+      else kernelOut(op, region || kh.region, k)
+    case _ => kernelOut(op, region, k)
 
 /** a handler's reading: its own by the clause, `k` the rest read again — deep; another's asked again outside, its
  * path one shorter */
@@ -128,7 +148,8 @@ private[zero] def readHand[E[_], R <: Row, J, T, Ans](out: Eff[R, J, T, T, Res[E
   read[E +: R, R, J, T, Ans](out, [E2[_], X] => (op: E2[X], in: In[E2, E +: R], k: X => Eff[R, J, T, T, Res[E +: R, Level[R, J, T], Ans]]) =>
     in match
       case In.Here() => h(op, x => readHand(k(x), h))
-      case In.There(o) => request[E2, R, J, T, X](op, o).flatMap(x => readHand(k(x), h)))
+      case In.There(o) => request[E2, R, J, T, X](op, o).flatMap(x => readHand(k(x), h)),
+    (op, region, k) => kernelAt[R, J, T, Ans](h, op, region, x => readHand(k(x), h)))
 
 /** an interceptor's reading: an operation at its path by the clause, `k` the rest read again — deep; another asked
  * again outside, its path the same, the row is */
@@ -137,12 +158,14 @@ private[zero] def readIntercept[E[_], R <: Row, J, T, Ans](target: In[E, R], out
   read[R, R, J, T, Ans](out, [E2[_], X] => (op: E2[X], in: In[E2, R], k: X => Eff[R, J, T, T, Res[R, Level[R, J, T], Ans]]) =>
     In.same(in, target) match
       case null => request[E2, R, J, T, X](op, in).flatMap(x => readIntercept(target, k(x), h))
-      case same => h(same(op), x => readIntercept(target, k(x), h)))
+      case same => h(same(op), x => readIntercept(target, k(x), h)),
+    (op, region, k) => kernelOut[R, J, T, Ans](op, region, x => readIntercept(target, k(x), h)))
 
 /** a reset's reading: every operation asked again outside — its path the same, the row is — the rest under it again */
 private[zero] def passAll[R <: Row, J, T, O](out: Eff[R, J, T, T, Res[R, Level[R, J, T], O]]): Eff[R, J, T, T, O] =
   read[R, R, J, T, O](out, [E[_], X] => (op: E[X], in: In[E, R], k: X => Eff[R, J, T, T, Res[R, Level[R, J, T], O]]) =>
-    request[E, R, J, T, X](op, in).flatMap(x => passAll(k(x))))
+    request[E, R, J, T, X](op, in).flatMap(x => passAll(k(x))),
+    (op, region, k) => kernelOut[R, J, T, O](op, region, x => passAll(k(x))))
 
 /** a `shift`'s body under its delimiter again, its value the delimiter's answer, `k` the rest resumed inside */
 private def again[RB <: Row, J, V, A, I](c: Res.Ctl[RB, J, V, A, I]): Cont0[J, J, Res[RB, J, V]] =
@@ -154,4 +177,5 @@ private def inside[RB <: Row, J, V, I](s: Cont0[J, J, Res[RB, J, I]]): Eff[RB, J
   Bind(Shift0[J, J, Res[RB, J, V], Level[RB, J, V], Res[RB, J, I]](kk => Bind(s, kk)), (res: Res[RB, J, I]) => res match
     case Res.Done(i) => Return[Level[RB, J, V], I](i)
     case r: Res.Req[rb, j, i, e, x] => Bind(request[e, RB, J, V, x](r.op, r.in), (x: x) => inside[RB, J, V, I](r.k(x)))
-    case c: Res.Ctl[rb, j, i, a, i2] => inside[RB, J, V, I](again(c)))
+    case c: Res.Ctl[rb, j, i, a, i2] => inside[RB, J, V, I](again(c))
+    case r: Res.KReq[rb, j, i] => KOpK[Level[RB, J, V], Level[RB, J, V], I](r.op, r.region, x => inside[RB, J, V, I](r.k(x))))

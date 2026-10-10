@@ -10,7 +10,8 @@ delimited control — `shift`/`reset` with the answer type modified
   interface, a different one: what keeps the interface an interface, not one monad's API.
 
 No macros, no runtime tests of an operation's class, no cast but one (`Cont0`'s empty cases shared): an operation carries a path to its effect in the row,
-and a handler follows it.
+and a handler follows it. (okay-kernel's programs, run natively by the same machines, are untyped by the kernel's
+design: their operations are found by identity, their nodes cast where they are made — `okay.core.kernel`.)
 
 ## A taste
 
@@ -40,7 +41,7 @@ are compiled and run by `TestGuide`.
 - [What `Cont0` does better than `Cont`](docs/cont0-vs-cont.md) — and where it does not.
 - [Architecture](docs/architecture.md) — the interface, `Cont`, `Cont0` and its machine, the references, tests,
   benchmarks.
-- [okay-core as an implementation of okay-kernel](docs/kernel.md) — the bridge, what is exact, what is approximated.
+- [okay-core as an implementation of okay-kernel](docs/kernel.md) — native: how the machines run the kernel's programs, what is exact.
 - The history of the design in [`changelog.d`](changelog.d), the benchmark runs in [`bench.d`](bench.d).
 
 ## Layout
@@ -53,7 +54,7 @@ are compiled and run by `TestGuide`.
 | `okay.zero` | `Cont0` (the kernel, open as a monad of its own), the machine; the instance `At`; `run`; `top`; `shift0` |
 | `okay.async` (module `async/`) | `async`, `await`, `Async.run`, asynchronous streams — and what they race and wait with (`Ref`, `Mailbox`): the core has no thread in it |
 | `okay.interop` (modules `interop/cats`, `interop/tofu`) | cats' monad over `Program` (every platform), tofu's `WithLocal` and `Errors` (the JVM's) |
-| `okay.core.kernel` (module `kernel/`) | `OnCore.zero`, `OnCore.cont`: okay-kernel's `Effects` and protocol on Cont0 and Cont — export, import, the kernel's standard handlers and TCK ([docs/kernel.md](docs/kernel.md)); the JVM's |
+| `okay.core.kernel` | `OnCore.zero`, `OnCore.cont`: okay-kernel's `Effects` and protocol, native on Cont0 and Cont — kernel programs the machines' own nodes, operations found by their effect's identity, export and import ([docs/kernel.md](docs/kernel.md)); okay-kernel's TCK in the module `kernel/` |
 | `okay.scala2` (modules `scala2/prelude`, `scala2/cats`, `scala2/tofu`) | for Scala 2.13: short names of effects and rows, and the same cats and tofu instances compiled by scalac 2.13 |
 
 ## The two monads
@@ -102,7 +103,7 @@ either monad). They agree on every suite; where `Cont0` differs by design, `Test
 runs on okay's effects, on either monad — `local` and
 `handleWith` by `intercept`, an effect handled again where it is. Scala 2.13 reads the same artifact through its
 TASTy reader; `scala2/tests` holds the suites that prove it — one's own effects and handlers, tofu's 2.13 artifacts.
-The core itself names no library.
+The core itself names no library but okay-kernel's API (interfaces and records, no dependency of its own), which it implements natively ([docs/kernel.md](docs/kernel.md)).
 
 ## Build
 

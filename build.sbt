@@ -1,4 +1,7 @@
 ThisBuild / scalaVersion := "3.9.0"
+// okay-kernel's API, the one dependency of the core: published locally (okay-kernel: `sbt publishM2`)
+ThisBuild / resolvers += Resolver.mavenLocal
+lazy val kernelVersion = "0.2.0-SNAPSHOT"
 
 /** a platform's own sources beside the shared ones: `src/<config>/scala-<name>`, as okay's modules have them */
 def platformDirs(config: String, names: String*) = Def.setting(
@@ -8,7 +11,9 @@ def platformDirs(config: String, names: String*) = Def.setting(
  * THE CORE, CROSS-BUILT: the JVM, Scala.js, Scala Native — one source tree, `src/`, shared; a platform's own beside
  * it (`src/test/scala-jvm`, `-js`, `-jvm-native`). The JVM's alone: the benchmarks (JMH), docs/guide.md's checked
  * blocks, the JVM's options. On JS no suite of the textbook CPS (`Cps0`):
- * not stack safe, it needs a thread of a large stack, which JS has not
+ * not stack safe, it needs a thread of a large stack, which JS has not. Its one dependency, okay-kernel's API
+ * (docs/kernel.md): its Java jar on the JVM, its Scala mirror on JS and Native — the machines run the kernel's
+ * programs natively
  */
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
@@ -19,6 +24,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .jvmConfigure(_.enablePlugins(JmhPlugin))
   .jvmSettings(
+    libraryDependencies += "dev.okay" % "okay-kernel-api" % kernelVersion,
     Test / unmanagedSourceDirectories ++= platformDirs("test", "jvm", "jvm-native").value,
     // sun.misc.Unsafe's memory access allowed in every forked JVM — run and test when forked, the JMH host
     // (always forked) and its benchmark forks, which inherit the host's options: JDK 24+ warns on the first call
@@ -35,10 +41,12 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     }.taskValue
   )
   .jsSettings(
+    libraryDependencies += "dev.okay" %%% "okay-kernel-scala" % kernelVersion,
     Test / unmanagedSourceDirectories ++= platformDirs("test", "js").value,
     Test / testOptions += Tests.Filter(!_.endsWith("Cps0"))
   )
   .nativeSettings(
+    libraryDependencies += "dev.okay" %%% "okay-kernel-scala" % kernelVersion,
     Test / unmanagedSourceDirectories ++= platformDirs("test", "jvm-native").value
   )
 
@@ -154,20 +162,18 @@ lazy val interopTofu = (project in file("interop/tofu"))
   )
 
 /**
- * THE KERNEL'S API ON OKAY-CORE, A MODULE OF ITS OWN (okay.core.kernel, docs/kernel.md): `OnCore.zero` and
- * `OnCore.cont`, okay-kernel's `Effects` and protocol run on Cont0 and Cont — the core names no library, this module
- * the kernel's API. The JVM's: the API is a Java jar (in ~/.m2, `publishM2` of okay-kernel); its reference machine
- * and TCK in the tests
+ * OKAY-KERNEL'S CHECKS ON OKAY-CORE (docs/kernel.md): the kernel's `Effects`, native in the core
+ * (`okay.core.kernel.OnCore.zero`, `.cont`), checked by okay-kernel's TCK and against its reference machine — the
+ * JVM's, as they are. Tests only: nothing of its own to publish
  */
 lazy val kernel = (project in file("kernel"))
   .dependsOn(core.jvm)
   .settings(
     name := "okay-core-kernel",
-    resolvers += Resolver.mavenLocal,
+    publish / skip := true,
     libraryDependencies ++= Seq(
-      "dev.okay" % "okay-kernel-api" % "0.1.0-SNAPSHOT",
-      "dev.okay" %% "okay-kernel-steps" % "0.1.0-SNAPSHOT" % Test,
-      "dev.okay" %% "okay-kernel-tck" % "0.1.0-SNAPSHOT" % Test,
+      "dev.okay" %% "okay-kernel-steps" % kernelVersion % Test,
+      "dev.okay" %% "okay-kernel-tck" % kernelVersion % Test,
       "org.scalameta" %% "munit" % "1.2.3" % Test)
   )
 

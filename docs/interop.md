@@ -1,6 +1,6 @@
 # tofu and cats — the modules `interop/cats`, `interop/tofu`
 
-A program over a row is an `F[_]`, `Program.Of[R]`. The modules give it the typeclasses — the core names no library:
+A program over a row is an `F[_]`, `Program.Of[R]`. The modules give it the typeclasses — the core names no library of them:
 
 - `okay-core-cats` (every platform): `okay.interop.CatsProgram`, cats' `StackSafeMonad`.
 - `okay-core-tofu` (the JVM's: tofu has no JS or Native artifacts): `okay.interop.TofuProgram` — `WithLocal` from a

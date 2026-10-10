@@ -13,7 +13,7 @@ import okay.core.*
  * for speed — an operation with its rest, a map, a tail call, a resumed stack, each without a bind. `step` reads
  * the nine, to the head, with a stack of frames.
  */
-enum Cont[R <: Row, I, O, A]:
+enum Cont[R <: Row, I, O, A] extends okay.kernel.Prog[A]:
   case Return[R <: Row, S, A](a: A) extends Cont[R, S, S, A]
   /** an operation of `E`, at its path in the row: a leaf, to whoever folds the tree */
   case Inject[E[_], R <: Row, S, X](op: E[X], in: In[E, R]) extends Cont[R, S, S, X]
@@ -49,6 +49,13 @@ enum Cont[R <: Row, I, O, A]:
    * clause, another on outside as it is */
   case Icept[E[_], R <: Row, Q, S, Ans, A](body: () => Cont[R, S, Ans, A], ret: A => S, in: In[E, R], h: Handler[[Z] =>> Cont[R, Q, Q, Z], E, ?, Ans])
     extends Cont[R, Q, Q, Ans] with ByIcept[E, R, Q, S, Ans, A]
+
+  /** AN OPERATION OF THE KERNEL'S (okay-kernel's `Op`, okay.core.kernel): no path — its handler found by its effect's
+   * identity as it runs, answered in place by the handlers in force or routed to the delimiters; its value read for
+   * a signal where it was performed. Matched after every typed node */
+  case KInject[R <: Row, S, X](op: okay.kernel.Op[?]) extends Cont[R, S, S, X]
+  /** a kernel operation with the rest bound to its value as it is; `region`, an `uncancelable` region crossed */
+  case KSuspend[R <: Row, I, O, A](op: okay.kernel.Op[?], region: Boolean, k: Any => Cont[R, I, O, A]) extends Cont[R, I, O, A]
 
   def flatMap[I2, B](f: A => Cont[R, I2, I, B]): Cont[R, I2, O, B] = this match
     case i: Inject[e, r, s, x] => Cont.bound(i, f)
@@ -216,6 +223,66 @@ object Cont:
     case Bind(mm, g) => mm match
       case Return(a) => run(g(a), k, d, ev, m, ex, depth)
       case _ => run(mm, Frames.Then(g, k), d, ev, m, ex, depth)
+    // the kernel's operations, by their effect's identity: answered in place by the nearest handler in force taking
+    // it, if it can; else to the delimiter, as an operation is — after every typed node, costing them nothing
+    case ki: KInject[r, s, x] => kernelInPlace(ki.op, ev) match
+      case null => leave(kernelPerformed(ki.op, false, kernelThen(kcheck, k), d))
+      case h => run(kernelValue[R, T, O, A](h.value(ki.op)), k, d, ev, m, ex, depth)
+    case ks: KSuspend[r, i, o, a] => kernelInPlace(ks.op, ev) match
+      case null => leave(kernelPerformed(ks.op, ks.region, kernelThen(ks.k, k), d))
+      case h => run(trustK[Cont[R, T, O, A]](ks.k(h.value(ks.op))), k, d, ev, m, ex, depth)
+
+  /** THE TRUSTED STEP of the kernel's nodes in the loop: untyped, okay-core's types phantom at run time */
+  private inline def trustK[C](p: Any): C = p.asInstanceOf[C]
+
+  /** a kernel operation's value read for a signal — the machine's `check`, at this monad's type */
+  private def kcheck: Any => Cont[?, ?, ?, ?] = ContMachine.check.asInstanceOf[Any => Cont[?, ?, ?, ?]]
+
+  /** a kernel operation's value in place: itself, or the signal raised */
+  private def kernelValue[R <: Row, T, O, A](v: Any): Cont[R, T, O, A] = v match
+    case s: okay.core.kernel.Signal => trustK[Cont[R, T, O, A]](ContMachine.raise(s))
+    case _ => Return(v).asInstanceOf[Cont[R, T, O, A]]
+
+  /** `f` then the frames `k`: a kernel operation's rest */
+  private def kernelThen[R <: Row, A, I, T, B](f: Any => Cont[?, ?, ?, ?], k: Frames[R, A, I, T, B]): Any => Cont[?, ?, ?, ?] = k match
+    case Frames.End() => f
+    case _ => trustK[Any => Cont[?, ?, ?, ?]](Frames.Then[R, Any, A, I, T, Any, B](trustK[Any => Cont[R, T, Any, A]](f), k))
+
+  /** the nearest handler in force taking the kernel operation, if it answers it in place; `HereOp`, the offer of
+   * those known to a foreign computation */
+  private def kernelInPlace(op: okay.kernel.Op[?], ev: Ev[?]): okay.core.kernel.KHandler | Null =
+    if op eq okay.core.kernel.HereOp then okay.core.kernel.Machine.here(kernelHandlers(ev))
+    else
+      var e: Ev[?] = ev
+      while e.isInstanceOf[Ev.Entry[?, ?]] do
+        val en = e.asInstanceOf[Ev.Entry[?, ?]]
+        en.answers match
+          case h: okay.core.kernel.KHandler if h.accepts(op) => return if h.answersInPlace(op) then h else null
+          case _ =>
+        e = en.outer
+      null
+
+  private def kernelHandlers(ev: Ev[?]): List[okay.core.kernel.KHandler] = ev match
+    case en: Ev.Entry[?, ?] => en.answers match
+      case h: okay.core.kernel.KHandler => h :: kernelHandlers(en.outer)
+      case _ => kernelHandlers(en.outer)
+    case _ => Nil
+
+  /** the program leaving the delimiter `d` with a kernel operation not answered in place, `g` the rest: at a handler
+   * that takes it, its clause, `k` the rest under it again; else on outside, the rest under the delimiter again. At
+   * the top, none: a kernel program runs under its computation's top handler */
+  private def kernelPerformed[R <: Row, I, O, B, P](op: okay.kernel.Op[?], region: Boolean, g: Any => Cont[?, ?, ?, ?], d: Delim[R, I, O, B, P]): P =
+    d match
+      case _: TopOf[r, i, o, b] => throw IllegalStateException(s"a kernel operation with no handler: $op")
+      case dr: ByReset[r, q, s, o, a1] => trustK[P](KSuspend[r, q, q, o](op, region, Redelimit[r, q, s, o, a1, Any](trustK[Any => Cont[r, s, o, a1]](g), dr.ret)))
+      case df: ByFold[e, t, q, s, ans, a1] =>
+        val rest = trustK[Any => Cont[e +: t, s, ans, a1]](g)
+        df.h match
+          case kh: okay.core.kernel.KHandler =>
+            if kh.accepts(op) then trustK[P](kh.clause(op, trustK[Any => AnyRef](Resume[e, t, q, s, ans, a1, Any](rest, df)), region))
+            else trustK[P](KSuspend[t, q, q, ans](op, region || kh.region, Refold[e, t, q, s, ans, a1, Any](rest, df)))
+          case _ => trustK[P](KSuspend[t, q, q, ans](op, region, Refold[e, t, q, s, ans, a1, Any](rest, df)))
+      case di: ByIcept[e, r, q, s, ans, a1] => trustK[P](KSuspend[r, q, q, ans](op, region, Reintercept[e, r, q, s, ans, a1, Any](trustK[Any => Cont[r, s, ans, a1]](g), di)))
 
   /** the program leaving the delimiter `d` with the value `a`: its `ret` applied — out of `run`, so the loop stays
    * small enough for the JIT to compile it whole */

@@ -1,90 +1,102 @@
 # okay-core as an implementation of okay-kernel
 
 okay-kernel is a protocol: what lets implementations of effects and delimited control work with each other in one
-process (okay-kernel's `docs/design.md`). The module `kernel/` (`okay-core-kernel`, package `okay.core.kernel`, the
-JVM's) makes okay-core one of them: `OnCore.zero` and `OnCore.cont` implement the kernel's `Effects` and `Direct` on
-okay-core's machines — Cont0's and Cont's. The core itself names no library; this module depends on the kernel's API
-(`dev.okay:okay-kernel-api`, pure Java).
+process (okay-kernel's `docs/design.md`). okay-core implements it **natively**: the core depends on okay-kernel's API
+(`dev.okay:okay-kernel-api` on the JVM, a jar of interfaces and records; its Scala mirror `okay-kernel-scala` on
+Scala.js and Native) and its machines run the kernel's programs themselves. `okay.core.kernel.OnCore.zero` and
+`OnCore.cont` are okay-kernel's `Effects` on Cont0's machine and Cont's loop.
 
 ```scala
 import okay.core.kernel.OnCore
 import okay.kernel.std.Handlers
 
-val c = OnCore.zero.computation(program, row)   // export: run on Cont0, steps out where it needs what it cannot answer
-OnCore.cont.foreign(otherComputation)           // import: another implementation's program, answered by okay-core's handlers
+OnCore.zero.computation(program, row).start(host)   // export: run on Cont0, stepping out where it needs what it cannot answer
+OnCore.cont.foreign(otherComputation)               // import: another implementation's program, answered here
 ```
 
-## How
+## Native
 
-A kernel program (`Prog`) is a small tree of the bridge's nodes — context-free, as the kernel's programs are — and is
-translated into okay-core's program where it is placed: at okay-core's context there, with the bridge's handlers in
-force there. A bind's function is translated when the bind runs, a handler's body when the handler is entered, so a
-run is okay-core's own loop, in constant stack.
+**Nothing wrapped, nothing translated.** `Cont0` and `Cont` extend `okay.kernel.Prog`: a kernel program is the
+machine's own nodes, built by `OnCore` directly — `pure` a `Return`, `flatMap` a `Bind`, `delay` a `Delay`. The
+kernel's functions (`Fn`, `Thunk`) are called guarded: an exception of the program's is a failure where it is called.
 
-- **An operation** goes to the nearest handler of its effect by identity (`Type`). All the kernel's operations are
-  one okay-core effect, `Dyn[X] = Op[X]`; the bridge finds the handler and gives okay-core its path, `In`.
-- **Handlers, by shape.** `Answering` is okay-core's `Answering`: answered in place by its machine. `Aborting` is an
-  okay-core `Answering` too, its value a signal that unwinds to it. `General` is an okay-core handler, its clause the
-  kernel's, `k` okay-core's (deep, multi-shot). `Returning`'s return is okay-core's `ret` itself — a value, nothing
-  flattened; a failure of it is a signal read where the handler is left, so `recover` catches it. A `General`
-  return (a program) makes the okay-core answer that program, run when the handler is left.
-- **`shift0` and `$`** are the bridge's: `$` an okay-core handler whose return is `k`; `shift0` an operation to the
-  nearest delimiter — a `$` or a kernel handler — whose clause runs the body in the delimiter's place with okay-core's
-  `k`. okay-core's own `shift`/`reset`/`shift0` are not used: the bridge's own delimiters (`recover`, `ensuring`,
-  `uncancelable`, an abort's catcher) are okay-core handlers, and okay-core's control would stop at them; the kernel's
-  passes them. An `Answering` handler has a delimiter of the bridge around it for `shift0`: one okay-core handler
-  more, transparent to everything else.
-- **Failures, aborts, cancellation** are not okay-core primitives, so they are the bridge's effect: an `Unwind`
-  operation to the nearest `recover`, `ensuring`, abort catcher or the top, each taking what concerns it and
-  performing the rest again outward. An exception of the program's functions (a bind's, a map's, a delay's, a clause,
-  an `Answering`'s value, a `Program.in`) is caught where the bridge calls it and unwinds from there. What a handler
-  or the host answers an operation can be a signal — a failure (`k.fail`), a cancellation (`k.cancel`), an abort, a
-  cancellation pending inside an `uncancelable` region — read where the operation was performed. A region takes an
-  unwinding too: ended so, it cancels if a cancellation waits, else lets it go on.
-- **Export** (`computation`): the program under the bridge's top handler, on okay-core's top. An operation with no
-  handler of it in force is answered by the host in place if it answers (no okay-core operation at all), else
-  performed to the top handler, whose clause answers `Step.Yield` with okay-core's `k` — each resumption a run of it
-  on okay-core's top: multi-shot, from any thread. **Import** (`foreign`): another's computation started where it is
-  placed, offered in place the answers of the `Answering` handlers in force (else the host's), its yields performed
-  here; an abort or a cancellation crossing it cancels it, its finalizers' operations answered here, then goes on.
-- **A `k` resumed under other handlers** than it was made under — a `shift0`'s `k` used further out, a clause
-  resuming `k` under a handler of its own, a generator's rest in another computation — runs under forwarding
-  handlers that perform again, by the kernel's rules, what reaches them: in place where the handler found answers
-  in place (an okay-core `Answering` forwarder), else by a clause.
-- **`Direct`**: the same nodes, untyped. A kernel `Prog` already is the bridge's node — there is no wrapper around
-  okay-core's program to skip — so `Direct` saves only the typed signatures.
+**Operations by identity, in the machines.** The kernel's operations carry no path — the kernel's programs are
+context-free, written once for every implementation — so the machines find their handler as they run, by the
+effect's `Type`. Two nodes each, matched after every typed one: Cont0's `KOp` (`perform`: its value read for a signal
+where it was performed) and `KOpK` (its rest bound, the value as it is); Cont's `KInject` and `KSuspend`. The handlers
+in force — the machines' evidence `Ev`, which Cont0's machine and Cont's loop already keep to answer typed
+operations in place — hold the kernel's handlers too: the nearest that takes the operation answers it in place if it
+can (a cell's `get`, a reader's `ask`, the host's), else the operation goes to the delimiter as an operation does,
+each delimiter passing it on unless it is a kernel handler that takes it. Nothing is known (`Ev.Unknown`, past a
+delimiter the machine did not enter): routed, the same answer, slower. A `k` resumed anywhere — under other handlers,
+in another computation — finds the handlers in force where it runs, as the reference machine does: no context
+captured when a program was built.
+
+**The handler shapes as the machines' handlers.** A kernel handler is the machine's own handler node (Cont0's
+`Handle`, Cont's `Fold`), its clauses a `KHandler` — an okay-core `Answering`, so the machines keep it among the
+handlers in force whatever its shape; okay-core's typed operations never reach it (their paths go to their own).
+`Answering` is answered in place; `Aborting` is answered in place by a signal that unwinds to it (its finalizers run
+on the way); `General` is a clause with the machine's `k`; `Returning`'s return is the machine's `ret` itself, a value,
+its failure a signal read where the handler is left. A `General` return (a program) makes the handler's answer that
+program, run when it is left.
+
+**Control.** `$` is a handler node whose return is `k`; `shift0` an operation (`Shift0Op`) to the nearest
+delimiter — a `$` or a kernel handler — whose clause runs the body in the delimiter's place with the machine's `k`,
+the delimiter included. Not okay-core's `shift`/`shift0`: the native failures, finalizers and regions below are
+handler nodes too, and okay-core's control would stop at them; the kernel's passes them.
+
+**Failures, finalizers, cancellation**, which okay-core has no primitive for, at the least cost: an operation
+`Unwind` to the nearest handler taking it — `recover` (a failure), `ensuring` (any: its finalizer, then on), an
+`uncancelable` region (any: it ends the region; a cancellation waiting there is taken then), an `Aborting` handler
+(its own abort), the top. What an operation is answered can be a `Signal` — a failure (`k.fail`, a throwing
+`Answering`), a cancellation (`k.cancel`), an abort, a value given inside a region a cancellation waits for — read
+where the operation was performed. A program that uses none of them pays for none: a `try` around the kernel's
+functions, an `instanceof` on an operation's value.
+
+**The protocol.** Export: the program under a top handler (`Host`) on the machine's top. An operation no handler of
+which is in force is answered in place by the host if it answers (the host is among the handlers in force: no
+capture), else handed out — `Step.Yield` with the machine's `k` as the `Resume`, each resumption a run of it on the
+machine's top: multi-shot, from any thread. Import: another's computation, offered in place what the handlers in
+force answer so (the machine's walk of its evidence), its yields performed here as operations; an abort or a
+cancellation crossing it cancels it, its finalizers' operations answered here, then goes on.
+
+**The typed front, untouched.** `A ! E1 + E2`, paths, `Effects`' contexts, the standard effects: the same code, the
+same nodes; the kernel's nodes are matched after every typed one in each loop (`deliver`, `go`, `read`; `run`) and
+their handling is out of the loops, in methods of its own. Measured below.
+
+**Not done: okay-core's own operations as the kernel's vocabulary.** okay-core's `Get`, `Ask`, `Tell`… find their
+handler by path, and carry no `Type`; to implement `State.Ops` and the rest they would need one — a `TypeOf` at
+every `get[S]`, `ask[E]`, which would change the typed front's signatures (every generic caller would need it too)
+and cost each typed operation a field. The two worlds meet at the border (`computation`, `foreign`) and by the
+kernel's own vocabulary inside kernel programs; an okay-core typed program is not exported as it is.
 
 ## What is exact, what is approximated
 
-Exact — the reference machine's semantics (okay-kernel's `Steps`), checked by the same suites and all of the TCK, on
-both machines: the standard handlers, `shift0`/`$` (through `recover` and `ensuring`, handlers as delimiters, the
-body outside its delimiter), failures and `recover` (a `Returning`'s answer's too), finalizers after a value, a
-failure, an abort and a cancellation, `uncancelable` regions (a region that fails with a cancellation waiting
-cancels), export with multi-shot `k`, the host answering in place, `k.fail`, `k.cancel`, import (a foreign program
-crossed by an abort is cancelled, its finalizers' operations answered here), a `k` resumed under other handlers,
-across implementations.
+Exact — the reference machine's semantics (okay-kernel's `Steps`), checked by okay-kernel's TCK (all 13 checks,
+the 1 000 random programs' digest) on both machines: the standard handlers, `shift0`/`$` (through `recover` and
+`ensuring`, handlers as delimiters, the body outside its delimiter), failures and `recover` (a `Returning`'s answer's
+too), finalizers after a value, a failure, an abort and a cancellation, `uncancelable` regions (one that fails with a
+cancellation waiting cancels), export with multi-shot `k` from any thread, the host answering in place, `k.fail`,
+`k.cancel`, import (a foreign program crossed by an abort is cancelled, its finalizers' operations answered here), a
+`k` resumed under other handlers, across implementations.
 
-Approximated, the one thing: what is decided **in place** when a node is translated keeps the place it was
-translated at. A `k` resumed somewhere else carries, already translated, the operations the host it was made under
-answered in place, and a foreign computation started inside it is offered in place the answers of the handlers it was
-made under. Its operations that reach its handlers' places are performed again where it runs (the forwarders); those
-answered in place at translation are not.
+Approximated: nothing known to the TCK or to these suites. The bridge's one approximation — what was decided in place
+when a program was translated kept that place — is gone with the translation.
 
-Cost: every node is translated when placed, every bind guarded (a `try`), every operation's value read for a signal
-(one bind), a `Returning` handler's answer read (one bind); an `Answering` handler is two okay-core handlers and an
-`Aborting` one two; a `k` resumed under other handlers goes through a forwarder for each handler it may reach.
+Cost: a kernel operation answered in place walks the handlers in force to the nearest of its effect (no cache, as a
+typed path has); an `Answering` handler's operations otherwise cost what okay-core's do.
 
 ## Tests
 
-`kernel/src/test/scala/okay/core/kernel/TestOnCore.scala`, `sbt kernel/test`: 54 tests, all passing —
+- `src/test/scala/okay/core/kernel/TestNative.scala` — on the JVM, Scala.js and Scala Native: a kernel program is the
+  machine's nodes; state 100 000 deep; reader, writer, a raise with its finalizer, choose; `shift0`/`$` through
+  `recover`; export, multi-shot `k`, `k.cancel`; import from the other machine — 6 on each machine.
+- `kernel/` (the JVM's, tests only): the reference machine's twelve checks, a `k` under other handlers, a round trip
+  through the reference machine (`Steps`) — 14 on each machine; okay-kernel's TCK (`TckSuite`, nesting through
+  `Steps`) — 13 on each machine. 54 in all.
 
-- the reference machine's twelve checks (okay-kernel's `TestSteps`: state 100 000 operations in constant stack,
-  writer + state + reader, raise + finalizer + `handleWith`, choose all / first, the `shift0`/`$` laws, a generator,
-  failure and `recover`, export multi-shot, the host answering in place, `k.fail`, `k.cancel` and `uncancelable`,
-  import), plus a `k` resumed under other handlers and a check across implementations — a computation of the
-  reference machine imported under OnCore's handlers and one of OnCore's under the reference's, the same results:
-  14 on `OnCore.zero`, 14 on `OnCore.cont`;
-- okay-kernel's TCK (`TckSuite`, nesting through the reference machine `Steps`): its 13 checks — among them a resume
-  from another thread, a `k` resumed under other handlers, a shift0's body outside its delimiter, a failure of a
-  handler's answer, a region failing with a cancellation waiting, a foreign program ended by an abort, and 1 000
-  random programs with the reference's digest — on each machine.
+## Measured
+
+`KernelMixedBenchmark` (src/jmh): okay-kernel's mixed program, written once over the kernel's `Effects` (okay-kernel's
+bench/MixedBenchmark, the same code), on okay-core's machines natively — against `MixedBenchmark`, the same program in
+okay-core's own words. See the numbers in changelog.d/kernel-native.md.

@@ -32,7 +32,7 @@ threads). The benchmarks and `scala2/` are the JVM's.
 
 Four requirements, one design:
 
-1. **A small kernel people can read and use on its own** — the core names no library; ~1 700 lines.
+1. **A small kernel people can read and use on its own** — the core names no library but okay-kernel's API, which it implements (docs/kernel.md); ~1 700 lines, and ~550 for the kernel's programs (okay.core.kernel, the machines' kernel nodes).
 2. **The kernel of okay**, whose programs are `M[R, A]` — the row in the type — over `Effects[M]`, and whose
    handlers take an effect off the row wherever it is.
 3. **Scala 2.13**, from the same artifact: okay reaches Scala 2 through scalac 2.13's TASTy reader (a cross-build

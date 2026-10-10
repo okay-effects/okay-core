@@ -21,7 +21,7 @@ import scala.annotation.tailrec
  * there), a resumption — and run by the machine (Eff.scala), each delimiter in a loop of its own. `step` runs any
  * of them to its head, the machine's by their shift0 programs, in constant stack.
  */
-sealed abstract class Cont0[I, O, A]:
+sealed abstract class Cont0[I, O, A] extends okay.kernel.Prog[A]:
   final def flatMap[I2, B](f: A => Cont0[I2, I, B]): Cont0[I2, O, B] = Cont0.bind(this, f)
   final def map[B](f: A => B): Cont0[I, O, B] = Cont0.Map(this, f)
 
@@ -95,6 +95,13 @@ object Cont0:
       k: Frames[Y, Cont0[L, L, Res[RB, L, I0]], T1, A],
       d: Delim[RB, L, I0, V, A], ev: Ev[RB]) extends Cont0[L, L, V]
 
+  /** AN OPERATION OF THE KERNEL'S (okay-kernel's `Op`, okay.core.kernel): no path — its handler found by its effect's
+   * identity as it runs, answered in place by the handlers in force or routed to the delimiters; its value read for
+   * a signal where it was performed (okay.core.kernel's `Machine.check`). Matched after every typed node */
+  private[okay] final case class KOp[I, O, A](op: okay.kernel.Op[?]) extends Cont0[I, O, A]
+  /** a kernel operation with the rest bound to its value as it is; `region`, an `uncancelable` region crossed */
+  private[okay] final case class KOpK[I, O, A](op: okay.kernel.Op[?], region: Boolean, k: Any => Cont0[?, ?, ?]) extends Cont0[I, O, A]
+
   /** `c.flatMap(f)`: an operation bound one node, `OpK` */
   private[zero] def bind[I, O, A, I2, B](c: Cont0[I, O, A], f: A => Cont0[I2, I, B]): Cont0[I2, O, B] = c match
     case o: Op[r, j, t, e, x] => OpK[r, j, t, e, x, I2, B](o.op, o.in, f)
@@ -159,6 +166,19 @@ object Cont0:
     case Shift0(f) => head(Head.Cut(f, k))
     // a `$`: its body in this loop, the frames outside it and its `ret` pushed
     case d: Dollar[ib, i2, o2, b, ab] => go[ib, ib, Cont0[i2, o2, b], ab, ab, Z](d.body, Frames.end, KMeta.Under[ib, i2, o2, b, ab, I, A, Z](d.ret, k, meta))
+    // the kernel's operations, as an operation is: a request with the rest — read for a signal first, a `KOp`'s
+    case o: KOp[t, o, x] => head(kernelCut[I, O, A](o.op, false, kcheck, k))
+    case o: KOpK[t, o, x] => head(kernelCut[I, O, A](o.op, o.region, o.k, k))
+
+  /** a kernel operation's head, nothing known of the handlers around: a request by its effect's identity, `f` then
+   * `k` its rest. THE TRUSTED STEP of the kernel's nodes here: untyped, okay-core's types phantom at run time */
+  private def kernelCut[I, O, A](op: okay.kernel.Op[?], region: Boolean, f: Any => Cont0[?, ?, ?], k: Frames[?, I, ?, A]): Head[I, O, A] =
+    Head.Cut[I, Any, Any, Any, O, Any, A](
+      kk => Return[Any, Any](Res.KReq[Pure, Any, Any](op, region, kk.asInstanceOf[Any => Cont0[Any, Any, Res[Pure, Any, Any]]])).asInstanceOf[O],
+      Frames.Then[Any, Any, I, Any, Cont0[Any, Any, Any], A](f.asInstanceOf[Any => Cont0[Any, Cont0[Any, Any, Any], Any]], k.asInstanceOf[Frames[Any, I, Any, A]]))
+
+  /** a kernel operation's value read for a signal — the machine's `check`, at this monad's type */
+  private[zero] def kcheck: Any => Cont0[?, ?, ?] = ZeroMachine.check.asInstanceOf[Any => Cont0[?, ?, ?]]
 
   /** `x` into the rest `k` — LAZILY: a bind the loop takes when it gets to it, so applying `k` runs nothing of the
    * rest; an empty rest, the value itself */
