@@ -227,6 +227,13 @@ class MonadsBenchmark:
   @Benchmark
   def stateHoisted(): Int = run(okay.std.state[Int](0)(countingHoisted(n)))._1
 
+  /** `Int ! State % Int + Reader % Int`: two effects joined, each path found through `+`'s sides, per call */
+  def countingBoth(i: Int): Int ! State % Int + Reader % Int =
+    if i == 0 then get[Int] else ask[Int].flatMap(d => get[Int].flatMap(x => put(x + d))).flatMap(_ => countingBoth(i - 1))
+
+  @Benchmark
+  def stateReaderBang(): Int = run(okay.std.reader(1)(okay.std.state[Int](0)(countingBoth(n))))._1
+
   @Benchmark
   def forwarded4(): Boolean = run(Effects.handle(ticking)(skips(4)))
 

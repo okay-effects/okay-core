@@ -21,17 +21,10 @@ enum In[E[_], R <: Row]:
   private[okay] var found: In.Found[E] | Null = null
 
 /** EFFECTS JOINED, `E1 + E2 + …`: what a program needs, written as the user writes it — `Int ! Reader % Int + Async`.
- * Two effects joined are an effect again (`Both`, a marker), so `+` goes on; `Needed` makes a row of them */
+ * Two effects joined are an effect again (`Both`, a marker), so `+` goes on — and an effect not yet known, `F`, is
+ * one too: `A ! Choose + F`. The compiler finds each effect in it (`Req`) and its path in a row (`Paths`) */
 sealed trait Both[F[_], G[_], X]
 infix type +[F[_], G[_]] = [X] =>> Both[F, G, X]
-/** the effect `E` after the row `R` */
-type Append[R <: Row, E[_]] <: Row = R match
-  case Pure => E +: Pure
-  case h +: t => h +: Append[t, E]
-/** the effects joined in `F`, a row in the order written: one effect, a row of one */
-type Needed[F[_]] <: Row = F[Any] match
-  case Both[f, g, Any] => Append[Needed[f], g]
-  case _ => F +: Pure
 
 /** `E :? R`, the effect `E` in the row `R`: `In` as it is written in a signature, `(using in: Reader % E :? c.Effs)` —
  * a `:`-operator, so `%` and `+:` bind tighter: `Ask :? Ask +: Pure` */
@@ -82,14 +75,20 @@ object Sub:
         case In.Here() => head
         case In.There(out) => tail(out)
 
-/** the effect `E` AMONG THE EFFECTS a program needs, `Es`: the one effect it is, `Only`, or its path in the row of
- * them, `Path`. Which of the two is for the compiler's search to choose — by the kind of `Es`, an effect or a row */
+/** the effect `E` AMONG THE EFFECTS a program needs, `Es`: the one effect it is, `Only`; its path in the row of
+ * them, `Path`; or in one of two joined, `Left` and `Right`. Which is for the compiler's search to choose — by the
+ * kind of `Es`, an effect, a row, two joined; the left first, as written */
 enum Req[E[_], Es <: AnyKind]:
   case Only[E[_]]() extends Req[E, E]
   case Path[E[_], Es <: Row](in: In[E, Es]) extends Req[E, Es]
-object Req:
+  case Left[E[_], F[_], G[_]](r: Req[E, F]) extends Req[E, F + G]
+  case Right[E[_], F[_], G[_]](r: Req[E, G]) extends Req[E, F + G]
+object Req extends ReqLow:
   given only[E[_]]: Req[E, E] = Only()
   given path[E[_], Es <: Row](using in: In[E, Es]): Req[E, Es] = Path(in)
+  given left[E[_], F[_], G[_]](using r: Req[E, F]): Req[E, F + G] = Left(r)
+sealed trait ReqLow:
+  given right[E[_], F[_], G[_]](using r: Req[E, G]): Req[E, F + G] = Req.Right(r)
 
 /** THE PATHS of the effects a program needs, `Es` — one effect, or a row of them — in the row `R` */
 sealed abstract class Paths[Es <: AnyKind, R <: Row]:
@@ -102,6 +101,8 @@ object Paths:
   trait Keep[R <: Row, C]:
     def one[E0[_]](head: In[E0, R]): C & Needs[E0]
     def row[Es <: Row](sub: Sub[Es, R]): C & Needs[Es]
+    /** effects joined: the paths of each side, kept as they are */
+    def both[F[_], G[_]](paths: Paths.Both[F, G, R]): C & Needs[F + G]
   /** one effect, `E0`, at its path */
   final class One[E0[_], R <: Row](val head: In[E0, R]) extends Paths[E0, R]:
     // `Only`: a `Path` is into a row, `E0` is an effect — of another kind, which the checker does not tell apart
@@ -114,8 +115,15 @@ object Paths:
     def find[E[_]](r: Req[E, Es]): In[E, R] = (r: @unchecked) match
       case Req.Path(in) => sub(in)
     def kept[C](make: Keep[R, C]): C & Needs[Es] = make.row(sub)
+  /** two effects joined, `F + G`, each side's paths found on its own */
+  final class Both[F[_], G[_], R <: Row](val left: Paths[F, R], val right: Paths[G, R]) extends Paths[F + G, R]:
+    def find[E[_]](r: Req[E, F + G]): In[E, R] = (r: @unchecked) match
+      case Req.Left(l) => left.find(l)
+      case Req.Right(g) => right.find(g)
+    def kept[C](make: Keep[R, C]): C & Needs[F + G] = make.both(this)
   given one[E0[_], R <: Row](using head: In[E0, R]): Paths[E0, R] = One(head)
   given row[Es <: Row, R <: Row](using sub: Sub[Es, R]): Paths[Es, R] = Of(sub)
+  given both[F[_], G[_], R <: Row](using left: Paths[F, R], right: Paths[G, R]): Paths[F + G, R] = Both(left, right)
 
 
 /** A PATH IN `RV` MADE ONE IN `RC`: what a context seen over one row and run over another translates its operations

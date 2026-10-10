@@ -23,6 +23,12 @@ type Pure = okay.core.Pure
 export okay.core.{perform, pure, Effects, Handler, Answering, Program, Top}
 export okay.core.Control.{reset, shift}
 
+/** `effect(op)`: an operation of one's own effect, a program — okay's word for `perform` */
+def effect[E[_], X](op: E[X]): X ! E = okay.core.perform(op)
+extension [E[_], X](op: E[X])
+  /** `op.perform`: the same, written after the operation */
+  def perform: X ! E = okay.core.perform(op)
+
 /** `run(p)`: a program with nothing left to handle, run on `Cont0` — its value */
 def run[A](p: (c: okay.core.Effects { type Effs = okay.core.Pure; type S = A }) ?=> c.Prog[A]): A =
   runOn(okay.zero.top)(p)

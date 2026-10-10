@@ -31,6 +31,7 @@ class At[R0 <: Row, S0] extends Effects with Paths.Keep[R0, At[R0, S0]]:
   def needing[Es <: AnyKind](p: Paths[Es, R0]): At[R0, S0] & Needs[Es] = p.kept(this)
   def one[E0[_]](head: In[E0, R0]): At[R0, S0] & Needs[E0] = NeedyOne(head)
   def row[Es <: Row](sub: Sub[Es, R0]): At[R0, S0] & Needs[Es] = NeedyRow(sub)
+  def both[F[_], G[_]](paths: Paths.Both[F, G, R0]): At[R0, S0] & Needs[F + G] = NeedyBoth(paths)
   def answer[S2]: At[R0, S2] = At()
   def top: Top = okay.cont.top
   def shift[I, O, A](f: (A => Cont[R0, O, O, I]) => Cont[R0, O, O, O], same: (I =:= O) | Null): Cont[R0, I, O, A] = Shift(f)
@@ -46,6 +47,10 @@ final class NeedyRow[R0 <: Row, S0, Es <: Row](sub: Sub[Es, R0]) extends At[R0, 
   // `Path`, as in `Paths.Of`
   def find[E[_]](r: Req[E, Es]): In[E, R0] = (r: @unchecked) match
     case Req.Path(in) => sub(in)
+
+/** an `At` with the paths of effects joined a program needs */
+final class NeedyBoth[R0 <: Row, S0, F[_], G[_]](paths: Paths.Both[F, G, R0]) extends At[R0, S0] with Needs[F + G]:
+  def find[E[_]](r: Req[E, F + G]): In[E, R0] = paths.find(r)
 
 /** `run(body)`: the body at the top over `Cont`, nothing to perform, its answer its value */
 def run[A](body: At[Pure, A] ?=> Cont[Pure, A, A, A]): A = body(using At()).value

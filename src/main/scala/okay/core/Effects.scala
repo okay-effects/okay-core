@@ -42,7 +42,7 @@ object Needs:
  * written under any handlers, the row never named. At the context's answer, not `Free`'s `Unit`: under a handler the
  * answer is the handler's — `Either[E, A]` under `throws` — so a `Free` program would run only where nothing is
  * answered */
-infix type ![A, F[_]] = (c: Needs[Needed[F]]) ?=> c.Prog[A]
+infix type ![A, F[_]] = (c: Needs[F]) ?=> c.Prog[A]
 
 object Effects:
   /** `handle(h)(body)` in context: the body written in the handler's context, over `E +: c.Effs`, at its answer */

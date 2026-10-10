@@ -1,7 +1,7 @@
 package okay.zero
 
 // the rows and handlers, okay.core's: imported, not exported — Scala 2's TASTy reader fails on an export of a sealed trait
-import okay.core.{Row, +:, Pure, In, :?, %, Sub, Req, Paths, Handler, Answering, Value}
+import okay.core.{Row, +:, +, Pure, In, :?, %, Sub, Req, Paths, Handler, Answering, Value}
 
 import okay.core
 
@@ -44,6 +44,7 @@ class At[R0 <: Row, J0, T0] private[zero] () extends core.Effects with Paths.Kee
   def needing[Es <: AnyKind](p: Paths[Es, R0]): At[R0, J0, T0] & core.Needs[Es] = p.kept(this)
   def one[E0[_]](head: In[E0, R0]): At[R0, J0, T0] & core.Needs[E0] = At.NeedyOne(head)
   def row[Es <: Row](sub: Sub[Es, R0]): At[R0, J0, T0] & core.Needs[Es] = At.NeedyRow(sub)
+  def both[F[_], G[_]](paths: Paths.Both[F, G, R0]): At[R0, J0, T0] & core.Needs[F + G] = At.NeedyBoth(paths)
 
 /** `shift0[A, O](k => body)` up to the nearest reset — `Cont0`'s own, beyond master's: as `shift`, but the body runs
  * OUTSIDE the reset, in its place, in the context outside — so a shift0 in it reaches the next reset out. `k` the
@@ -69,6 +70,10 @@ object At:
     // `Path`, as in `Paths.Of`
     def find[E[_]](r: Req[E, Es]): In[E, R0] = (r: @unchecked) match
       case Req.Path(in) => sub(in)
+
+  /** a context with the paths of effects joined a program needs */
+  final class NeedyBoth[R0 <: Row, J0, T0, F[_], G[_]](paths: Paths.Both[F, G, R0]) extends At[R0, J0, T0] with core.Needs[F + G]:
+    def find[E[_]](r: Req[E, F + G]): In[E, R0] = paths.find(r)
 
 /** `Cont0`'s top, for a library re-entering it */
 object top extends core.Top:

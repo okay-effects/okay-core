@@ -83,7 +83,10 @@ instead.
 
 `Row`, `+:`, `Pure`; `In[E, R]`, the path to the effect `E` in the row `R`, built by the compiler (`Here`, or
 `There` one effect further). Nominal, so every walk is total and needs no cast. `%` fixes an effect's first
-parameter. `Sub`, `Req`, `Paths`: the paths of the effects a program needs (`A ! Es`), found in its context's row.
+parameter. `+` joins effects into one (`Both`, a marker), an effect not yet known among them. `Sub`, `Req`, `Paths`:
+the paths of the effects a program needs (`A ! Es`), found in its context's row — `Req` finds an effect among them
+(the one, in a row, on the left or the right of a `+`), `Paths` its path; no match type, so an abstract `F` is one
+effect like any other.
 
 ### The context (`Context.scala`, `Control.scala`, `Effects.scala`)
 

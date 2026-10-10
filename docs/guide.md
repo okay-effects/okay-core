@@ -48,6 +48,17 @@ def both: Int ! Reader % Int + Writer % String =
 ```
 
 `!`, `+` and `%` are all a program's type needs: `%` gives an effect of two parameters its first, `+` joins effects.
+An effect not yet known joins as well — `A ! Choose + F`, okay's way to say "and whatever else the caller has";
+the compiler infers `F` at the call. One's own effect's operation is a program by `effect(op)`, or `op.perform`:
+
+```scala
+def pairOf[A, F[_]](gen: A ! Choose + F): (A, A) ! Choose + F =
+  gen.flatMap(a => gen.map(b => (a, b)))
+def dice: Int ! Choose + Reader % Int = ask[Int].flatMap(n => among(Seq(n, n + 1)))
+run(reader(1)(choose(pairOf(dice))))   // Seq((1, 1), (1, 2), (2, 1), (2, 2))
+```
+
+okay's code on okay-core — what is the same, what is renamed: [okay.md](okay.md).
 
 ## Running
 
