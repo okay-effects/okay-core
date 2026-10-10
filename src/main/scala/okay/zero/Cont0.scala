@@ -49,12 +49,20 @@ object Cont0:
    * outside it, its `k` the rest under the reset again */
   private[zero] final case class Ctl0[R <: Row, J, T, A, S, O](f: (A => Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], S]) => Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O])
     extends Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], S]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], O]], A]
+  /** A DELIMITER NODE — a handler's, an interceptor's, a reset's: the machine enters each the same way, its body in
+   * a loop of its own under it, over `RB`, outside it `R`; what differs, the handlers in force inside, `inside` */
+  private[zero] sealed abstract class Node[R <: Row, J, T, RB <: Row, I0, V, A] extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], V]
+      with Delim[RB, Cont0[J, J, Res[R, J, T]], I0, V, A]:
+    def body: Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[RB, Cont0[J, J, Res[R, J, T]], I0]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[RB, Cont0[J, J, Res[R, J, T]], V]], A]
+    /** the handlers in force inside, those outside `ev` */
+    def inside(ev: Ev[R]): Ev[RB]
   /** a handler of `E`: `Done∘h.ret $ body`, its answers read by `h` — the delimiter its loop answers to, itself */
   private[zero] final case class Handle[E[_], R <: Row, J, T, A, Ans](mk: () => Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[E +: R, Cont0[J, J, Res[R, J, T]], Ans]], A],
-      h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans]
+      h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Node[R, J, T, E +: R, Ans, Ans, A]
       with ByHandler[E, R, J, T, A, Ans, Ans] with (A => Ans):
     /** the body, built when the machine enters the handler — a handler in a handler… built in constant stack */
     def body = mk()
+    def inside(ev: Ev[R]): Ev[E +: R] = within(h, ev)
     def clauses: Handler[[Y] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Y], E, ?, Ans] = h
     def ret(a: A): Ans = h.ret(a)
     /** the node its own `ret`, a function: no closure made for it, a shift each */
@@ -64,9 +72,10 @@ object Cont0:
    * `h`, the others passed on — the delimiter its loop answers to, itself */
   private[zero] final case class Icpt[E[_], R <: Row, J, T, A, Ans](target: In[E, R],
       mk: () => Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], Ans]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], Ans]], A],
-      h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Ans]
+      h: Handler[[X] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], X], E, A, Ans]) extends Node[R, J, T, R, Ans, Ans, A]
       with ByIntercept[E, R, J, T, A, Ans] with (A => Ans):
     def body = mk()
+    def inside(ev: Ev[R]): Ev[R] = masked(ev, target)
     def clauses: Handler[[Y] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Y], E, ?, Ans] = h
     def ret(a: A): Ans = h.ret(a)
     def apply(a: A): Ans = h.ret(a)
@@ -76,9 +85,10 @@ object Cont0:
   private[zero] final case class Lift[RB <: Row, L, O, X](m: Cont0[L, L, X]) extends Cont0[Cont0[L, L, Res[RB, L, O]], Cont0[L, L, Res[RB, L, O]], X]
   /** a reset: `Done $ body`, every operation in it passed on */
   private[zero] final case class Reset[R <: Row, J, T, S, O](mk: () => Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], S]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], O]], S])
-    extends Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], O]
+    extends Node[R, J, T, R, S, O, S]
     with ByReset[R, J, T, S, O]:
     def body = mk()
+    def inside(ev: Ev[R]): Ev[R] = ev
   /** a captured rest `f` then `k` applied to `x`: the rest under its delimiter `d` again, the handlers in force those
    * where the node runs — `ev`, those of when it was captured, kept if the ones outside are the same */
   private[zero] final case class Resume[RB <: Row, L, I0, V, A, X, T1, Y](x: X, f: X => Cont0[T1, Cont0[L, L, Res[RB, L, V]], Y],
@@ -122,15 +132,9 @@ object Cont0:
     c match
     case b: Bind[i, t, o, a, bb] => b.m match
       case r: Return[s, aa] => go(b.f(r.a), k, meta)
-      // a handler or a reset bound: entered at once — its value, the usual, bound with no frame pushed
-      case h: Handle[e, r, j, tt, a2, ans] => enterHandle(h, Ev.Unknown, 0, 0) match
+      // a handler, a reset, an interceptor bound: entered at once — its value, the usual, bound with no frame pushed
+      case dn: Node[r, j, tt, rb, i0, v, a2] => enterNode(dn, Ev.Unknown, 0) match
         case v: Return[s, vv] => go(b.f(v.a), k, meta)
-        case m => go(m, Frames.Then(b.f, k), meta)
-      case s: Reset[r, j, tt, sv, ov] => enterReset(s, Ev.Unknown, 0, 0) match
-        case v: Return[s2, vv] => go(b.f(v.a), k, meta)
-        case m => go(m, Frames.Then(b.f, k), meta)
-      case ic: Icpt[e, r, j, tt, a2, ans] => enterIntercept(ic, Ev.Unknown, 0, 0) match
-        case v: Return[s2, vv] => go(b.f(v.a), k, meta)
         case m => go(m, Frames.Then(b.f, k), meta)
       case _ => go(b.m, Frames.Then(b.f, k), meta)
     case Return(a) => k match
@@ -146,9 +150,7 @@ object Cont0:
     case o: OpK[r, j, t, e, x, i, b] => head(Head.Cut[I, j, j, Res[r, j, t], Cont0[j, j, Res[r, j, t]], x, A](kk => Return(Res.Req(o.op, o.in, kk)), Frames.Then(o.k, k)))
     case l: Lift[rb, l, o, x] => head(Head.Cut[I, l, l, Res[rb, l, o], Cont0[l, l, Res[rb, l, o]], x, A](kk => Bind(l.m, kk), k))
     case c: Ctl[r, j, a, i, o] => head(Head.Cut[I, j, j, Res[r, j, i], Cont0[j, j, Res[r, j, o]], a, A](kk => Return(Res.Ctl(c.f, kk)), k))
-    case h: Handle[e, r, j, t, a, ans] => go(enterHandle(h, Ev.Unknown, 0, 0), k, meta)
-    case s: Reset[r, j, t, sv, o] => go(enterReset(s, Ev.Unknown, 0, 0), k, meta)
-    case ic: Icpt[e, r, j, t, a, ans] => go(enterIntercept(ic, Ev.Unknown, 0, 0), k, meta)
+    case dn: Node[r, j, t, rb, i0, v, a] => go(enterNode(dn, Ev.Unknown, 0), k, meta)
     case r: Resume[rb, l, i0, v, a, x, t1, y] => go(enterUnknown(r), k, meta)
     case c: Ctl0[r, j, t, a, s, o] => go(shift0Program(c), k, meta)
     case Shift0(f) => head(Head.Cut(f, k))
