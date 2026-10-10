@@ -180,7 +180,10 @@ object Cont:
         case Frames.Mapped(g, rest) => run(Return(g(f(a))), rest, d, ev, m, ex, depth)
     case Inject(op, in) => inPlace(in, ev) match
       case null => leave(performed(op, in, k, d))
-      case v => run(Return(v.value(op)), k, d, ev, m, ex, depth)
+      // its value straight into the frame bound to it, the usual — no `Return` made to carry it there
+      case v => k match
+        case th: Frames.Then[r1, a1, x1, i1, t1, t2, b1] => run(th.f(v.value(op)), th.next, d, ev, m, ex, depth)
+        case _ => run(Return(v.value(op)), k, d, ev, m, ex, depth)
     case sp: Suspend[e0, r0, i0, o0, x, a0] => inPlace(sp.in, ev) match
       case null =>
         // the rest, the operation's own then the frames: made only where the operation leaves
@@ -333,11 +336,25 @@ object Cont:
   private def nested[R <: Row, I, T, O, A, B, P, Z](c: Cont[R, T, O, A], k: Frames[R, A, I, T, B], d: Delim[R, I, O, B, P],
       ev: Ev[R], m: Meta[P, Z] | Null, ex: (P <:< Z) | Null, depth: Int): Z = run(c, k, d, ev, m, ex, depth)
 
-  /** the handler at the path, if it answers in place — through the handlers in force; not known so, `null` */
-  @tailrec private def inPlace[E[_], R <: Row](in: In[E, R], ev: Ev[R]): Value[E] | Null = ev match
+  /** the handler at the path, if it answers in place — through the handlers in force; not known so, `null`. The
+   * first handler's at once; one further out by the path's last lookup, if from these handlers: the same path
+   * through the same handlers finds the same — a loop's operations come with one path, so a lookup across any number
+   * of handlers is a compare (`In.found`, as `okay.zero`'s machine) */
+  private def inPlace[E[_], R <: Row](in: In[E, R], ev: Ev[R]): Value[E] | Null = ev match
     case e: Ev.Entry[e, t] => in match
       case In.Here() => e.answers
-      case In.There(out) => inPlace(out, e.outer)
+      case _ =>
+        val f = in.found
+        if f != null && (f.from eq e) then f.answers
+        else
+          val v = walk(in, ev)
+          in.found = In.Found(e, v)
+          v
+    case _ => null
+  @tailrec private def walk[E[_], R <: Row](in: In[E, R], ev: Ev[R]): Value[E] | Null = ev match
+    case e: Ev.Entry[e, t] => in match
+      case In.Here() => e.answers
+      case In.There(out) => walk(out, e.outer)
     case _ => null
 
   /** the handlers in force inside a handler that answers in place by `an`, if it does: it in front — or, if it does
