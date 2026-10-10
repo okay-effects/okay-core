@@ -181,46 +181,45 @@ def incr(using c: Effects, s: State % Int :? c.Effs): c.Prog[Int] = modify[Int](
 run(state[Int](0)(incr.flatMap(_ => incr)))   // (2, 2)
 ```
 
-**An effect of one's own, its handler performing another outside it.** A clause runs outside its handler, in the
-handler's context `c`: an operation of any effect in `c.Effs` is one it may perform. The effect the handler needs is
-in its signature; its handler, the caller's, outside. (Not an `Answering`: its `value` performs nothing.)
+**An effect of one's own, translated to another outside it** — `Effects.translate[E](f)`, a handler whose every
+clause is a program outside it, `f(op)`, the rest of the body then resumed with its value. The effect it needs is in
+its signature; its handler, the caller's, outside. An operation of one's own as a program, `effect(op)`:
 
 ```scala
-enum Audit[+A]:
+enum Audit[A]:
   case Note(s: String) extends Audit[Unit]
 
-def audit(s: String)(using c: Effects, in: Audit :? c.Effs): c.Prog[Unit] = perform(Audit.Note(s))
+def audit(s: String): Unit ! Audit = effect(Audit.Note(s))
 
 def auditToWriter[A](using c: Effects, w: Writer % String :? c.Effs)(body: c.Body[Audit, A, A]): c.Prog[A] =
-  Effects.handle(new Handler[c.Prog, Audit, A, A]:
-    def ret(a: A): A = a
-    def apply[X](op: Audit[X], k: X => c.Prog[A]): c.Prog[A] = op match
-      case Audit.Note(s) => tell(s"[audit] $s").flatMap(_ => k(())))(body)
+  Effects.translate[Audit]([X] => (op: Audit[X]) => op match
+    case Audit.Note(s) => tell(s"[audit] $s"))(body)
 
-def audited(using c: Effects, a: Audit :? c.Effs): c.Prog[Int] = audit("a").flatMap(_ => audit("b")).map(_ => 7)
+def audited: Int ! Audit = audit("a").flatMap(_ => audit("b")).map(_ => 7)
 
 run(writer[String, Int](auditToWriter(audited)))   // (List("[audit] a", "[audit] b"), 7)
 ```
 
-**An effect of one's own, its handler installing another inside, hidden.** The caller sees `Ticket` only; the state
-is the handler's own:
+- The effect invariant, `enum Audit[A]`: of a covariant one, `[+A]`, a match knows the value's type only from below,
+  and a program of `Unit` is not one of `X`. A `Handler` and an `Answering` take either.
+- A clause needing the rest itself — run twice, never, or not last — is a `Handler` (*An effect of your own*).
+
+**An effect of one's own on another installed inside, hidden.** The caller sees `Ticket` only; the state is the
+handler's own:
 
 ```scala
-enum Ticket[+A]:
+enum Ticket[A]:
   case Next extends Ticket[Int]
 
-def ticket(using c: Effects, in: Ticket :? c.Effs): c.Prog[Int] = perform(Ticket.Next)
+def ticket: Int ! Ticket = effect(Ticket.Next)
 
 private case class Issued(n: Int)
 
-private def issuing[A](body: A ! Ticket)(using c: Effects, s: State % Issued :? c.Effs): c.Prog[A] =
-  Effects.handle(new Handler[c.Prog, Ticket, A, A]:
-    def ret(a: A): A = a
-    def apply[X](op: Ticket[X], k: X => c.Prog[A]): c.Prog[A] = op match
-      case Ticket.Next => modify[Issued](i => Issued(i.n + 1)).flatMap(i => k(i.n)))(body)
-
 def tickets[A](body: A ! Ticket)(using c: Effects): c.Prog[(Int, A)] =
-  state[A](Issued(0))(issuing(body)).map((i, a) => (i.n, a))
+  state[A](Issued(0)):
+    Effects.translate[Ticket]([X] => (op: Ticket[X]) => op match
+      case Ticket.Next => modify[Issued](i => Issued(i.n + 1)).map(_.n))(body)
+  .map((i, a) => (i.n, a))
 
 def twoTickets: Int ! Ticket = ticket.flatMap(a => ticket.map(b => a * 10 + b))
 
@@ -239,11 +238,11 @@ def mixed(using c: Effects, s: State % Int :? c.Effs): c.Prog[(Int, Int)] =
 run(state[(Int, Int)](100)(mixed))   // (101, (2, 3))
 ```
 
-**An existing effect changed for a part of the program** — an interceptor (below, *Intercepting*), its clause
-passing the operation on, changed:
+**An existing effect changed for a part of the program** — an interceptor (below, *Intercepting*), its body a
+`c.Intercepted[Ans, A]`, its clause passing the operation on, changed:
 
 ```scala
-def shouting[A](using c: Effects, w: Writer % String :? c.Effs)(body: c.Reset[A] ?=> c.Within[A, A, A]): c.Prog[A] =
+def shouting[A](using c: Effects, w: Writer % String :? c.Effs)(body: c.Intercepted[A, A]): c.Prog[A] =
   Effects.intercept(new Handler[c.Prog, Writer % String, A, A]:
     def ret(a: A): A = a
     def apply[X](op: Writer[String, X], k: X => c.Prog[A]): c.Prog[A] = op match

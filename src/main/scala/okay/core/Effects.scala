@@ -12,6 +12,8 @@ abstract class Effects extends Control:
   type Answer[S2] <: Effects { type M[I, O, A] = Effects.this.M[I, O, A]; type Effs = Effects.this.Effs; type S = S2 }
   /** a handler of `E`'s body here, of value `A`, at the handler's answer `Ans`: in its context, one level in */
   type Body[E[_], Ans, A] = Handled[E, Ans] ?=> Handling[E, Ans, Ans, A]
+  /** an interceptor's body here, of value `A`, at the interceptor's answer `Ans`: in its context, the row the same */
+  type Intercepted[Ans, A] = Reset[Ans] ?=> Within[Ans, Ans, A]
   def perform[E[_], S2, X](op: E[X], in: In[E, Effs]): M[S2, S2, X]
   /** a handler of `E` here: the body in its context, over `E +: R` at the answer `Ans`; its answers read by `h` */
   def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: Handled[E, Ans] ?=> Handling[E, Ans, Ans, A]): M[S, S, Ans]
@@ -51,8 +53,16 @@ object Effects:
     c.handle(h)(body)
   /** `intercept(h)(body)` in context: `E`, already in the context's row, handled again for the body */
   def intercept[E[_], A, Ans](using c: Effects, in: In[E, c.Effs])(h: Handler[c.Prog, E, A, Ans])
-               (body: c.Reset[Ans] ?=> c.Within[Ans, Ans, A]): c.Prog[Ans] =
+               (body: c.Intercepted[Ans, A]): c.Prog[Ans] =
     c.intercept(in, h)(body)
+  /** `translate[E](f)(body)`: a handler of `E` whose every clause is a program outside it, `f(op)`, the rest of the
+   * body then resumed with its value — `E`'s operations translated to the effects outside; the body's value the
+   * answer. Its effect invariant (`enum E[A]`): of a covariant one a match knows the value's type only from below,
+   * and a program of it is not one of `X`. A clause needing `k` itself — twice, never, not last — is a `Handler` */
+  def translate[E[_]](using c: Effects)[A](f: [X] => E[X] => c.Prog[X])(body: c.Body[E, A, A]): c.Prog[A] =
+    c.handle(new Handler[c.Prog, E, A, A]:
+      def ret(a: A): A = a
+      def apply[X](op: E[X], k: X => c.Prog[A]): c.Prog[A] = f(op).flatMap(k))(body)
 
 /** A HANDLER of the effect `E`, its clauses over the programs `P` outside it, whatever the monad: the body's value
  * `A` to the answer `Ans`; each operation with the rest of the body up to the delimiter, `k`, deep — the handler

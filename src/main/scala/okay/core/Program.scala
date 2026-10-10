@@ -118,7 +118,7 @@ object Program:
   /** AN INTERCEPTOR IN CONTEXT AS ONE OF PROGRAMS: `h` over `fa`, the row the same — `fa` built again in the
    * interceptor's context */
   def within[R <: Row, A, B](fa: Program[R, A])(
-      h: (c: Effects { type Effs = R }) => (c.Reset[B] ?=> c.Within[B, B, A]) => c.Prog[B]): Program[R, B] =
+      h: (c: Effects { type Effs = R }) => c.Intercepted[B, A] => c.Prog[B]): Program[R, B] =
     new Program[R, B]:
       def on(c: Effects { type Effs = R }): c.Prog[B] = h(c)(r ?=> fa.on(r))
 

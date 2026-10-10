@@ -105,6 +105,35 @@ abstract class TestEffectsOn(on: Backend) extends BackendSuite(on):
   test("an effect its context does not have cannot be performed"):
     assert(compileErrors("""run(reader[Unit](1)(tell("x")))""").nonEmpty)
 
+  test("translate: an effect's operations to a writer outside — in order, the body's value the answer"):
+    def notes(using c: Effects, w: Writer % String :? c.Effs)[A](body: c.Body[Note, A, A]): c.Prog[A] =
+      Effects.translate[Note]([X] => (op: Note[X]) => op match
+        case Note.Say(s) => tell(s"[$s]").map(_ => s.length))(body)
+    def prog(using c: Effects, n: Note :? c.Effs): c.Prog[Int] =
+      perform(Note.Say("ab")).flatMap(a => perform(Note.Say("c")).map(b => a * 10 + b))
+    assertEquals(run(writer[String, Int](notes(prog))), (List("[ab]", "[c]"), 21))
+
+  test("translate: an effect on a state installed inside, of a private type — the caller's own state untouched"):
+    def counted[A](body: A ! Note)(using c: Effects): c.Prog[(Int, A)] =
+      state[A](Count(0)):
+        Effects.translate[Note]([X] => (op: Note[X]) => op match
+          case Note.Say(s) => modify[Count](n => Count(n.n + s.length)).map(_.n))(body)
+      .map((n, a) => (n.n, a))
+    def prog(using c: Effects, s: State % Int :? c.Effs): c.Prog[(Int, Int)] =
+      counted[Int](perform(Note.Say("ab")).flatMap(_ => perform(Note.Say("c")))).flatMap(r => modify[Int](_ + 1).map(_ => r))
+    assertEquals(run(state[(Int, Int)](100)(prog)), (101, (3, 3)))
+
+  test("translate: 100 000 operations in constant stack"):
+    def says(i: Int, acc: Int)(using c: Effects, n: Note :? c.Effs): c.Prog[Int] =
+      if i == 0 then c.pure(acc) else perform(Note.Say("x")).flatMap(v => says(i - 1, acc + v))
+    assertEquals(run[Int](Effects.translate[Note][Int]([X] => (op: Note[X]) => op match
+      case Note.Say(s) => pure(s.length))(says(100000, 0))), 100000)
+
+/** an effect of one's own, invariant — what `translate` takes */
+enum Note[A]:
+  case Say(s: String) extends Note[Int]
+final case class Count(n: Int)
+
 /** on `Cont`, and what is `Cont`'s own: a program kept as a value, run twice; `generate` at the top */
 class TestEffects extends TestEffectsOn(Backend.cont):
   test("state: the cell is per run — the same program run twice starts from s0 twice"):

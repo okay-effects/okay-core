@@ -21,7 +21,7 @@ def throws[E, A](using c: Effects)(body: c.Body[Throws % E, Either[E, A], A])
       case Throws.Raise(e) => c.pure(Left(e)))(body)
 /** `handleWith[E, A](body)(f)`: a `raise` of the body answered `f` of the error, the rest of the body dropped — the
  * throws intercepted, so an error `f` raises goes on outside */
-def handleWith[E, A](using c: Effects, in: Throws % E :? c.Effs)(body: c.Reset[A] ?=> c.Within[A, A, A])(f: E => c.Prog[A]): c.Prog[A] =
+def handleWith[E, A](using c: Effects, in: Throws % E :? c.Effs)(body: c.Intercepted[A, A])(f: E => c.Prog[A]): c.Prog[A] =
   Effects.intercept(new Handler[c.Prog, Throws % E, A, A]:
     def ret(a: A): A = a
     def apply[X](op: Throws[E, X], k: X => c.Prog[A]): c.Prog[A] = op match
