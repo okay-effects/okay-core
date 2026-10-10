@@ -201,24 +201,17 @@ object Cont:
       case di: ByIcept[e, r, q, s, ans, a1] => run(f(under(k, di.ret)), Frames.End(), Ic[e, r, q, ans](di.in, di.h), ev, m, ex, depth)
     // a delimiter: entered — nested, a JVM frame, its program run on here; past `Deep`, this loop pushed under it
     case rs: Reset[r, q, s, o, a1] =>
-      if depth < Deep then
-        run(nested[r, s, s, o, a1, a1, Cont[r, q, q, o], Cont[r, q, q, o]](rs.body, Frames.End(), rs, ev, null, <:<.refl, depth + 1), k, d, ev, m, ex, depth)
+      if depth < Deep then run(entered(rs, ev, depth + 1).nn, k, d, ev, m, ex, depth)
       else run[r, s, s, o, a1, a1, Cont[r, q, q, o], Z](rs.body, Frames.End(), rs, ev, Meta.Under(k, d, ev, m, ex), null, depth)
     case fo: Fold[e, t, q, s, ans, a1] =>
-      val inner = within(fo.an, ev)
-      if depth < Deep then
-        run(nested[e +: t, s, s, ans, a1, a1, Cont[t, q, q, ans], Cont[t, q, q, ans]](fo.body(), Frames.End(), fo, inner, null, <:<.refl, depth + 1), k, d, ev, m, ex, depth)
-      else run[e +: t, s, s, ans, a1, a1, Cont[t, q, q, ans], Z](fo.body(), Frames.End(), fo, inner, Meta.Under(k, d, ev, m, ex), null, depth)
+      if depth < Deep then run(entered(fo, ev, depth + 1).nn, k, d, ev, m, ex, depth)
+      else run[e +: t, s, s, ans, a1, a1, Cont[t, q, q, ans], Z](fo.body(), Frames.End(), fo, within(fo.an, ev), Meta.Under(k, d, ev, m, ex), null, depth)
     case fo: FoldK[e, t, q, s, ans, a1, x] =>
-      val inner = within(fo.an, ev)
-      if depth < Deep then
-        run(nested[e +: t, s, s, ans, a1, a1, Cont[t, q, q, ans], Cont[t, q, q, ans]](fo.k(fo.x), Frames.End(), fo, inner, null, <:<.refl, depth + 1), k, d, ev, m, ex, depth)
-      else run[e +: t, s, s, ans, a1, a1, Cont[t, q, q, ans], Z](fo.k(fo.x), Frames.End(), fo, inner, Meta.Under(k, d, ev, m, ex), null, depth)
+      if depth < Deep then run(entered(fo, ev, depth + 1).nn, k, d, ev, m, ex, depth)
+      else run[e +: t, s, s, ans, a1, a1, Cont[t, q, q, ans], Z](fo.k(fo.x), Frames.End(), fo, within(fo.an, ev), Meta.Under(k, d, ev, m, ex), null, depth)
     case ic: Icept[e, r, q, s, ans, a1] =>
-      val inner = masked(ev, ic.in)
-      if depth < Deep then
-        run(nested[r, s, s, ans, a1, a1, Cont[r, q, q, ans], Cont[r, q, q, ans]](ic.body(), Frames.End(), ic, inner, null, <:<.refl, depth + 1), k, d, ev, m, ex, depth)
-      else run[r, s, s, ans, a1, a1, Cont[r, q, q, ans], Z](ic.body(), Frames.End(), ic, inner, Meta.Under(k, d, ev, m, ex), null, depth)
+      if depth < Deep then run(entered(ic, ev, depth + 1).nn, k, d, ev, m, ex, depth)
+      else run[r, s, s, ans, a1, a1, Cont[r, q, q, ans], Z](ic.body(), Frames.End(), ic, masked(ev, ic.in), Meta.Under(k, d, ev, m, ex), null, depth)
     case Delay(t) => run(t(), k, d, ev, m, ex, depth)
     case Map(mm, f) => run(mm, Frames.Mapped(f, k), d, ev, m, ex, depth)
     case Push(mm, ks) => k match
@@ -226,7 +219,15 @@ object Cont:
       case _ => run(mm, Frames.Then(ks, k), d, ev, m, ex, depth)
     case Bind(mm, g) => mm match
       case Return(a) => run(g(a), k, d, ev, m, ex, depth)
-      case _ => run(mm, Frames.Then(g, k), d, ev, m, ex, depth)
+      case _ =>
+        // a delimiter bound: entered at once, nested — its value, the usual, bound with no frame pushed
+        val p = mm match
+          case _: (Fold[?, ?, ?, ?, ?, ?] | Reset[?, ?, ?, ?, ?] | Icept[?, ?, ?, ?, ?, ?] | FoldK[?, ?, ?, ?, ?, ?, ?]) if depth < Deep => entered(mm, ev, depth + 1)
+          case _ => null
+        p match
+          case null => run(mm, Frames.Then(g, k), d, ev, m, ex, depth)
+          case Return(v) => run(g(v), k, d, ev, m, ex, depth)
+          case _ => run(p, Frames.Then(g, k), d, ev, m, ex, depth)
     // the kernel's operations, by their effect's identity: answered in place by the nearest handler in force taking
     // it, if it can; else to the delimiter, as an operation is — after every typed node, costing them nothing
     // (`KInject`, `KSuspend`: one case, the loop kept small)
@@ -331,6 +332,18 @@ object Cont:
     case di: ByIcept[e, r, q, s, ans, a1] => In.same(in, di.in) match
       case null => in.bind(op, Reintercept[e, r, q, s, ans, a1, X](g, di))
       case same => di.h(same(op), Reintercept[e, r, q, s, ans, a1, X](g, di))
+
+  /** a delimiter node entered nested, a JVM frame: the program leaving it; not a delimiter node, `null` */
+  private def entered[R <: Row, T, O, A](c: Cont[R, T, O, A], ev: Ev[R], depth: Int): Cont[R, T, O, A] | Null = c match
+    case rs: Reset[r, q, s, o, a1] =>
+      nested[r, s, s, o, a1, a1, Cont[r, q, q, o], Cont[r, q, q, o]](rs.body, Frames.End(), rs, ev, null, <:<.refl, depth)
+    case fo: Fold[e, t, q, s, ans, a1] =>
+      nested[e +: t, s, s, ans, a1, a1, Cont[t, q, q, ans], Cont[t, q, q, ans]](fo.body(), Frames.End(), fo, within(fo.an, ev), null, <:<.refl, depth)
+    case fo: FoldK[e, t, q, s, ans, a1, x] =>
+      nested[e +: t, s, s, ans, a1, a1, Cont[t, q, q, ans], Cont[t, q, q, ans]](fo.k(fo.x), Frames.End(), fo, within(fo.an, ev), null, <:<.refl, depth)
+    case ic: Icept[e, r, q, s, ans, a1] =>
+      nested[r, s, s, ans, a1, a1, Cont[r, q, q, ans], Cont[r, q, q, ans]](ic.body(), Frames.End(), ic, masked(ev, ic.in), null, <:<.refl, depth)
+    case _ => null
 
   /** a delimiter's body run nested, a JVM frame — up to `Deep` of them — its leaving program the result */
   private def nested[R <: Row, I, T, O, A, B, P, Z](c: Cont[R, T, O, A], k: Frames[R, A, I, T, B], d: Delim[R, I, O, B, P],
