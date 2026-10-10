@@ -15,30 +15,26 @@ and a handler follows it.
 ## A taste
 
 ```scala
-import okay.core.*
-import okay.core.Control.{reset, shift}
-import okay.std.*
+import okay.*
 
-def greet(using c: Effects, r: Reader % String :? c.Effs, w: Writer % String :? c.Effs): c.Prog[Int] =
+def greet: Int ! Reader % String + Writer % String =               // a program as its type says it
   ask[String].flatMap(name => tell(s"hello, $name").map(_ => name.length))
 
-def inc: Int ! Reader % Int = ask[Int].map(_ + 1)                 // the same, written A ! Es
-
-def twice(using c: Effects): c.Prog[Int] =                        // control, in the same context
+def twice: Int ! Reader % Int =                                     // control, in the same program
   reset[Int](shift[Int, Int](k => k(10).flatMap(k)).map(_ + 1))
 
-okay.cont.run(reader("Ann")(writer[String, Int](greet)))   // (List("hello, Ann"), 3), on Cont
-okay.zero.run(reader("Ann")(writer[String, Int](greet)))   // the same, on Cont0
-okay.zero.run(twice)                                       // 12
+run(reader("Ann")(writer[String, Int](greet)))                     // (List("hello, Ann"), 3), on Cont0
+runOn(okay.cont.top)(reader("Ann")(writer[String, Int](greet)))    // the same, on Cont
 ```
 
-A program is written against its context, `(using c: Effects)` — the context is the instance (final tagless):
-`c.Prog[A]` a program here, `c.Effs` the effects in force, `c.S` the answer. The row is built by the handlers,
-outside in; a program names only the effects it needs. These examples are compiled and run by `TestGuide`.
+`A ! E1 + E2` is all a program's type says: a program of value `A`, in any context that has those effects — in any
+order, among any others, under any handlers. `!`, `+` and `%` are all a user needs to know; contexts, rows and
+paths, the monads and their machines are the library's own (`okay.core`, `okay.cont`, `okay.zero`). These examples
+are compiled and run by `TestGuide`.
 
 ## Documentation
 
-- [Guide](docs/guide.md) — programs, rows, `A ! Es`, the standard effects, your own effects and handlers, answering
+- [Guide](docs/guide.md) — programs, `A ! E1 + E2`, rows, the standard effects, your own effects and handlers, answering
   in place, `shift`/`reset`/`shift0`, `PState`, streams, intercepting (`local`, `handleWith`), `Program[R, A]`,
   tofu, Scala 2, `Async`.
 - [What `Cont0` does better than `Cont`](docs/cont0-vs-cont.md) — and where it does not.
@@ -50,7 +46,7 @@ outside in; a program names only the effects it needs. These examples are compil
 
 | Package | What is in it |
 |---|---|
-| `okay.core` | the interface: rows (`Row`, `+:`, `Pure`, `E :? R`, `%`), `Context`, `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`, `intercept`), `Handler`, `Answering`, `A ! Es`, `Top`; `Program[R, A]`, a program over a row built where it runs |
+| `okay.core` | the interface: rows (`Row`, `+:`, `Pure`, `E :? R`, `%`), `Context`, `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`, `intercept`), `Handler`, `Answering`, `A ! E1 + E2` (`!`, `+`, `%`: all a program's type needs), `Top`; `Program[R, A]`, a program over a row built where it runs |
 | `okay.std` | the effects, written once: `Reader` (`local`), `State`, `Writer`, `Throws` (`handleWith`), `Choose`, `Emit` (`collect`, `stream`, `generate`), `PState`; `Programs`, the same as `Program`s |
 | `okay.cont` | `Cont`, its loop and fold; the instance `At`; `run`; `top` |
 | `okay.zero` | `Cont0` (the kernel, open as a monad of its own), the machine; the instance `At`; `run`; `top`; `shift0` |

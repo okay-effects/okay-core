@@ -5,9 +5,7 @@ text is compiled: `project/GuideDoc.scala` makes its `scala` blocks one object, 
 `expr   // value` against the value written. `TestGuide` runs the examples on both monads besides.
 
 ```scala
-import okay.core.*                       // the interface: Effects, Handler, perform, rows, A ! Es
-import okay.core.Control.{reset, shift}  // delimited control in context
-import okay.std.*                        // the standard effects
+import okay.*    // A ! E1 + E2, the standard effects, run — and for one's own: Effects, Handler, perform
 ```
 
 ## Programs and their context
@@ -38,25 +36,26 @@ type Row = Reader % Int +: Writer % String +: Pure   // a row: Reader of Int, th
 - `E :? R` is the path to `E` in `R` — what a program asks for.
 - The row is built by the handlers, outside in; a program only names the effects it needs.
 
-### `A ! Es`
+### `A ! E1 + E2`
 
-The short form: a program of value `A` in any context whose row has every effect of `Es`, in any order.
+What a program is, as a user writes it: of value `A`, in any context that has the effects it names — in any order,
+among any others, under any handlers; the row never named.
 
 ```scala
 def inc: Int ! Reader % Int = ask[Int].map(_ + 1)
-def both: Int ! Reader % Int +: Writer % String +: Pure =
+def both: Int ! Reader % Int + Writer % String =
   ask[Int].flatMap(a => tell(a.toString).map(_ => a))
 ```
 
-`Es` is one effect, or a row of them ending in `Pure`.
+`!`, `+` and `%` are all a program's type needs: `%` gives an effect of two parameters its first, `+` joins effects.
 
 ## Running
 
 The same program, run on the monad of your choice:
 
 ```scala
-okay.cont.run(reader("Ann")(writer[String, Int](greet)))   // (List("hello, Ann"), 3), on Cont
-okay.zero.run(reader("Ann")(writer[String, Int](greet)))   // (List("hello, Ann"), 3), on Cont0
+runOn(okay.cont.top)(reader("Ann")(writer[String, Int](greet)))   // (List("hello, Ann"), 3), on Cont
+run(reader("Ann")(writer[String, Int](greet)))   // (List("hello, Ann"), 3), on Cont0
 ```
 
 | | `okay.cont` — `Cont` | `okay.zero` — `Cont0` |
@@ -73,10 +72,10 @@ Both run in constant stack: a loop of 100 000 operations is fine.
 def counting(i: Int)(using c: Effects, s: State % Int :? c.Effs): c.Prog[Int] =
   if i == 0 then get[Int] else get[Int].flatMap(x => put(x + 1)).flatMap(_ => counting(i - 1))
 
-okay.zero.run(state[Int](0)(counting(100000)))   // (100000, 100000)
+run(state[Int](0)(counting(100000)))   // (100000, 100000)
 ```
 
-At the top `run` sometimes needs the answer named: `okay.cont.run[Int](...)`.
+At the top `run` sometimes needs the answer named: `run[Int](...)`. `run` is on `Cont0`; `runOn(okay.cont.top)(...)` on `Cont`.
 
 ## The standard effects (`okay.std`)
 
@@ -97,7 +96,7 @@ The order of handlers is the semantics: `state(throws(body))` keeps the state of
 def pairs(using c: Effects, ch: Choose :? c.Effs): c.Prog[(Int, Char)] =
   among(Seq(1, 2)).flatMap(n => among(Seq('a', 'b')).map(ch => (n, ch)))
 
-okay.zero.run(choose[(Int, Char)](pairs))   // Seq((1,'a'), (1,'b'), (2,'a'), (2,'b'))
+run(choose[(Int, Char)](pairs))   // Seq((1,'a'), (1,'b'), (2,'a'), (2,'b'))
 ```
 
 ## An effect of your own
@@ -149,7 +148,7 @@ def fixed[A](using c: Effects)(t: Long)(body: c.Body[Clock, A, A]): c.Prog[A] =
 def prog(using c: Effects, l: Log :? c.Effs, k: Clock :? c.Effs): c.Prog[Long] =
   now.flatMap(t => log(s"at $t").map(_ => t * 2))
 
-okay.zero.run(logging(fixed(21)(prog)))   // (List("at 21"), 42)
+run(logging(fixed(21)(prog)))   // (List("at 21"), 42)
 ```
 
 ### Handlers are dynamic
@@ -168,8 +167,8 @@ def twice(using c: Effects): c.Prog[Int] =
 def modified(using c: Effects): c.Prog[String] =
   reset[Int](shift[Int, String](k => k(5).map(_.toString)).map(_ * 2))
 
-okay.zero.run(twice)      // 12
-okay.zero.run(modified)   // "10"
+run(twice)      // 12
+run(modified)   // "10"
 ```
 
 - `shift[A, O]`: `A` the value at the hole, `O` the answer the delimiter is moved to. The answer type may change
@@ -207,7 +206,7 @@ It needs a reset's context of `Cont0`: under a handler, or on `Cont`, it does no
 a `get` of the wrong type does not compile.
 
 ```scala
-okay.zero.run[(String, Int)](pstate(7)(st => st.get[Int].flatMap(n => st.put[Int]("x" * n)).flatMap(_ => st.get[String]).map(_.length)))   // ("xxxxxxx", 7)
+run[(String, Int)](pstate(7)(st => st.get[Int].flatMap(n => st.put[Int]("x" * n)).flatMap(_ => st.get[String]).map(_.length)))   // ("xxxxxxx", 7)
 ```
 
 ## Streams
@@ -256,8 +255,8 @@ outside it, so its own operation of the effect reaches the handler. The standard
 def scaled(using c: Effects, r: Reader % Int :? c.Effs): c.Prog[(Int, Int)] =
   ask[Int].flatMap(a => local[Int, Int](_ * 10)(ask[Int]).map(b => (a, b)))
 
-okay.zero.run(reader(4)(scaled))   // (4, 40)
-okay.zero.run(throws[String, Int](handleWith[String, Int](raise[String, Int]("bad"))(e => pure(e.length))))   // Right(3)
+run(reader(4)(scaled))   // (4, 40)
+run(throws[String, Int](handleWith[String, Int](raise[String, Int]("bad"))(e => pure(e.length))))   // Right(3)
 ```
 
 Nested ones compose, as tofu's `local`s do: the inner clause's `ask` is the outer interceptor's.

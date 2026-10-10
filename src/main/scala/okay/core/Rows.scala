@@ -20,6 +20,19 @@ enum In[E[_], R <: Row]:
    * object, its fields final, read whole on any thread */
   private[okay] var found: In.Found[E] | Null = null
 
+/** EFFECTS JOINED, `E1 + E2 + …`: what a program needs, written as the user writes it — `Int ! Reader % Int + Async`.
+ * Two effects joined are an effect again (`Both`, a marker), so `+` goes on; `Needed` makes a row of them */
+sealed trait Both[F[_], G[_], X]
+infix type +[F[_], G[_]] = [X] =>> Both[F, G, X]
+/** the effect `E` after the row `R` */
+type Append[R <: Row, E[_]] <: Row = R match
+  case Pure => E +: Pure
+  case h +: t => h +: Append[t, E]
+/** the effects joined in `F`, a row in the order written: one effect, a row of one */
+type Needed[F[_]] <: Row = F[Any] match
+  case Both[f, g, Any] => Append[Needed[f], g]
+  case _ => F +: Pure
+
 /** `E :? R`, the effect `E` in the row `R`: `In` as it is written in a signature, `(using in: Reader % E :? c.Effs)` —
  * a `:`-operator, so `%` and `+:` bind tighter: `Ask :? Ask +: Pure` */
 infix type :?[E[_], R <: Row] = In[E, R]

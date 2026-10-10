@@ -37,11 +37,12 @@ object Needs:
   /** an effect needed: its path in the context's row */
   given found[E[_], Es <: AnyKind](using n: Needs[Es], r: Req[E, Es]): In[E, n.Effs] = n.find(r)
 
-/** `A ! Es`: a program of value `A`, in any context whose row has every effect of `Es` — one, `Int ! Reader % Int`,
- * or a row of them, `Int ! Reader % Int +: Writer % String +: Pure`; their order the program's own, the context's
- * row any. At the context's answer, not `Free`'s `Unit`: under a handler the answer is the handler's
- * — `Either[E, A]` under `throws` — so a `Free` program would run only where nothing is answered */
-infix type ![A, Es <: AnyKind] = (c: Needs[Es]) ?=> c.Prog[A]
+/** `A ! E1 + E2 + …`: a program of value `A`, in any context whose row has every effect it names — one,
+ * `Int ! Reader % Int`, or several joined, `Int ! Reader % Int + Writer % String` — in any order, among any others;
+ * written under any handlers, the row never named. At the context's answer, not `Free`'s `Unit`: under a handler the
+ * answer is the handler's — `Either[E, A]` under `throws` — so a `Free` program would run only where nothing is
+ * answered */
+infix type ![A, F[_]] = (c: Needs[Needed[F]]) ?=> c.Prog[A]
 
 object Effects:
   /** `handle(h)(body)` in context: the body written in the handler's context, over `E +: c.Effs`, at its answer */

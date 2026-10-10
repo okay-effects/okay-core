@@ -43,7 +43,7 @@ abstract class TestAsyncOn extends munit.FunSuite:
       assertEquals(r, Right((12, 12)))
     finally pool.shutdown()
 
-  def bang: Int ! Reader % Int +: Async +: Pure = ask[Int].flatMap(a => async(a + 1))
+  def bang: Int ! Reader % Int + Async = ask[Int].flatMap(a => async(a + 1))
   test("async in A ! Es"):
     assertEquals(runIO[Int](reader(41)(bang)), Right(42))
 

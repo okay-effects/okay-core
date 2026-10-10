@@ -16,12 +16,12 @@ class TestGuide extends munit.FunSuite:
     assertEquals(okay.cont.run(reader("Ann")(writer[String, Int](greet))), (List("hello, Ann"), 3))
     assertEquals(okay.zero.run(reader("Ann")(writer[String, Int](greet))), (List("hello, Ann"), 3))
 
-  // -- A ! Es
+  // -- A ! E1 + E2
   def inc: Int ! Reader % Int = ask[Int].map(_ + 1)
-  def both: Int ! Reader % Int +: Writer % String +: Pure =
+  def both: Int ! Reader % Int + Writer % String =
     ask[Int].flatMap(a => tell(a.toString).map(_ => a))
 
-  test("guide: A ! Es"):
+  test("guide: A ! E1 + E2"):
     assertEquals(okay.cont.run(reader(5)(inc)), 6)
     assertEquals(okay.zero.run(writer[String, Int](reader(5)(both))), (List("5"), 5))
 
