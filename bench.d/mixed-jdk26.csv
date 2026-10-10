@@ -1,0 +1,11 @@
+"Benchmark","Mode","Threads","Samples","Score","Score Error (99.9%)","Unit","Param: backend","Param: n"
+"okay.core.MixedBenchmark.orders","avgt",1,10,137.181721,2.221187,"us/op",cont,1000
+"okay.core.MixedBenchmark.orders:gc.alloc.rate","avgt",1,10,10232.035384,163.786236,"MB/sec",cont,1000
+"okay.core.MixedBenchmark.orders:gc.alloc.rate.norm","avgt",1,10,1471872.957818,0.015120,"B/op",cont,1000
+"okay.core.MixedBenchmark.orders:gc.count","avgt",1,10,103.000000,NaN,"counts",cont,1000
+"okay.core.MixedBenchmark.orders:gc.time","avgt",1,10,46.000000,NaN,"ms",cont,1000
+"okay.core.MixedBenchmark.orders","avgt",1,10,135.712750,7.619935,"us/op",zero,1000
+"okay.core.MixedBenchmark.orders:gc.alloc.rate","avgt",1,10,9640.354790,528.438744,"MB/sec",zero,1000
+"okay.core.MixedBenchmark.orders:gc.alloc.rate.norm","avgt",1,10,1370392.946287,0.052950,"B/op",zero,1000
+"okay.core.MixedBenchmark.orders:gc.count","avgt",1,10,98.000000,NaN,"counts",zero,1000
+"okay.core.MixedBenchmark.orders:gc.time","avgt",1,10,41.000000,NaN,"ms",zero,1000
