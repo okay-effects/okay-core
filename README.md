@@ -46,7 +46,7 @@ are compiled and run by `TestGuide`.
 
 | Package | What is in it |
 |---|---|
-| `okay.core` | the interface: rows (`Row`, `+:`, `Pure`, `E :? R`, `%`), `Context`, `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`, `intercept`), `Handler`, `Answering`, `A ! E1 + E2` (`!`, `+`, `%`: all a program's type needs), `Top`; `Program[R, A]`, a program over a row built where it runs |
+| `okay.core` | the interface: rows (`Row`, `+:`, `Pure`, `E :? R`, `%`), `Context`, `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`, `intercept`), `Handler`, `Answering`, `A ! E1 + E2` (`!`, `+`, `%`: all a program's type needs), `Top`; `Program[R, A]`, a program over a row built where it runs; `RowEffects`, okay's `Effects[M]` over it ([docs/okay.md](docs/okay.md)) |
 | `okay.std` | the effects, written once: `Reader` (`local`), `State`, `Writer`, `Throws` (`handleWith`), `Choose`, `Emit` (`collect`, `stream`, `generate`), `PState`; `Programs`, the same as `Program`s |
 | `okay.cont` | `Cont`, its loop and fold; the instance `At`; `run`; `top` |
 | `okay.zero` | `Cont0` (the kernel, open as a monad of its own), the machine; the instance `At`; `run`; `top`; `shift0` |
@@ -60,28 +60,32 @@ The same program gives the same answer on both, but for one case by design: a `s
 with no `reset` between — on `Cont0` its `k` holds the handler (a `raise` in `k` is that `k`'s `Left`), on `Cont`
 only the handler's `ret` (a `raise` in `k` aborts the shift's body). `shift0` is `Cont0`'s alone.
 
-`MonadsBenchmark`, the same programs on each (bench.d, 2026-10-09T20-21), ns an operation:
+`MonadsBenchmark`, the same programs on each (bench.d, 2026-10-10T14-20, JDK 26), ns an operation:
 
 | | `Cont` | `Cont0` |
 |---|---|---|
-| an operation across 1 / 4 / 16 handlers | 5.7 / 7.4 / 21.5 | 5.6 / 5.6 / 5.8 |
-| answered in place / by a general clause | 4.96 / 9.90 | 5.34 / 8.17 |
-| state, writer, collect | 13.3, 19.6, 10.3 | 14.3, 17.2, 10.3 |
-| a generator, an element pulled / pushed | 16.2 / 7.4 | 15.3 / 7.4 |
-| an ask under `local` (an interceptor) / under the reader alone | 16.7 / 4.6 | 15.2 / 4.7 |
-| `state` as a `Program`: the state first in the row / third | 24.0 / 38.2 | 23.0 / 38.1 |
-| 8 queens (a run) | 169 µs | 147 µs |
-| a shift under a reset, 16 maps, `k` 8 times (a run) | 522 ns | 312 ns |
-| choose, throws | 26.5, 16.1 | 24.0, 16.5 |
-| pure binds | 3.21 | 3.20 |
+| an operation across 1 / 4 / 16 handlers | 5.6 / 7.1 / 18.3 | 6.9 / 5.5 / 5.8 |
+| answered in place / by a general clause | 5.5* / 9.9 | 5.5 / 8.2 |
+| state, writer, collect | 14.2, 19.7, 11.1 | 12.6, 17.4, 12.7 |
+| a generator, an element pulled / pushed | 17.2 / 7.6 | 14.9 / 7.4 |
+| an ask under `local` (an interceptor) / under the reader alone | 16.5 / 4.6 | 14.9 / 4.6 |
+| `Int ! State % Int` / `+ Reader % Int`, each path through the context | 13.8 / 20.6 | 13.2 / 17.9 |
+| `state` as a `Program`: the state first in the row / third / over okay's interface | 23.7 / 37.9 / 24.1 | 23.1 / 38.2 / 24.0 |
+| 8 queens (a run) | 160 µs | 148 µs |
+| a shift under a reset, 16 maps, `k` 8 times (a run) | 493 ns | 308 ns |
+| choose, throws | 26.0, 17.7 | 24.4, 16.6 |
+| pure binds | 3.20 | 3.21 |
+| `MixedBenchmark`, an order: a reader, a choice, a throw caught, a state, a log | 151 | 130 |
+
+\* the full run's 7.2 ± 5.2 was noise; 5.50 ± 0.01 alone (changelog.d/cont-loop-small.md).
 
 Handlers nested by recursion — a function installing one and calling itself inside it — run in constant stack on
 both, a hundred thousand deep: each monad's loop keeps the delimiters it is inside as a stack of its own
 (docs/stack-safety.md).
 
-`Cont0` is ahead where handlers are layered (3.7× across 16), on a general clause, captures, `queens`, `choose`;
-`Cont` by a few per cent on an operation answered in place, `state` and `throws` — since both find a handler further
-out that answers in place where the operation is, the rest is close.
+`Cont0` is ahead where handlers are layered (3.2× across 16), on a general clause, captures, `queens`, `choose` and
+the mixed program; elsewhere the two are within some per cent — both find a handler further out that answers in
+place where the operation is.
 
 ## Tests
 
