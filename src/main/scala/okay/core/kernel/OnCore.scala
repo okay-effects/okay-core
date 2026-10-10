@@ -1,7 +1,7 @@
 package okay.core.kernel
 
 import okay.kernel.{Aborting, Answering, Answers, Computation, Effects, Fn, General, Handler, Op, Prog, Program, Resume,
-  Returning, Step, Thunk, Translating, Type}
+  Key, Returning, Step, Thunk, Translating, Type}
 import scala.util.control.NonFatal
 
 /**
@@ -316,9 +316,11 @@ private[okay] final class Ended(val why: Signal)
 
 /** the operations of the native layer itself, of an effect no handler of the user's has */
 private[okay] sealed abstract class Internal extends Op[Any]:
-  def effect(): Type = Internal.tpe
+  def key(): Key[?] = Internal.key
+  override def effect(): Type = Internal.tpe
 private[okay] object Internal:
-  val tpe: Type = Type.of("okay.core.kernel.Internal")
+  val key: Key[Internal] = Key.of(Type.of("okay.core.kernel.Internal"))
+  val tpe: Type = key.`type`()
 /** an unwinding, to the nearest handler taking it */
 private[okay] final class Unwind(val why: Signal) extends Internal
 /** `shift0`, to the nearest delimiter */

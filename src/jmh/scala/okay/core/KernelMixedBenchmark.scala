@@ -38,10 +38,10 @@ class KernelMixedBenchmark:
   private def fn[A, B](f: A => B): Fn[A, B] = new Fn[A, B] { def apply(a: A): B = f(a) }
   private def int(i: Int): Integer = Integer.valueOf(i)
 
-  private val rd = Reader.of(Type.of(classOf[Integer]))
-  private val st = State.of(Type.of(classOf[Integer]))
-  private val log = Writer.of(Type.of(classOf[String]))
-  private val err = Throws.of(Type.of(classOf[String]))
+  private val rd = Reader.key[Integer](Type.of(classOf[Integer]))
+  private val st = State.key[Integer](Type.of(classOf[Integer]))
+  private val log = Writer.key[String](Type.of(classOf[String]))
+  private val err = Throws.key[String](Type.of(classOf[String]))
   private val suppliers: java.util.List[Integer] = java.util.Arrays.asList(int(0), int(1), int(2))
 
   /** one order: its price, or its failure in the log; the total moved by its price */

@@ -9,10 +9,10 @@ import okay.kernel.types.typeOf
 /** the reference machine's suite (okay-kernel's TestSteps), the same twelve checks, on an `Effects` of the bridge:
  * the standard handlers written once, control, failures, finalizers, cancellation, the protocol */
 abstract class OnCoreSuite(name: String, e: Effects) extends FunSuite:
-  val st: Type = State.of(typeOf[Integer])
-  val log: Type = okay.kernel.std.Writer.of(typeOf[String])
-  val err: Type = okay.kernel.std.Throws.of(typeOf[String])
-  val rd: Type = okay.kernel.std.Reader.of(typeOf[Integer])
+  val st: Key[okay.kernel.std.State[Integer]] = okay.kernel.std.State.key[Integer](typeOf[Integer])
+  val log: Key[okay.kernel.std.Writer[String]] = okay.kernel.std.Writer.key[String](typeOf[String])
+  val err: Key[okay.kernel.std.Throws[String]] = okay.kernel.std.Throws.key[String](typeOf[String])
+  val rd: Key[okay.kernel.std.Reader[Integer]] = okay.kernel.std.Reader.key[Integer](typeOf[Integer])
 
   def prog[A](f: Effects => Prog[A]): Program[A] = new Program[A] { def in(e: Effects): Prog[A] = f(e) }
   def fn[A, B](f: A => B): Fn[A, B] = new Fn[A, B] { def apply(a: A): B = f(a) }
@@ -82,11 +82,11 @@ abstract class OnCoreSuite(name: String, e: Effects) extends FunSuite:
   }
 
   test(s"$name: a k resumed under other handlers than it was made under: its operations go to them, as the reference's") {
-    val t = Type.of("okay.core.kernel.TestOnCore.t")
-    final case class Tick() extends Op[Void] { def effect(): Type = t }
+    val t = Key.of[Void](Type.of("okay.core.kernel.TestOnCore.t"))
+    final case class Tick() extends Op[Void] { def key(): Key[?] = t }
     // the clause resumes k under a reader of its own: the body's ask, after the tick, is that reader's
     val p = prog(e => e.handle[Integer, Integer](new General[Integer, Integer] {
-      def effect(): Type = t
+      def key(): Key[?] = t
       def ret(a: Integer, e2: Effects): Prog[Integer] = e2.pure(a)
       def apply[X](op: Op[X], k: Fn[X, Prog[Integer]], e2: Effects): Prog[Integer] =
         Handlers.reader[Integer, Integer](rd, 9, prog(_ => k(null.asInstanceOf[X]))).in(e2)
@@ -96,7 +96,7 @@ abstract class OnCoreSuite(name: String, e: Effects) extends FunSuite:
   }
 
   test(s"$name: a generator: values pulled one by one") {
-    val em = okay.kernel.std.Emit.of(typeOf[Integer])
+    val em = okay.kernel.std.Emit.key[Integer](typeOf[Integer])
     val three = prog { e =>
       e.flatMap(Handlers.send[Integer](em, 1).in(e), fn((_: Void) => e.flatMap(Handlers.send[Integer](em, 2).in(e), fn((_: Void) => e.pure("done")))))
     }
@@ -118,27 +118,27 @@ abstract class OnCoreSuite(name: String, e: Effects) extends FunSuite:
   val ask: Program[Integer] = Handlers.ask[Integer](rd)
 
   test(s"$name: export: an operation handed out, k resumed — twice, multi-shot") {
-    val c = e.computation(prog(e => e.map(ask.in(e), fn((n: Integer) => Integer.valueOf(n + 1)))), java.util.Set.of(rd))
+    val c = e.computation(prog(e => e.map(ask.in(e), fn((n: Integer) => Integer.valueOf(n + 1)))), java.util.Set.of(rd.`type`()))
     c.start(Answers.NONE) match
       case y: Step.Yield[?, ?] =>
         val k = y.k().asInstanceOf[Resume[Integer, Integer]]
         assertEquals(k.resume(41).asInstanceOf[Step.Done[Integer]].value().intValue, 42)
         assertEquals(k.resume(1).asInstanceOf[Step.Done[Integer]].value().intValue, 2)
-        assertEquals(c.effects(), java.util.Set.of(rd))
+        assertEquals(c.effects(), java.util.Set.of(rd.`type`()))
       case s => fail(s"expected a yield: $s")
   }
 
   test(s"$name: export: answered in place by the host, no yield") {
     val host = new Answers {
-      def answers(t: Type): Boolean = t eq rd
+      def answers(t: Type): Boolean = t eq rd.`type`()
       def value[X](op: Op[X]): X = Integer.valueOf(41).asInstanceOf[X]
     }
-    val c = e.computation(prog(e => e.map(ask.in(e), fn((n: Integer) => Integer.valueOf(n + 1)))), java.util.Set.of(rd))
+    val c = e.computation(prog(e => e.map(ask.in(e), fn((n: Integer) => Integer.valueOf(n + 1)))), java.util.Set.of(rd.`type`()))
     assertEquals(c.start(host).asInstanceOf[Step.Done[Integer]].value().intValue, 42)
   }
 
   test(s"$name: k.fail: the computation catches it where the operation was") {
-    val c = e.computation(prog(e => e.recover[Integer](ask, fn((t: Throwable) => e.pure(Integer.valueOf(-1))))), java.util.Set.of(rd))
+    val c = e.computation(prog(e => e.recover[Integer](ask, fn((t: Throwable) => e.pure(Integer.valueOf(-1))))), java.util.Set.of(rd.`type`()))
     val y = c.start(Answers.NONE).asInstanceOf[Step.Yield[Integer, Integer]]
     assertEquals(y.k().fail(new RuntimeException("x")).asInstanceOf[Step.Done[Integer]].value().intValue, -1)
   }
@@ -146,10 +146,10 @@ abstract class OnCoreSuite(name: String, e: Effects) extends FunSuite:
   test(s"$name: k.cancel: finalizers run, not catchable; inside uncancelable it waits") {
     var finalized = 0
     val fin = prog { e => finalized += 1; e.pure(null: Void) }
-    val c = e.computation(prog(e => e.recover[Integer](prog(e2 => e2.ensuring(ask, fin)), fn((_: Throwable) => e.pure(Integer.valueOf(0))))), java.util.Set.of(rd))
+    val c = e.computation(prog(e => e.recover[Integer](prog(e2 => e2.ensuring(ask, fin)), fn((_: Throwable) => e.pure(Integer.valueOf(0))))), java.util.Set.of(rd.`type`()))
     val y = c.start(Answers.NONE).asInstanceOf[Step.Yield[Integer, Integer]]
     assert(y.k().cancel().isInstanceOf[Step.Cancelled[?]] && finalized == 1, "cancelled, finalizer once, recover not taken")
-    val u = e.computation(prog(e => e.uncancelable(ask)), java.util.Set.of(rd))
+    val u = e.computation(prog(e => e.uncancelable(ask)), java.util.Set.of(rd.`type`()))
     val wait = u.start(Answers.NONE).asInstanceOf[Step.Yield[Integer, Integer]].k().cancel()
     assert(wait.isInstanceOf[Step.Yield[?, ?]], "the region waits")
     assert(wait.asInstanceOf[Step.Yield[Integer, Integer]].k().resume(5).isInstanceOf[Step.Cancelled[?]], "its end cancels")
@@ -158,7 +158,7 @@ abstract class OnCoreSuite(name: String, e: Effects) extends FunSuite:
   test(s"$name: import: another's program under this one's handlers — in place and by k") {
     val inner = e.computation(prog { e =>
       e.flatMap(ask.in(e), fn((n: Integer) => e.map(Handlers.among[Integer](java.util.List.of(n, n + 1)).in(e), fn((x: Integer) => Integer.valueOf(x * 10)))))
-    }, java.util.Set.of(rd, Choose.TYPE))
+    }, java.util.Set.of(rd.`type`(), Choose.TYPE))
     val outer = Handlers.reader[Integer, java.util.List[Integer]](rd, 4, Handlers.all(prog(e => e.foreign(inner))))
     assertEquals(run(outer), java.util.List.of[Integer](40, 50))
   }
@@ -173,7 +173,7 @@ abstract class OnCoreSuite(name: String, e: Effects) extends FunSuite:
           if x == n + 1 then Handlers.raise[String, Integer](err, s"odd $x").in(e)
           else e.pure(Integer.valueOf(x * 10))))))))
   }
-  val row: java.util.Set[Type] = java.util.Set.of(rd, Choose.TYPE, log, err)
+  val row: java.util.Set[Type] = java.util.Set.of(rd.`type`(), Choose.TYPE, log.`type`(), err.`type`())
   def handled(body: Program[Integer]): Program[Results.Logged[String, java.util.List[Results.Result[String, Integer]]]] =
     Handlers.reader(rd, 4, Handlers.writer(log, Handlers.all(Handlers.throwsOf[String, Integer](err, body))))
 

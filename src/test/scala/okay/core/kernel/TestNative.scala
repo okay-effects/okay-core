@@ -7,10 +7,10 @@ import okay.kernel.std.{Choose, Handlers, Reader, Results, State, Throws, Writer
 /** okay-kernel's programs, written once over its `Effects`, on okay-core's machines natively — on every platform
  * (the TCK and the reference machine, the JVM's, in the module `kernel`) */
 abstract class NativeSuite(name: String, e: Effects) extends FunSuite:
-  val st: Type = State.of(Type.of("okay.core.kernel.s"))
-  val log: Type = Writer.of(Type.of("okay.core.kernel.w"))
-  val err: Type = Throws.of(Type.of("okay.core.kernel.t"))
-  val rd: Type = Reader.of(Type.of("okay.core.kernel.r"))
+  val st: Key[okay.kernel.std.State[Integer]] = okay.kernel.std.State.key[Integer](Type.of("okay.core.kernel.s"))
+  val log: Key[okay.kernel.std.Writer[String]] = okay.kernel.std.Writer.key[String](Type.of("okay.core.kernel.w"))
+  val err: Key[okay.kernel.std.Throws[String]] = okay.kernel.std.Throws.key[String](Type.of("okay.core.kernel.t"))
+  val rd: Key[okay.kernel.std.Reader[Integer]] = okay.kernel.std.Reader.key[Integer](Type.of("okay.core.kernel.r"))
 
   def prog[A](f: Effects => Prog[A]): Program[A] = new Program[A] { def in(e: Effects): Prog[A] = f(e) }
   def fn[A, B](f: A => B): Fn[A, B] = new Fn[A, B] { def apply(a: A): B = f(a) }
@@ -59,12 +59,12 @@ abstract class NativeSuite(name: String, e: Effects) extends FunSuite:
   }
 
   test(s"$name: export — handed out, k multi-shot; k.cancel runs the finalizer") {
-    val c = e.computation(prog(x => x.map(Handlers.ask[Integer](rd).in(x), fn((n: Integer) => int(n + 1)))), java.util.Collections.singleton(rd))
+    val c = e.computation(prog(x => x.map(Handlers.ask[Integer](rd).in(x), fn((n: Integer) => int(n + 1)))), java.util.Collections.singleton(rd.`type`()))
     val y = c.start(Answers.NONE).asInstanceOf[Step.Yield[Integer, Integer]]
     assertEquals(y.k().resume(int(41)), new Step.Done[Integer](int(42)))
     assertEquals(y.k().resume(int(1)), new Step.Done[Integer](int(2)))
     var fins = 0
-    val f = e.computation(prog(x => x.ensuring(Handlers.ask[Integer](rd), prog { z => fins += 1; z.pure(null: Void) })), java.util.Collections.singleton(rd))
+    val f = e.computation(prog(x => x.ensuring(Handlers.ask[Integer](rd), prog { z => fins += 1; z.pure(null: Void) })), java.util.Collections.singleton(rd.`type`()))
     assert(f.start(Answers.NONE).asInstanceOf[Step.Yield[Integer, Integer]].k().cancel().isInstanceOf[Step.Cancelled[?]] && fins == 1)
   }
 
