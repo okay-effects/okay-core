@@ -6,7 +6,7 @@ lazy val allowUnsafe = javaOptions ++= (if (fork.value) Seq(unsafe) else Nil)
 lazy val root = (project in file("."))
   .enablePlugins(JmhPlugin)
   // `sbt test` runs the Scala 2.13 suites too: the core read from Scala 2 is gated with the rest
-  .aggregate(LocalProject("scala2"))
+  .aggregate(LocalProject("scala2"), LocalProject("async"))
   .settings(
     name := "okay-core",
     libraryDependencies ++= Seq(
@@ -27,6 +27,26 @@ lazy val root = (project in file("."))
     // docs/guide.md's scala blocks, compiled as they are written and their `expr   // value` lines checked
     Test / sourceGenerators += Def.task {
       GuideDoc.generate(baseDirectory.value / "docs" / "guide.md", (Test / sourceManaged).value / "okay" / "docs" / "GuideDoc.scala")
+    }.taskValue
+  )
+
+/**
+ * ASYNC, A MODULE OF ITS OWN (okay.async): `async`, `await`, `Async.run`, asynchronous streams, and what they wait
+ * and race with (`Swap`, `Mailbox`, `Platform`) — so the core has no thread, no wait, no callback in it. Its tests
+ * use the core's test helpers (the backends, the references); docs/async.md's blocks compiled and checked as the
+ * guide's are; its benchmark its own (`async/Jmh/run`)
+ */
+lazy val async = (project in file("async"))
+  .enablePlugins(JmhPlugin)
+  .dependsOn(root % "compile->compile;test->test")
+  .settings(
+    name := "okay-core-async",
+    scalaVersion := "3.9.0",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.2.3" % Test,
+    inConfig(Test)(allowUnsafe),
+    Jmh / run / javaOptions ~= (o => (o :+ unsafe).distinct),
+    Test / sourceGenerators += Def.task {
+      GuideDoc.generate((root / baseDirectory).value / "docs" / "async.md", (Test / sourceManaged).value / "okay" / "async" / "AsyncDoc.scala", "okay.async", "AsyncDoc")
     }.taskValue
   )
 

@@ -1,4 +1,4 @@
-package okay.std
+package okay.async
 
 /** whether this platform can wait for another thread: the JVM's and Native's can; JS has one thread, nothing comes
  * while it waits. One object a platform (the cross build's platform sources) */

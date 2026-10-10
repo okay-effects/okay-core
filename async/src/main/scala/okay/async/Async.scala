@@ -1,6 +1,7 @@
-package okay.std
+package okay.async
 
 import okay.core.*
+import okay.std.*
 
 import scala.util.control.NonFatal
 

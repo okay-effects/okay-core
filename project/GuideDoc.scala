@@ -10,7 +10,7 @@ object GuideDoc {
   private val Checked = "^(.*?\\S)\\s+//\\s*(.*)$".r
   private val OnMonad = "^(.*), on \\w+$".r
 
-  def generate(guide: File, out: File): Seq[File] = {
+  def generate(guide: File, out: File, pkg: String = "okay.docs", name: String = "GuideDoc"): Seq[File] = {
     val blocks = "(?s)```scala\n(.*?)```".r.findAllMatchIn(IO.read(guide)).map(_.group(1)).toList
     val imports = List.newBuilder[String]
     val members = List.newBuilder[String]
@@ -41,12 +41,12 @@ object GuideDoc {
       }
     }
     val code =
-      s"""// GENERATED from docs/guide.md by project/GuideDoc.scala — edit the guide, not this
-         |package okay.docs
+      s"""// GENERATED from ${guide.getName} by project/GuideDoc.scala — edit the guide, not this
+         |package $pkg
          |
          |${imports.result().distinct.mkString("\n")}
          |
-         |object GuideDoc:
+         |object $name:
          |${members.result().mkString("\n")}
          |
          |  /** the guide's checked lines: the code, its value, the value the guide says */

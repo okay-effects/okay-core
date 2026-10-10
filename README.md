@@ -50,9 +50,10 @@ outside in; a program names only the effects it needs. These examples are compil
 | Package | What is in it |
 |---|---|
 | `okay.core` | the interface: rows (`Row`, `+:`, `Pure`, `E :? R`, `%`), `Context`, `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`, `intercept`), `Handler`, `Answering`, `A ! Es`, `Top`; `Program[R, A]`, a program over a row built where it runs |
-| `okay.std` | the effects, written once: `Reader` (`local`), `State`, `Writer`, `Throws` (`handleWith`), `Choose`, `Emit` (`collect`, `stream`, `generate`), `PState`, `Async`; `Programs`, the same as `Program`s |
+| `okay.std` | the effects, written once: `Reader` (`local`), `State`, `Writer`, `Throws` (`handleWith`), `Choose`, `Emit` (`collect`, `stream`, `generate`), `PState`; `Programs`, the same as `Program`s |
 | `okay.cont` | `Cont`, its loop and fold; the instance `At`; `run`; `top` |
 | `okay.zero` | `Cont0` (the kernel, open as a monad of its own), the machine; the instance `At`; `run`; `top`; `shift0` |
+| `okay.async` (module `async/`) | `async`, `await`, `Async.run`, asynchronous streams — and what they race and wait with (`Swap`, `Mailbox`): the core has no thread in it |
 
 ## The two monads
 
@@ -105,6 +106,7 @@ sbt bench                                     # JMH, then a summary table (proje
 sbt "bench -f 1 -p backend=zero MonadsBenchmark.state"
 sbt "bench save -prof gc"                     # keep the run in bench.d/ (index.tsv + CSV)
 sbt "benchHistory <regexp>"                   # the benchmarks matching it, run by run
+sbt "async/Jmh/run -prof gc"                  # the async module's own benchmark
 ```
 
 Scala 3.9.0 (and 2.13.18 for `scala2/`), sbt 1.13.0, JDK 25 or later; tests only: munit 1.2.3, tofu 0.14.3, cats 2.13.0. The benchmarks run on the JDK sbt runs on, JDK 26 for the runs in

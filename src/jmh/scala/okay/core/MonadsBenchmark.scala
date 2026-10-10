@@ -108,12 +108,6 @@ class MonadsBenchmark:
   @Benchmark
   def stateProgramDeep(): Int = Program.run(top)(Programs.reader(0)(Programs.writer[Int](Programs.state(0)(countingDeep(n)))))._2._1
 
-  def awaits(i: Int, acc: Int)(using c: Effects, a: Async :? c.Effs): c.Prog[Int] =
-    if i == 0 then c.pure(acc) else await[Int](cb => cb(Right(1))).flatMap(x => awaits(i - 1, acc + x))
-  /** `n` awaits, each callback answered at once, a run of `Async.run` — its slot raced, its result waited on */
-  @Benchmark
-  def asyncAwaits(): Int = run(okay.std.throws[Throwable, Int](okay.std.Async.run(awaits(n, 0)))).getOrElse(-1)
-
   def asks(i: Int, acc: Int)(using c: Effects, r: Reader % Int :? c.Effs): c.Prog[Int] =
     if i == 0 then c.pure(acc) else ask[Int].flatMap(v => asks(i - 1, acc + v))
 

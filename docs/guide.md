@@ -89,7 +89,6 @@ At the top `run` sometimes needs the answer named: `okay.cont.run[Int](...)`.
 | `Choose` | `among(as)` — multi-shot | `choose[A](body)` → `Seq[A]`, every path |
 | `Emit[W]` | `yield_(w)` | `collect(body)` → `(List[W], A)`; `stream(top)(source)` → `Generator[W]`, pushed or pulled; `generate(next, done)(body)` — lazy |
 | `PState` | `st.get[S]`, `st.put[S](s2)` | `pstate(s0)(st => body)` — the state's *type* may change |
-| `Async` | `async(a)`, `await(register)` | `Async.run(body)` on the context's own monad; `Async.stream(top)(source)` |
 
 The order of handlers is the semantics: `state(throws(body))` keeps the state of a failed body,
 `throws(state(body))` loses it.
@@ -315,29 +314,8 @@ Program.run(okay.zero.top)(Programs.reader(41)(p))   // 42
 
 ## Async
 
-`async(a)` suspends a computation, `await(register)` waits on a callback. `Async.run(body)` runs the body on the
-context's own monad, at its top (`c.top`) — the run goes on in the callback's thread when the callback comes later; its failure is
-raised in the context as `Throws % Throwable`.
-
-```scala
-def io(using c: Effects, a: Async :? c.Effs): c.Prog[Int] = async(20).flatMap(x => async(x + 1))
-okay.zero.run(throws[Throwable, Int](Async.run(io)))   // Right(21)
-```
-
-### Asynchronous streams
-
-A source may yield and wait — `Async.Source[W]`, `Emit` and `Async` together. `Async.stream(top)(source)` is a `Stream` as above, its
-`map` and `filter` fused. Pulled, a `yield_` waits until the next element is asked for — the body never runs
-ahead of its consumer — and `take` or `close()` cancels the rest: the run aborted where it waits. Pushed,
-`subscribe(f)(done)` runs it without waiting, `f` of each element in the thread the run is in; `foreach`, `fold`,
-`toList` wait for the end. A failure is thrown by the consumer.
-
-```scala
-def ticks(using c: Effects, e: Emit % Int :? c.Effs, a: Async :? c.Effs): c.Prog[Unit] =
-  async(1).flatMap(yield_(_)).flatMap(_ => async(2).flatMap(yield_(_)))
-
-Async.stream[Int](okay.zero.top)(ticks).toList   // List(1, 2)
-```
+`async`, `await` and `Async.run` — and asynchronous streams — are a module of their own, `async/` (package
+`okay.async`): [docs/async.md](async.md). The core has no thread in it.
 
 ## Notes
 

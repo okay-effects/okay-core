@@ -1,5 +1,6 @@
-package okay.core
+package okay.async
 
+import okay.core.*
 import okay.std.*
 
 import java.util.concurrent.Executors

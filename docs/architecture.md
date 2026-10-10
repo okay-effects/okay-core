@@ -7,11 +7,12 @@ API. No macros, no casts, no runtime tests of an operation's class.
 ```
 okay.core   the interface          rows, Context, Control, Effects, Handler, intercept, Needs, A ! Es, Top,
                                    Program (a program over a row, built where it runs)
-okay.std    effects, written once   Reader (local), State, Writer, Throws (handleWith), Choose, Emit, PState, Async;
+okay.std    effects, written once   Reader (local), State, Writer, Throws (handleWith), Choose, Emit, PState;
                                    Programs (the same as Programs), Stream
 okay.zero   the monad Cont0         shift0 and $, a machine               — At, run, top, shift0   (the default)
 okay.cont   the monad Cont          shift/reset, a handler a fold         — At, run, top           (the second)
 tests       the references          Ref (Cont0 without the machine), Cps0 (textbook CPS); tofu over Program
+okay.async  module async/          Async, its streams, Swap and Mailbox — the core has no thread, wait or callback
 scala2/     Scala 2.13              the core read by scalac 2.13; tofu's 2.13 artifacts over Program
 ```
 
@@ -217,10 +218,10 @@ design, and `TestMonads` pins it.
 ## Tests
 
 The suites are written once over the interface and take a `Backend` — a monad's run (`BackendSuite`):
-`TestEffectsOn`, `TestContextOn`, `TestControlOn`, `TestTogetherOn`, `TestDynamicOn`, `TestPStateOn`, `TestAsyncOn`.
+`TestEffectsOn`, `TestContextOn`, `TestControlOn`, `TestTogetherOn`, `TestDynamicOn`, `TestPStateOn` (and in `async/`, `TestAsyncOn`).
 Each runs on `Cont`, `Cont0`, `Ref` and `Cps0`. Beside them: `TestCont` and `TestCont0` (the kernels), `TestMonads`
 (the same programs on each monad, and where they differ), `TestShiftAtHandler` and `TestZero` (`Cont0`'s own),
-`TestStreamOn`, `TestAsyncStreamOn` (streams on each monad's top), `TestInterceptOn` (`intercept`), `TestTofuOn`
+`TestStreamOn`, `TestAsyncStreamOn` (in `async/`) (streams on each monad's top), `TestInterceptOn` (`intercept`), `TestTofuOn`
 (tofu over `Program`, okay.tofu), `TestTofuFromScala2` (scala2/: the same from Scala 2.13), `TestSealed` (what does not compile), `TestGuide` (the guide's examples),
 `TestGuideDoc` (the guide's own text: its `scala` blocks generated into `GuideDoc` by `project/GuideDoc.scala`, each
 `expr   // value` line checked), `TestAgree` (1 000 programs made at random — handlers nested in any order, resets and
