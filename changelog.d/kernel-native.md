@@ -84,3 +84,20 @@ return, Cont's `ret` a handler. 100 KB (cont), 69 KB (zero) less a run: 2022 / 1
 same. Profiled after it (zero, inclusive): the kernel's standard handlers' own code 14%, interface dispatch (itable
 stubs) 11%, lambda captures the JIT did not inline (`allocateInstance`, in the program's own lambdas) 7%; the walk of
 the handlers in force 5%, routing an operation to a clause 9% with the clause's own code, building handlers 6%.
+
+## The bridge, measured on the same harness
+
+The bridge's 219 / 248 µs came from okay-kernel's harness (bench/, okay-kernel 4ee71a0); okay-core's
+`KernelMixedBenchmark` — the same program — run on the bridge itself (a worktree, the module `kernel` given JMH), JDK
+26, `-f 2 -wi 5 -i 5 -prof gc`, µs (cont / zero), B an order:
+
+| | µs | B an order |
+|---|---|---|
+| the bridge with `Direct` (63e3438) | 474.0 / 457.7 | 4003 / 3709 |
+| the bridge at its last (2fa6876) | 489.9 / 470.5 | 4103 / 3781 |
+| native, first (7596437) | 316 / 348 | 2395 / 2089 |
+| native now | 231.1 / 255.0 | 2022 / 1864 |
+| the reference machine `Steps` | 522.9 | 2414 |
+
+On one harness the native path is half the bridge's time and half its allocation. Between the two harnesses the same
+code differs ~2× (JIT profiles; the programs' lambdas), so a number is compared only with one from its own harness.
