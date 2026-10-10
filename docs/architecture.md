@@ -80,28 +80,32 @@ abstract class Context:
   type M[I, O, A]                 // a program here: value A, a continuation answering I, answering O
   type Effs <: Row                // the effects in force here
   type S                          // the answer at this point
-  type Inner[X <: Row, I, O, A]   // the monad of the bodies of the delimiters here
+  type Within[I, O, A]            // the monad of a reset's, an interceptor's body here, one level in
   type Prog[A] = M[S, S, A]
   def pure, delay, flatMap, map
 
-trait Control extends Context:
-  type Reset[S2]  <: Control { M = Inner[Effs, …]; S = S2 }   // a reset's body
-  type Answer[S2] <: Control { M = M; S = S2 }                // a shift's body
+abstract class Control extends Context:
+  type Reset[S2]  <: Control { M = Within; S = S2 }          // a reset's body
+  type Answer[S2] <: Control { M = M; S = S2 }               // a shift's body
   def shift[I, O, A](f, same: (I =:= O) | Null): M[I, O, A]
-  def reset[S2, O](body: Reset[S2] ?=> Inner[Effs, S2, O, S2]): M[S, S, O]
+  def reset[S2, O](body: Reset[S2] ?=> Within[S2, O, S2]): M[S, S, O]
 
 abstract class Effects extends Control:
-  type Handled[E[_], S2] <: Effects { M = Inner[E +: Effs, …]; Effs = E +: Effs; S = S2 }
-  type Body[E[_], Ans, A] = Handled[E, Ans] ?=> Inner[E +: Effs, Ans, Ans, A]
+  type Handling[E[_], I, O, A]                              // a handler's body's monad, E in front, one level in
+  type Handled[E[_], S2] <: Effects { M = Handling[E, …]; Effs = E +: Effs; S = S2 }
+  type Body[E[_], Ans, A] = Handled[E, Ans] ?=> Handling[E, Ans, Ans, A]
   def perform[E[_], S2, X](op: E[X], in: In[E, Effs]): M[S2, S2, X]
   def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: Body[E, Ans, A]): M[S, S, Ans]
+  def intercept[E[_], A, Ans](in: In[E, Effs], h: Handler[Prog, E, A, Ans])(body: Reset[Ans] ?=> Within[Ans, Ans, A]): M[S, S, Ans]
 ```
 
 - **The context is the instance** (final tagless). A program asks for `(using c: Effects)` and is a `c.Prog[A]`. The
   nearest given wins, so a delimiter gives its body a context of its own.
-- **`Inner`, the monad one level in.** A handler's and a reset's body is in the monad of their bodies. For `Cont` it
-  is the same monad. For `Cont0`, whose answers are programs of the level outside, it is one level deeper — the
-  level is part of the type. This is what lets one interface describe both.
+- **`Within` and `Handling`, the monad one level in.** A reset's and an interceptor's body is in `Within`, a
+  handler's in `Handling[E]` (its effect in front of the row). For `Cont` it is the same monad; for `Cont0`, whose
+  answers are programs of the level outside, one level deeper — the level part of the type. Two members, not one
+  indexed by a row, so a context seen over another row (`View`) takes the monad of the one it views. This is what
+  lets one interface describe both.
 - **`Effects extends Control`.** A handler is a delimiter that answers the operations of its effect; a reset is one
   that answers none.
 - **`same`, `Keeps`.** `shift` carries a proof that it keeps the answer (`I =:= O`) when the types say so
@@ -118,12 +122,26 @@ abstract class Effects extends Control:
 
 `Cont[R, I, O, A]`: the monad of delimited continuations with answer-type modification as a tree — `Return`,
 `Inject` (an operation), `Bind`, `Shift`, `Reset`, and for speed `Suspend` (an operation with its rest), `Map`,
-`Delay`, `Push` (a resumed stack). `step` reads the tree to its head with a stack of frames (`loop0`, `loop`).
+`Delay`, `Push` (a resumed stack). A handler is a node too: `Fold` (its body built when entered, `ret`, the clauses),
+`FoldK` (a body resumed — a clause's `k`, a forwarded operation's rest — `k` and its value, no closure), and an
+interceptor `Icept`. `At` is the instance: `handle` makes a `Fold`, `intercept` an `Icept`, `reset` a `Reset`.
 
-A handler is a **fold** over the body's tree (`fold0`, `fold`), made when `handle` is called: a value by `ret`; an
-operation of its effect by its clause — answered in place for an `Answering` — with the rest of the body folded the
-same way, lazily (`Resume`); another effect's forwarded outside, the rest re-folded (`Refold`); a `shift` folded in
-place of the rest, the rest under a `Reset` of its own with `ret`. `At` is the instance.
+**One loop** (`run`) runs any of them with a stack of frames and a **metacontinuation** (`Meta`) — the delimiters it
+is inside, innermost first: the top (`Top`, `step`'s caller), a reset (`InReset`), a handler (`InFold`), an
+interceptor (`InIcept`), each with its `ret` and the frames outside it. A delimiter met is pushed and its body run
+in the same loop; what reaches the innermost one is read by it and the program leaving it run in the frames
+outside:
+
+- **A value**: through `ret`.
+- **An operation**: at a handler, its own — answered in place if the handler answers in place (`Answering`), else
+  its clause with `k` the rest under the handler again (`Resume`, a `FoldK`); another's — answered in place if the
+  handler at its path further out answers in place, found by a walk of the stack (`inPlace`: resets passed, an
+  interceptor of the path stopping it), else out, one effect shorter, its rest under the handler again (`Refold`).
+  At a reset, out as it is; at an interceptor, its clause at its path, out otherwise.
+- **A `shift`**: its body in place of the rest, under the delimiter again, the rest under a `Reset` of its own with
+  `ret` as `k` — so `k` under a handler is the rest under the handler's `ret` only (master's semantics).
+
+Nested delimiters, to any depth, are entries of the stack, not JVM frames: constant stack (`TestNestingOn`).
 
 ## `okay.zero` — `Cont0` and the machine
 
@@ -141,38 +159,47 @@ Under a delimiter the answers are **levels**, programs of the level outside yiel
 request, and no request is made up.
 
 Every node the interface builds is a shift0 program, in one node each for speed: an operation `Op`
-(`shift0(k => Req(op, k))`), `OpK` (an operation with its rest), a `shift` `Ctl`, a `shift0` `Ctl0`, a handler `Handle`
-and a reset `Reset` (each a `$` whose answers are read), `Lift` (a program outside run there), `Resume` (a captured
-rest resumed), `Map`, `Delay`. `step`, the kernel's loop, runs any of them; the machine's nodes by entering the
-machine.
+(`shift0(k => Req(op, k))`), `OpK` (an operation with its rest), a `shift` `Ctl`, a `shift0` `Ctl0`, a handler `Handle`,
+a reset `Reset` and an interceptor `Icpt` (each a `$` whose answers are read, its body a by-name built when entered),
+`Lift` (a program outside run there), `Resume` (a captured rest resumed), `Map`, `Delay`.
+
+The kernel's loop (`step`, `go`) runs any of them, the machine's nodes by entering the machine, with a
+metacontinuation of its own (`KMeta`): a `$` met is pushed — its `ret` and the frames outside — and its body run in
+the same loop; the body's head popped: a value through `ret`, a capture's body in the `$`'s place, the rest under it
+again. `$`s nested to any depth in constant stack — the definitions (`Ref`) included.
 
 ### The machine (`Machine.scala`)
 
-Each handler's and reset's body runs in **a loop of its own** (`deliver`), to where it leaves the delimiter:
+A handler's, a reset's, an interceptor's body runs in **the machine's loop** (`deliver`), to where it leaves its
+delimiter:
 
 - **A value**: to the delimiter's answer by `ret`.
 - **An operation**: answered **in place** if the handler at its path answers in place — found through `Ev`, the
-  handlers in force, known at run time, so across any handlers and resets between. Otherwise it goes to the
-  delimiter (`route`): a handler's own to its clause with `k` the rest (`Resumed`, lazy); another's out to the
-  next delimiter, one handler shorter.
-- **A resumption**: entered with its value going through its frames; `k(x)` from a shift's body is run nested in the
-  body's loop (up to 64 deep, then out and back), as `Cont` nests a reset.
-- **A `shift`** at its delimiter (Danvy–Filinski's): its body under the delimiter again, `k` the rest under it,
-  lifted in. At a handler `k` holds the handler's clauses, so the shift must keep the answer — `same`; one that
-  moves it is in a reset by its types, or goes to the definition.
+  handlers in force, known at run time, so across any handlers and resets between (the path's last lookup kept in
+  it: a loop's operations come with one path). Inside an interceptor the handler at its path is masked (`masked`):
+  its operations go to the interceptor. Otherwise to the delimiter (`route`): a handler's own to its clause with `k`
+  the rest (`Resumed`, lazy); another's out to the next delimiter, one handler shorter; at an interceptor, its path's
+  to its clause, the rest out as it is.
+- **A resumption, a delimiter**: entered — nested in the loop, a JVM frame each, up to `Deep` (32), the common and
+  cheapest way; past it pushed on the machine's **metacontinuation** (`Meta`: the frames, the delimiter and the
+  handlers in force outside it), the program leaving it popped into the loop outside. Any depth in constant stack.
+- **A `shift`** at its delimiter (Danvy–Filinski's): its body under the delimiter again, in the delimiter's place — the
+  same loop, nothing pushed; `k` the rest under it, lifted in. At a handler `k` holds the handler's clauses, so the
+  shift must keep the answer — `same`; one that moves it is in a reset by its types, or goes to the definition.
 - **A `shift0`** at its reset: the body is the program outside, `k` the rest under the reset.
 - **Anything else** goes to the delimiter's **definition** (`bail`): the rest under a `$` whose answers are read
-  (`handleRead`, `resetRead`) — the same semantics, slowly.
+  (`handleRead`, `resetRead`, `interceptRead`) — the same semantics, slowly.
 
-Delimiters come in two families: `ByReset` (`Reset`, and `Rst` made by the machine for a shift's body and its `k`) and
-`ByHandler` (`Handle`, and `Hd`). A delimiter or a handler bound to a value (`Bind(Handle, f)`) is entered at once,
-its value bound with no frame pushed.
+Delimiters come in three families: `ByReset` (`Reset`, and `Rst` made by the machine for a shift's body and its `k`),
+`ByHandler` (`Handle`, and `Hd`), `ByIntercept` (`Icpt`). A delimiter bound to a value (`Bind(Handle, f)`) is entered
+at once, its value bound with no frame pushed. Each keeps its `Meta.Top`, made once with it.
 
 ### The instance (`At.scala`)
 
 `okay.zero.At[R0, J0, T0]`: `M[I, O, A] = Eff[R0, J0, I, O, A]`; a delimiter's body one level deeper,
-`Level[R0, J0, T0]`. `perform` builds an `Op`, `handle` a `Handle`, `reset` a `Reset`, `shift` a `Ctl`. `shift0` takes a
-reset's context of `At` — a handler's row is one longer than its level's, so under a handler it does not compile.
+`Level[R0, J0, T0]`. `perform` builds an `Op`, `handle` a `Handle`, `reset` a `Reset`, `intercept` an `Icpt`, `shift` a
+`Ctl`. `shift0` takes a reset's context of `At` — a handler's row is one longer than its level's, so under a handler
+it does not compile.
 
 ## The references (tests)
 
