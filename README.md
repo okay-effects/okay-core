@@ -9,7 +9,7 @@ delimited control — `shift`/`reset` with the answer type modified
 - **`Cont`** (`okay.cont`) — shift and reset; a handler a fold over the program. A second implementation of the same
   interface, a different one: what keeps the interface an interface, not one monad's API.
 
-No macros, no casts, no runtime tests of an operation's class: an operation carries a path to its effect in the row,
+No macros, no runtime tests of an operation's class, no cast but one (`Cont0`'s empty cases shared): an operation carries a path to its effect in the row,
 and a handler follows it.
 
 ## A taste

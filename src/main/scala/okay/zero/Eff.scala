@@ -40,7 +40,7 @@ private[zero] def delay[R <: Row, J, I, O, A](p: => Eff[R, J, I, O, A]): Eff[R, 
  * up to it the program's — its answer its value */
 private[zero] def runTop[A](p: Eff[Pure, A, A, A, A]): A =
   // to the head first: its value — no shift up to the top, the common case — or a capture up to the top, the top's
-  step(p, Frames.End()) match
+  step(p, Frames.end) match
     case Head.Done(a) => a
     case c: Head.Cut[i, i1, o1, x1, o, x, a] => atTop(c.f(x => Dollar(resumed(x, c.k), (a: A) => Return(Res.Done[Pure, A, A](a))))).value
 

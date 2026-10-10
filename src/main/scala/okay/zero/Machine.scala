@@ -74,6 +74,9 @@ private[zero] enum Meta[L, V, Z]:
   case Top[L, V]() extends Meta[L, V, Cont0[L, L, V]]
   case Under[RB <: Row, L, I0, V, A, X, Z](k: Frames[X, Cont0[L, L, Res[RB, L, I0]], Cont0[L, L, Res[RB, L, V]], A],
       d: Delim[RB, L, I0, V, A], ev: Ev[RB], up: Meta[L, V, Z]) extends Meta[Cont0[L, L, Res[RB, L, V]], X, Z]
+private[zero] object Meta:
+  private val top0: Meta[Any, Any, Cont0[Any, Any, Any]] = Top()
+  def top[L, V]: Meta[L, V, Cont0[L, L, V]] = empty[Meta[L, V, Cont0[L, L, V]]](top0)
 
 /** the loop: `c` with the stack `k` under the delimiter `d`, the handlers in force inside it `ev`, the delimiters
  * outside it `meta` — to the program outside the outermost */
@@ -93,7 +96,7 @@ private[zero] enum Meta[L, V, Z]:
         case v: Return[s, vv] => deliver[RB, L, I0, V, A, T, X, Z](b.f(v.a), k, d, ev, depth, meta)
         case m => deliver[RB, L, I0, V, A, t, a, Z](m, Frames.Then(b.f, k), d, ev, depth, meta)
       else deliver[rb, Cont0[j, j, Res[r, j, tt]], i0, v, a2, Cont0[Cont0[j, j, Res[r, j, tt]], Cont0[j, j, Res[r, j, tt]], Res[rb, Cont0[j, j, Res[r, j, tt]], i0]], a2, Z](
-        dn.body, Frames.End(), dn, dn.inside(ev), depth, Meta.Under[RB, L, I0, V, A, a, Z](Frames.Then(b.f, k), d, ev, meta))
+        dn.body, Frames.end, dn, dn.inside(ev), depth, Meta.Under[RB, L, I0, V, A, a, Z](Frames.Then(b.f, k), d, ev, meta))
     case _ => deliver[RB, L, I0, V, A, t, a, Z](b.m, Frames.Then(b.f, k), d, ev, depth, meta)
   case r: Return[s, x] => k match
     case Frames.End() => leave(Return[L, V](ret(d, r.a)))
@@ -121,7 +124,7 @@ private[zero] enum Meta[L, V, Z]:
   case dn: Node[r, j, t, rb, i0, v, a] =>
     if depth < Deep then deliver[RB, L, I0, V, A, T, X, Z](enterNode(dn, ev, depth + 1), k, d, ev, depth, meta)
     else deliver[rb, Cont0[j, j, Res[r, j, t]], i0, v, a, Cont0[Cont0[j, j, Res[r, j, t]], Cont0[j, j, Res[r, j, t]], Res[rb, Cont0[j, j, Res[r, j, t]], i0]], a, Z](
-      dn.body, Frames.End(), dn, dn.inside(ev), depth, Meta.Under[RB, L, I0, V, A, X, Z](k, d, ev, meta))
+      dn.body, Frames.end, dn, dn.inside(ev), depth, Meta.Under[RB, L, I0, V, A, X, Z](k, d, ev, meta))
   // a program outside run there, its value back into the rest under the delimiter. A shift's k from its body, a
   // resumption: run here, nested, as a delimiter's body is — its value back in this loop, no capture of the rest;
   // anything else, or nested too deep, out and back
@@ -149,12 +152,12 @@ private[zero] enum Meta[L, V, Z]:
   case c: Ctl[r, j, a, i, o] => d match
     case _: ByReset[r2, j2, t2, s2, v2] =>
       deliver[r2, Cont0[j2, j2, Res[r2, j2, t2]], V, V, V, Cont0[Cont0[j2, j2, Res[r2, j2, t2]], Cont0[j2, j2, Res[r2, j2, t2]], Res[r2, Cont0[j2, j2, Res[r2, j2, t2]], V]], V, Z](
-        shiftAtReset[r2, j2, t2, I0, V, a, i](c, k, ev), Frames.End(), Rst[r2, j2, t2, V, V](), ev, depth, meta)
+        shiftAtReset[r2, j2, t2, I0, V, a, i](c, k, ev), Frames.end, Rst.of[r2, j2, t2, V, V], ev, depth, meta)
     case h: ByHandler[e, r2, j2, t2, a2, i02, v2] => c.same match
       case null => leave(bail(c, k, d))
       case same =>
         deliver[e +: r2, Cont0[j2, j2, Res[r2, j2, t2]], V, V, V, Cont0[Cont0[j2, j2, Res[r2, j2, t2]], Cont0[j2, j2, Res[r2, j2, t2]], Res[e +: r2, Cont0[j2, j2, Res[r2, j2, t2]], V]], V, Z](
-          shiftAtHandler[e, r2, j2, t2, I0, V, A, a, i](h.clauses, h.rets, same, c, k, ev), Frames.End(), Hd[e, r2, j2, t2, V, V, V](h.clauses, v => v), ev, depth, meta)
+          shiftAtHandler[e, r2, j2, t2, I0, V, A, a, i](h.clauses, h.rets, same, c, k, ev), Frames.end, Hd[e, r2, j2, t2, V, V, V](h.clauses, v => v), ev, depth, meta)
     // up to an interceptor, rare: its definition
     case _ => leave(bail(c, k, d))
   case _ => leave(bail(c, k, d))
@@ -163,7 +166,7 @@ private[zero] enum Meta[L, V, Z]:
 private def shiftAtReset[R <: Row, J, T, I0, V, X, Hole](c: Ctl[R, Cont0[J, J, Res[R, J, T]], X, Hole, V],
     k: Frames[X, Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], I0]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], Hole]], I0], ev: Ev[R])
     : Cont0[Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], V]], Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Res[R, Cont0[J, J, Res[R, J, T]], V]], V] =
-  val rd = Rst[R, J, T, I0, Hole]()
+  val rd = Rst.of[R, J, T, I0, Hole]
   c.f(x => Lift[R, Cont0[J, J, Res[R, J, T]], V, Hole](Resume(x, unit, k, rd, ev)))
 
 /** a `shift`'s body up to an answering handler: to run under the handler again, `k` the rest under the handler,
@@ -177,7 +180,7 @@ private def shiftAtHandler[E[_], R <: Row, J, T, I0, V, A, X, Hole](h: Handler[[
 /** a body's loop from its start, nothing bound under it, the delimiters outside `meta` */
 private def deliver0[RB <: Row, L, I0, V, A, Z](c: Cont0[Cont0[L, L, Res[RB, L, I0]], Cont0[L, L, Res[RB, L, V]], A],
     d: Delim[RB, L, I0, V, A], ev: Ev[RB], depth: Int, meta: Meta[L, V, Z]): Z =
-  deliver[RB, L, I0, V, A, Cont0[L, L, Res[RB, L, I0]], A, Z](c, Frames.End(), d, ev, depth, meta)
+  deliver[RB, L, I0, V, A, Cont0[L, L, Res[RB, L, I0]], A, Z](c, Frames.end, d, ev, depth, meta)
 
 /** the body's value to the delimiter's answer */
 private[zero] def ret[RB <: Row, L, I0, V, A](d: Delim[RB, L, I0, V, A], a: A): I0 = d match

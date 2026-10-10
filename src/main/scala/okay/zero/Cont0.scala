@@ -111,7 +111,7 @@ object Cont0:
   /** the program to its head: binds followed, a delimiter entered — the machine's nodes by their shift0 programs,
    * a handler, a reset and a resumption by the machine, nothing known of the handlers around */
   private[zero] def step[I, T, O, X, A](c: Cont0[T, O, X], k: Frames[X, I, T, A]): Head[I, O, A] =
-    go[I, T, O, X, A, Head[I, O, A]](c, k, KMeta.Top())
+    go[I, T, O, X, A, Head[I, O, A]](c, k, KMeta.top)
 
   /** THE `$`s THE KERNEL'S LOOP IS INSIDE, innermost first — its metacontinuation: what takes the head of the
    * innermost's body, `Head[I, O, A]`, toward the loop's own result `Z`. At the top, the caller; under a `$`, its
@@ -120,6 +120,9 @@ object Cont0:
     case Top[I, O, A]() extends KMeta[I, O, A, Head[I, O, A]]
     case Under[Ib, I2, O2, B, Ab, I, A, Z](ret: Ab => Ib, k: Frames[B, I, I2, A], up: KMeta[I, O2, A, Z])
       extends KMeta[Ib, Cont0[I2, O2, B], Ab, Z]
+  private[zero] object KMeta:
+    private val top0: KMeta[Any, Any, Any, Head[Any, Any, Any]] = Top()
+    def top[I, O, A]: KMeta[I, O, A, Head[I, O, A]] = empty[KMeta[I, O, A, Head[I, O, A]]](top0)
 
   @tailrec private def go[I, T, O, X, A, Z](c: Cont0[T, O, X], k: Frames[X, I, T, A], meta: KMeta[I, O, A, Z]): Z =
     // the head of the innermost `$`'s body: to the caller; or, under a `$`, the value through its `ret`, a capture's
@@ -155,7 +158,7 @@ object Cont0:
     case c: Ctl0[r, j, t, a, s, o] => go(shift0Program(c), k, meta)
     case Shift0(f) => head(Head.Cut(f, k))
     // a `$`: its body in this loop, the frames outside it and its `ret` pushed
-    case d: Dollar[ib, i2, o2, b, ab] => go[ib, ib, Cont0[i2, o2, b], ab, ab, Z](d.body, Frames.End(), KMeta.Under[ib, i2, o2, b, ab, I, A, Z](d.ret, k, meta))
+    case d: Dollar[ib, i2, o2, b, ab] => go[ib, ib, Cont0[i2, o2, b], ab, ab, Z](d.body, Frames.end, KMeta.Under[ib, i2, o2, b, ab, I, A, Z](d.ret, k, meta))
 
   /** `x` into the rest `k` — LAZILY: a bind the loop takes when it gets to it, so applying `k` runs nothing of the
    * rest; an empty rest, the value itself */
@@ -165,15 +168,15 @@ object Cont0:
 
   extension [A](c: Cont0[A, A, A])
     /** a program at the top, its value — the top `identity $` */
-    def value: A = step(c, Frames.End()) match
+    def value: A = step(c, Frames.end) match
       case Head.Done(a) => a
       case Head.Cut(f, k) => f(x => Dollar(resumed(x, k), identity))
 
 /** A DELIMITER the machine runs: its body over `RB`, the outside at `L`, the body's value `A` to the answer `I0`, the
  * delimiter's answer `V` — a reset's or a handler's, the node itself or one the machine makes */
 private[zero] sealed trait Delim[RB <: Row, L, I0, V, A]:
-  /** the top of a loop entered at this delimiter: one for all its entries, not an object each */
-  final val top: Meta[L, V, Cont0[L, L, V]] = Meta.Top()
+  /** the top of a loop entered at this delimiter */
+  final def top: Meta[L, V, Cont0[L, L, V]] = Meta.top
 
 /** a reset's: its body over `R`, written at `S`, every operation passed on */
 private[zero] sealed trait ByReset[R <: Row, J, T, S, V] extends Delim[R, Cont0[J, J, Res[R, J, T]], S, V, S]
@@ -195,6 +198,9 @@ private[zero] sealed trait ByIntercept[E[_], R <: Row, J, T, A, V] extends Delim
 
 /** a reset's, made by the machine: for a `shift`'s body under the reset again, and for its rest resumed */
 private[zero] final case class Rst[R <: Row, J, T, S, V]() extends ByReset[R, J, T, S, V]
+private[zero] object Rst:
+  private val one: Rst[Pure, Any, Any, Any, Any] = Rst()
+  def of[R <: Row, J, T, S, V]: Rst[R, J, T, S, V] = empty[Rst[R, J, T, S, V]](one)
 
 /** a handler's, made by the machine: for a `shift`'s body under the handler again, its value the answer as it is,
  * and for its rest resumed, the body's value to the handler's answer by `r` */
@@ -203,6 +209,12 @@ private[zero] final case class Hd[E[_], R <: Row, J, T, A, I0, V](h: Handler[[Y]
   def clauses: Handler[[Y] =>> Cont0[Cont0[J, J, Res[R, J, T]], Cont0[J, J, Res[R, J, T]], Y], E, ?, V] = h
   def ret(a: A): I0 = r(a)
   def rets: A => I0 = r
+
+/** THE ONE CAST: an empty case, no fields — `Frames.End`, `Meta.Top`, `KMeta.Top`, `Rst` — one object at any
+ * types, not one each time. Its type parameters tie the types of what it is in, it holds no value of them: nothing
+ * is ever read from it at a wrong type, and a match on it refines to the types the place it is used at gave it.
+ * Its type always written: inferred, it is `Nothing`, and a cast to `Nothing` is a test that fails */
+private[zero] inline def empty[E](e: AnyRef): E = e.asInstanceOf[E]
 
 /** what a value goes through, innermost first; as a function, the rest */
 private[zero] enum Frames[A, I, T, B] extends (A => Cont0[I, T, B]):
@@ -220,6 +232,9 @@ private[zero] enum Frames[A, I, T, B] extends (A => Cont0[I, T, B]):
     case Mapped(f, next) => next match
       case End() => Cont0.Return(f(a))
       case _ => Cont0.Bind(Cont0.Return(f(a)), next)
+private[zero] object Frames:
+  private val end0: Frames[Any, Any, Any, Any] = End()
+  def end[S, A]: Frames[A, S, S, A] = empty[Frames[A, S, S, A]](end0)
 
 /** a value through the maps on top of the frames, at once: to the end, its value; to a bind, the program it makes */
 private[zero] enum Fed[I, T, B]:

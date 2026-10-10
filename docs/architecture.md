@@ -2,7 +2,8 @@
 
 One interface, written once; several monads implementing it; references that define what they must do. `Cont0` is
 the default; `Cont` a second implementation, different by design — what keeps the interface from being one monad's
-API. No macros, no casts, no runtime tests of an operation's class.
+API. No macros, no runtime tests of an operation's class, one cast: `Cont0`'s machine's empty cases, no fields, one
+object each at any types (`empty`, `Cont0.scala`).
 
 ```
 okay.core   the interface          rows, Context, Control, Effects, Handler, intercept, Needs, A ! Es, Top,
@@ -209,7 +210,7 @@ delimiter:
 
 Delimiters come in three families: `ByReset` (`Reset`, and `Rst` made by the machine for a shift's body and its `k`),
 `ByHandler` (`Handle`, and `Hd`), `ByIntercept` (`Icpt`). A delimiter bound to a value (`Bind(Handle, f)`) is entered
-at once, its value bound with no frame pushed. Each keeps its `Meta.Top`, made once with it.
+at once, its value bound with no frame pushed. `Meta.Top` is one object for all.
 
 ### The instance (`At.scala`)
 
