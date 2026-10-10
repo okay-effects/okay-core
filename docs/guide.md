@@ -271,7 +271,9 @@ are in `okay.std.Programs`; `Program.run(top)(p)` runs one on a monad. A handler
 WHEREVER it is in the row (`Removed`, okay's): the order of effects in a type says nothing, the order of handlers
 everything. Your own effect is written once, in context — its handler for programs is one line,
 `Program.handled(p)(c => body => yourHandler(using c)(body))` (an interceptor's, `Program.within`); or a
-`Program.Handler`, written for programs, by `Program.handle(h)(p)`.
+`Program.Handler`, written for programs, by `Program.handle(h)(p)` — its clauses over `Program.Ops`, plain methods
+(`pure`, `flatMap`, `map`), so Scala 2 writes them too; a `Program.HandlerAt[O, …]`, by `Program.handleAt`, for a
+clause that performs the effects of the row outside it, `O` (`ops.perform`).
 
 ```scala
 type Row1 = Reader % Int +: Throws % String +: Pure

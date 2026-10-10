@@ -51,11 +51,41 @@ object Program:
   def apply[R <: Row, A](p: (c: Effects { type Effs = R }) => c.Prog[A]): Program[R, A] = new Program[R, A]:
     def on(c: Effects { type Effs = R }): c.Prog[A] = p(c)
 
-  /** A HANDLER OF `E` FOR PROGRAMS: the body's value to `Ans`; each operation with the rest `k`, its clause written
-   * in any context outside — the handler's row the one outside, whatever it is */
+  /** THE PROGRAMS OUTSIDE A HANDLER, for its clauses: of a type of their own, `P`, made and bound by plain methods —
+   * what Scala 2 can call, and what a clause needs no context for. `perform`: an operation of the row outside, `R` */
+  abstract class Ops[R <: Row]:
+    type P[A]
+    def pure[A](a: A): P[A]
+    def flatMap[A, B](p: P[A])(f: A => P[B]): P[B]
+    def map[A, B](p: P[A])(f: A => B): P[B]
+    def perform[E[_], X](op: E[X])(using in: In[E, R]): P[X]
+  /** a context's programs as `Ops` */
+  def ops(c: Effects): Ops[c.Effs] { type P[A] = c.Prog[A] } = new Ops[c.Effs]:
+    type P[A] = c.Prog[A]
+    def pure[A](a: A): c.Prog[A] = c.pure(a)
+    def flatMap[A, B](p: c.Prog[A])(f: A => c.Prog[B]): c.Prog[B] = c.flatMap(p)(f)
+    def map[A, B](p: c.Prog[A])(f: A => B): c.Prog[B] = c.map(p)(f)
+    def perform[E[_], X](op: E[X])(using in: In[E, c.Effs]): c.Prog[X] = c.perform(op, in)
+
+  /** A HANDLER OF `E` FOR PROGRAMS: the body's value to `Ans`; each operation with the rest `k`, its clause over the
+   * programs outside, `ops` — the row outside `R`, whatever it is. Written in Scala 3 or in Scala 2 alike */
   trait Handler[E[_], A, Ans]:
     def ret(a: A): Ans
-    def apply[X](c: Effects)(op: E[X], k: X => c.Prog[Ans]): c.Prog[Ans]
+    def apply[R <: Row, X](ops: Ops[R])(op: E[X], k: X => ops.P[Ans]): ops.P[Ans]
+
+  /** A HANDLER OF `E` FOR PROGRAMS OVER THE ROW `O` OUTSIDE IT: as `Handler`, its clauses able to perform the effects
+   * of `O` too — `ops.perform`, by their paths in `O` */
+  trait HandlerAt[O <: Row, E[_], A, Ans]:
+    def ret(a: A): Ans
+    def apply[X](ops: Ops[O])(op: E[X], k: X => ops.P[Ans]): ops.P[Ans]
+
+  /** `handleAt(h)(p)`: `E` handled wherever it is in `p`'s row, the row without it `h`'s own, `O` */
+  def handleAt[E[_], R <: Row, O <: Row, A, Ans](h: HandlerAt[O, E, A, Ans])(p: Program[R, A])(using rm: Removed.Aux[E, R, O]): Program[O, Ans] =
+    new Program[O, Ans]:
+      def on(c: Effects { type Effs = O }): c.Prog[Ans] =
+        c.handle(new okay.core.Handler[c.Prog, E, A, Ans]:
+          def ret(a: A): Ans = h.ret(a)
+          def apply[X](op: E[X], k: X => c.Prog[Ans]): c.Prog[Ans] = h(ops(c))(op, k))(hc ?=> p.on(View(hc, rm.tr)))
 
   /** `handle(h)(p)`: `E` handled WHEREVER it is in `p`'s row — okay's `handle` with `Removed`: `p` built in a view of
    * the handler's context, its paths translated; the program over the row without `E` */
@@ -64,7 +94,7 @@ object Program:
       def on(c: Effects { type Effs = rm.Out }): c.Prog[Ans] =
         c.handle(new okay.core.Handler[c.Prog, E, A, Ans]:
           def ret(a: A): Ans = h.ret(a)
-          def apply[X](op: E[X], k: X => c.Prog[Ans]): c.Prog[Ans] = h(c)(op, k))(hc ?=> p.on(View(hc, rm.tr)))
+          def apply[X](op: E[X], k: X => c.Prog[Ans]): c.Prog[Ans] = h(ops(c))(op, k))(hc ?=> p.on(View(hc, rm.tr)))
 
   /** A HANDLER IN CONTEXT AS ONE OF PROGRAMS: `h`, written in a context — given its body, a program of that context
    * — over `p`, its effect `E` taken off wherever it is in `p`'s row: `p` built in a view of the handler's context

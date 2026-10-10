@@ -40,12 +40,12 @@ abstract class TestAnywhereOn(top: Top, stackSafe: Boolean = true) extends munit
 
   def reader[A](n: Int): Program.Handler[Ask, A, A] = new Program.Handler[Ask, A, A]:
     def ret(a: A): A = a
-    def apply[X](c: Effects)(op: Ask[X], k: X => c.Prog[A]): c.Prog[A] = op match
+    def apply[R <: Row, X](ops: Program.Ops[R])(op: Ask[X], k: X => ops.P[A]): ops.P[A] = op match
       case Ask.Number => k(n)
   def writer[A]: Program.Handler[Say, A, (List[String], A)] = new Program.Handler[Say, A, (List[String], A)]:
     def ret(a: A): (List[String], A) = (Nil, a)
-    def apply[X](c: Effects)(op: Say[X], k: X => c.Prog[(List[String], A)]): c.Prog[(List[String], A)] = op match
-      case Say.Line(s) => c.map(k(()))((log, a) => (s :: log, a))
+    def apply[R <: Row, X](ops: Program.Ops[R])(op: Say[X], k: X => ops.P[(List[String], A)]): ops.P[(List[String], A)] = op match
+      case Say.Line(s) => ops.map(k(()))((log, a) => (s :: log, a))
 
   /** a program written once over the interface: its row declared, each operation by its path */
   def prog[M[_ <: Row, _]](using E: OkayEffects[M]): M[Ask +: Say +: Pure, Int] =
