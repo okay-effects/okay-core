@@ -5,4 +5,6 @@ effects-once
 scala2-handlers
 optional-modules
 cont-faster
+okay-words
+okay-interface
 wrap-up
