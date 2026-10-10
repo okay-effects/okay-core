@@ -19,3 +19,21 @@ From the old adapter: the kernel's operations one okay-core effect, `Dyn`, their
 Tests: the reference machine's twelve checks, a `k` under other handlers, and a round trip through the reference
 machine (`Steps`), on both machines; okay-kernel's TCK on both — 44, all green. docs/kernel.md says what is exact
 and what is approximated.
+
+## The TCK's five new checks, and no approximation but one
+
+The TCK grew five checks where implementations went wrong (okay-kernel 4825a80). Two failed here, one passed by
+accident (a handler that is only `Returning` was refused as of no shape, so the failure expected was there):
+
+- a `Returning`'s answer failing: a signal, read where the handler is left (one bind), so `recover` catches it; a
+  handler with no clause is one — its operation fails where it was performed;
+- a region failing with a cancellation waiting: the region takes an unwinding too, ending as a value of the bridge's
+  (`Ended`) — a mark's clause sees the region end either way and cancels, else the unwinding goes on;
+- a foreign program crossed by an abort or a cancellation: cancelled, its cancellation's steps driven here (its
+  finalizers' operations answered), then the abort or cancellation goes on — the reference's `FAfter`.
+
+A `k` resumed under other handlers keeps answering in place: a forwarder of a kernel handler's place is an okay-core
+`Answering` when the handler found where `k` runs answers in place. A `k` resumed under another host is rebased too.
+What remains approximated: what is answered in place when a node is translated keeps that place (docs/kernel.md).
+
+Tests: 54 green (14 on each machine, the TCK's 13 on each).

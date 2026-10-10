@@ -26,8 +26,8 @@ type Dyn[X] = Op[X]
  *  - Handlers, by shape: `Answering` is okay-core's `Answering`, answered in place by its machine; `Aborting` is an
  *    okay-core `Answering` too, its value a signal that unwinds to the handler (below); `General` an okay-core
  *    handler whose clause is the kernel's, `k` okay-core's. `Returning`'s return is okay-core's `ret` itself — its
- *    answer a value, nothing flattened; a `General` return (a program) makes the handler's okay-core answer a program,
- *    run when the handler is left (flattened: one bind).
+ *    answer a value, nothing flattened; its failure a signal, read where the handler is left (one bind); a `General`
+ *    return (a program) makes the handler's okay-core answer a program, run when the handler is left (one bind).
  *  - `shift0` and `$` are the bridge's own: `$` an okay-core handler whose return is `k`, `shift0` an operation to
  *    the nearest delimiter — a `$` or a kernel handler — whose clause is the body with okay-core's `k` (deep: the
  *    delimiter included). Not okay-core's `shift`/`reset`/`shift0`: the bridge's own delimiters (`recover`,
@@ -40,20 +40,23 @@ type Dyn[X] = Op[X]
  *    exception of the program's functions — a bind's, a delay's, a clause, an `Answering`'s value, a `Program.in` —
  *    is caught where the bridge calls it and becomes an `Unwind` there. What a handler or the host answers at an
  *    operation can be a SIGNAL (a failure, an abort, a cancellation, a cancellation pending): the operation checks
- *    its value and unwinds from where it was performed — `k.fail`, `k.cancel`, an abort with its finalizers.
+ *    its value and unwinds from where it was performed — `k.fail`, `k.cancel`, an abort with its finalizers. An
+ *    `uncancelable` region takes an unwinding too: ended so, it cancels if a cancellation waits, else lets it go on.
  *  - EXPORT (`computation`): the program under the bridge's top handler on okay-core's top. An operation no handler
  *    of which is in force: answered in place by the host if it answers (no okay-core operation at all), else
  *    performed to the top handler, whose clause answers `Step.Yield` with okay-core's `k` as the `Resume` — run again
  *    on okay-core's top for each resumption: multi-shot, from any thread. IMPORT (`foreign`): another's computation
- *    started where it is placed, its yields performed here as operations of this program.
+ *    started where it is placed, its yields performed here as operations of this program; an abort or a
+ *    cancellation crossing it cancels it, its finalizers' operations answered here, and then goes on.
+ *  - A `k` RESUMED UNDER OTHER HANDLERS than it was made under (or under another host) runs under forwarders
+ *    (`rebased`) that perform again, by the kernel's rules, what reaches them — in place where the handler found
+ *    answers in place.
  *
- * WHAT IS APPROXIMATED, honestly: an exception of a `Returning` handler's `answer` (okay-core's `ret`, which is a
- * value, not a program) is not catchable by `recover`: it escapes okay-core's run and is the step's `Failed`; a
- * foreign computation cancelled by an abort or a cancellation crossing it: its own cancellation's steps are not
- * answered (as the reference machine does); a `k` resumed under other handlers than it was made under runs under
- * forwarders (`rebased`) — exact, but its operations through them are not answered in place, and a foreign
- * computation inside it is offered in place the answers of the handlers it was made under. The rest is the
- * reference machine's semantics (okay-kernel's `Steps`), checked by the same suites and the TCK.
+ * WHAT IS APPROXIMATED, the one thing: what is decided IN PLACE when a node is translated keeps the place it was
+ * translated at. A `k` resumed elsewhere carries, already translated, the operations answered in place by the host
+ * it was made under, and a foreign computation started in it is offered in place the answers of the handlers it
+ * was made under. The rest is the reference machine's semantics (okay-kernel's `Steps`), checked by the same suites
+ * and the TCK.
  */
 final class OnCore private (name: String, val top: CoreTop) extends Effects with okay.kernel.Direct:
   import OnCore.*
@@ -143,8 +146,8 @@ final class OnCore private (name: String, val top: CoreTop) extends Effects with
     case r: RecoverN[?] => recover(x, r.body, r.h)
     case e: EnsuringN[?] => ensuring(x, e.body, e.fin)
     case u: UncancelableN[?] => uncancelable(x, u.body)
-    case f: ForeignN[?] => x.delay(drive(x, safely(f.c.start(answersHere(x)))))
-    case b: Bound[?] => rebased(x, b.raw, b.effs)
+    case f: ForeignN[?] => x.delay(drive(x, safely(f.c.start(answersHere(x))), null))
+    case b: Bound[?] => rebased(x, b.raw, b.effs, b.host)
 
   /** binds and maps nested to the left, a loop: the innermost first, then each function around it */
   private def spine(n0: Node[?], x: Ctx): Any =
@@ -171,21 +174,29 @@ final class OnCore private (name: String, val top: CoreTop) extends Effects with
     try build(node(p), x) catch case NonFatal(e) => x.unwind(FailSig(e))
 
   /**
-   * A PROGRAM OF OKAY-CORE'S made under the handlers `from` — a `k` — placed at `x`. Under the same handlers (by
-   * shape: their effects and kinds) it is itself. Elsewhere — a `k` resumed further out than it was made, under other
-   * handlers — its paths are `from`'s: it runs under a forwarding handler for each of `from`'s it may reach (those of
-   * them `x` has not, if `x`'s are the outer part of `from`; else all), each performing again here, by the kernel's
-   * rules, what reaches it, and resuming it with the answer. Exact; slower — no answer in place through them
+   * A PROGRAM OF OKAY-CORE'S made under the handlers `from` and the host `host` — a `k` — placed at `x`. Under the
+   * same handlers (by shape: their effects and kinds) and host it is itself. Elsewhere — a `k` resumed further out
+   * than it was made, under other handlers, in another computation — its paths are `from`'s: it runs under a
+   * forwarding handler for each of `from`'s it may reach (those of them `x` has not, if `x`'s are the outer part of
+   * `from`; else all), each performing again here, by the kernel's rules, what reaches it — in place where the
+   * handler found answers in place — and resuming it with the answer
    */
-  private def rebased(x: Ctx, raw: Any, from: List[Slot]): Any =
+  private def rebased(x: Ctx, raw: Any, from: List[Slot], host: Answers): Any =
     val (n, m) = (from.length, x.effs.length)
-    val forwarders = if n >= m && sameShape(from.drop(n - m), x.effs) then n - m else n
+    val forwarders = if (host eq x.host) && n >= m && sameShape(from.drop(n - m), x.effs) then n - m else n
     def under(y: Ctx, left: Int): Any =
       if left == 0 then raw
-      else y.handle(Slot.Forward, new Clauses:
-        def clause(op: Op[?], k: Any => Any): Any = y.flatMap(again(y, op), k)
-      )(z => under(z, left - 1))
+      else y.handle(Slot.Forward, forwarder(y, from(left - 1)))(z => under(z, left - 1))
     under(x, forwarders)
+
+  /** the forwarder at `y` of what reached `from`'s handler `s`: to a kernel handler's effect, answered in place if
+   * the handler of that effect in force at `y` answers in place — as a performed operation is; else performed again */
+  private def forwarder(y: Ctx, s: Slot): okay.core.Handler[Raw, Dyn, Any, Any] =
+    val i = if s.effect == null || s.delim || s.unwind || s.region then -1 else y.find(s.effect)
+    val an = if i >= 0 then y.effs(i).answering else null
+    if an != null then inPlace(v => v, op => try an.value(trust(op)) catch case NonFatal(e) => FailSig(e))
+    else new Clauses:
+      def clause(op: Op[?], k: Any => Any): Any = y.flatMap(again(y, op), k)
 
   private def sameShape(a: List[Slot], b: List[Slot]): Boolean =
     a.corresponds(b)((s, t) => (s.effect eq t.effect) && s.delim == t.delim && s.unwind == t.unwind && s.region == t.region &&
@@ -235,32 +246,36 @@ final class OnCore private (name: String, val top: CoreTop) extends Effects with
     // a return that is a program: the okay-core handler's answer that program, run when it is left
     val flat = g != null && !h.isInstanceOf[Returning[?, ?]]
     def rets(y: Ctx): Any => Any = h match
-      case r: Returning[?, ?] => v => trust[Returning[Any, Any]](r).answer(v)
+      // a failure of the answer, a signal: read where the handler is left
+      case r: Returning[?, ?] => v => try trust[Returning[Any, Any]](r).answer(v) catch case NonFatal(e) => FailSig(e)
       case _ if g != null => v => guard(y, g.ret(v, this))
       case _ => v => v
+    /** the handler left at `y`: its answer run, if a program; read, if a `Returning`'s — the one bind it costs */
+    def left(y: Ctx, raw: Any): Any = if h.isInstanceOf[Returning[?, ?]] then y.checked(raw) else flatten(y, flat, raw)
     h match
       case a: Answering[?, ?] =>
         val an = trust[Answering[Any, Any]](a)
         x.handle(Slot.Delim, delimiter(x)) { y =>
-          flatten(y, flat, y.handle(Slot(t, false, false, false, an), inPlace(rets(y),
+          left(y, y.handle(Slot(t, false, false, false, an), inPlace(rets(y),
             op => try an.value(trust(op)) catch case NonFatal(e) => FailSig(e)))(z => in(z, body)))
         }
       case a: Aborting[?, ?] =>
         val ab = trust[Aborting[Any, Any]](a)
         val catcher = abortCatcher(x)
         x.handle(Slot.Catcher, catcher) { y =>
-          flatten(y, flat, y.handle(Slot(t, false, false, false, null), inPlace(rets(y),
+          left(y, y.handle(Slot(t, false, false, false, null), inPlace(rets(y),
             op => try AbortSig(catcher, ab.abort(trust(op))) catch case NonFatal(e) => FailSig(e)))(z => in(z, body)))
         }
-      case _ if g != null =>
+      case _ =>
         val returned = rets(x)
-        flatten(x, flat, x.handle(Slot(t, true, false, false, null), new Clauses:
+        left(x, x.handle(Slot(t, true, false, false, null), new Clauses:
           override def ret(v: Any): Any = returned(v)
           def clause(op: Op[?], k: Any => Any): Any = op match
             case s: Shift0Op => shift0Clause(x, s.body, k, flat)
-            case _ => answered(x, flat, guard(x, g.apply[Any](trust(op), resumed(x, k, flat), OnCore.this)))
+            case _ if g != null => answered(x, flat, guard(x, g.apply[Any](trust(op), resumed(x, k, flat), OnCore.this)))
+            // a handler with no clause (a `Returning` alone): its operation fails where it was performed
+            case _ => k(FailSig(IllegalStateException(s"a handler of no shape for an operation: $h")))
         )(z => in(z, body)))
-      case _ => x.unwind(FailSig(IllegalStateException(s"a handler of no shape: $h")))
 
   /** a handler's answer, a program when its return is one: run */
   private def flatten(x: Ctx, flat: Boolean, raw: Any): Any = if flat then x.flatMap(raw, p => p) else raw
@@ -268,7 +283,7 @@ final class OnCore private (name: String, val top: CoreTop) extends Effects with
   /** okay-core's `k` of a handler at `x`, as the kernel's: its program, made under `x`'s handlers, flattened as the
    * handler's answer is */
   private def resumed(x: Ctx, k: Any => Any, flat: Boolean): Fn[Any, Prog[Any]] =
-    v => Bound[Any](flatten(x, flat, k(v)), x.effs)
+    v => Bound[Any](flatten(x, flat, k(v)), x.effs, x.host)
 
   /** a clause's program, as the okay-core handler's answer: itself, or — the answer a program — that program */
   private def answered(x: Ctx, flat: Boolean, raw: Any): Any = if flat then x.pure(raw) else raw
@@ -330,11 +345,19 @@ final class OnCore private (name: String, val top: CoreTop) extends Effects with
     )(z => in(z, body))
     x.flatMap(unwound, v => x.flatMap(in(x, fin), _ => x.pure(v)))
 
-  /** a region a cancellation waits for: marked pending inside, it cancels from outside when it ends */
+  /** a region a cancellation waits for: marked pending inside, it cancels from outside when it ends — with a value
+   * or unwound (a failure, an abort). An unwinding ends it as a value of the bridge's, `Ended`: so a mark's clause,
+   * the rest of the region resumed, sees the region end either way, and the unwinding goes on outside it otherwise */
   private def uncancelable(x: Ctx, body: Program[?]): Any =
-    x.handle(Slot.Region, new Clauses:
-      def clause(op: Op[?], k: Any => Any): Any = x.flatMap(k(()), _ => x.unwind(CancelSig))
+    val region = x.handle(Slot.Region, new Clauses:
+      def clause(op: Op[?], k: Any => Any): Any = op match
+        case Mark => x.flatMap(k(()), _ => x.unwind(CancelSig))
+        case u: Unwind => x.pure(Ended(u.why))
+        case _ => unexpected(x, op)
     )(z => in(z, body))
+    x.flatMap(region, v => v match
+      case e: Ended => x.unwind(e.why)
+      case _ => x.pure(v))
 
   // -- import
 
@@ -351,24 +374,24 @@ final class OnCore private (name: String, val top: CoreTop) extends Effects with
       case _ => throw IllegalStateException(s"not answered in place: $op")
 
   /** a foreign computation's step, taken here: its operation performed here, its answer — a value, a failure — given
-   * to its `k`; a cancellation or an abort crossing it cancels it */
-  private def drive(x: Ctx, s: Step[?]): Any = s match
-    case d: Step.Done[?] => x.pure(d.value())
-    case f: Step.Failed[?] => x.unwind(FailSig(f.error()))
-    case _: Step.Cancelled[?] => x.unwind(CancelSig)
+   * to its `k`. `after`: a cancellation or an abort that crossed it — it is being cancelled, its finalizers' operations
+   * answered here as any; when it ends (however), `after` goes on */
+  private def drive(x: Ctx, s: Step[?], after: Signal | Null): Any = s match
     case y: Step.Yield[?, ?] =>
       val k = trust[Resume[Any, Any]](y.k())
       val op = y.op()
       val i = x.find(op.effect())
-      x.flatMap(if i >= 0 then x.performAt(op, i) else x.delay(outward(x, op, check = false, x.inRegion)), v => answerForeign(x, k, v))
+      x.flatMap(if i >= 0 then x.performAt(op, i) else x.delay(outward(x, op, check = false, x.inRegion)), v => answerForeign(x, k, v, after))
+    case _ if after != null => x.raise(after)
+    case d: Step.Done[?] => x.pure(d.value())
+    case f: Step.Failed[?] => x.unwind(FailSig(f.error()))
+    case _ => x.unwind(CancelSig)
 
-  private def answerForeign(x: Ctx, k: Resume[Any, Any], v: Any): Any = v match
-    case f: FailSig => drive(x, safely(k.fail(f.e)))
-    case p: PendingSig => x.flatMap(x.mark, _ => answerForeign(x, k, p.v))
-    case s: Signal =>
-      safely(k.cancel())
-      x.raise(s)
-    case _ => drive(x, safely(k.resume(v)))
+  private def answerForeign(x: Ctx, k: Resume[Any, Any], v: Any, after: Signal | Null): Any = v match
+    case f: FailSig => drive(x, safely(k.fail(f.e)), after)
+    case p: PendingSig => x.flatMap(x.mark, _ => answerForeign(x, k, p.v, after))
+    case s: Signal => drive(x, safely(k.cancel()), s)
+    case _ => drive(x, safely(k.resume(v)), after)
 
 object OnCore:
   /** okay-core's Cont0, its machine */
@@ -407,8 +430,8 @@ object OnCore:
   private[kernel] final class EnsuringN[A](val body: Program[?], val fin: Program[Void]) extends Node[A]
   private[kernel] final class UncancelableN[A](val body: Program[?]) extends Node[A]
   private[kernel] final class ForeignN[A](val c: Computation[?]) extends Node[A]
-  /** a program of okay-core's — a clause's `k`, resumed — made under the bridge's handlers `effs` */
-  private[kernel] final class Bound[A](val raw: Any, val effs: List[Slot]) extends Node[A]
+  /** a program of okay-core's — a clause's `k`, resumed — made under the bridge's handlers `effs` and `host` */
+  private[kernel] final class Bound[A](val raw: Any, val effs: List[Slot], val host: Answers) extends Node[A]
 
   // -- signals: what an operation can be answered, read where it was performed
 
@@ -418,6 +441,8 @@ object OnCore:
   private[kernel] final class AbortSig(val to: AnyRef, val answer: Any) extends Signal
   /** a value given inside a region a cancellation waits for: the region marked, then the value */
   private[kernel] final class PendingSig(val v: Any) extends Signal
+  /** a region ended by an unwinding: its answer, read where it is left */
+  private[kernel] final class Ended(val why: Signal)
 
   // -- the bridge's own operations, all of the effect `Dyn`, each routed by its own path
 
@@ -455,7 +480,7 @@ object OnCore:
     val Delim = Slot(null, true, false, false, null)
     val Catcher = Slot(null, true, true, false, null)
     val Unwinds = Slot(null, false, true, false, null)
-    val Region = Slot(null, false, false, true, null)
+    val Region = Slot(null, false, true, true, null)
     val Host = Slot(null, false, false, false, null)
     val Forward = Slot(null, false, false, false, null)
 
