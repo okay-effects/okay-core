@@ -167,6 +167,96 @@ run(logging(fixed(21)(prog)))   // (List("at 21"), 42)
 A program's operation goes to the handler it *runs* under, not the one it was built under: a generator's rest,
 returned out of its `reader(7)` and run under `reader(8)`, asks 8.
 
+## Effects from effects
+
+The standard effects are written with the same API as one's own, so whatever is said here of them is said of any.
+Four ways to build on effects there are, from the least to the most:
+
+**Operations of existing effects, no effect of one's own** — a function asking for the paths it needs, as `modify`
+is `get` and `put`:
+
+```scala
+def incr(using c: Effects, s: State % Int :? c.Effs): c.Prog[Int] = modify[Int](_ + 1)
+
+run(state[Int](0)(incr.flatMap(_ => incr)))   // (2, 2)
+```
+
+**An effect of one's own, its handler performing another outside it.** A clause runs outside its handler, in the
+handler's context `c`: an operation of any effect in `c.Effs` is one it may perform. The effect the handler needs is
+in its signature; its handler, the caller's, outside. (Not an `Answering`: its `value` performs nothing.)
+
+```scala
+enum Audit[+A]:
+  case Note(s: String) extends Audit[Unit]
+
+def audit(s: String)(using c: Effects, in: Audit :? c.Effs): c.Prog[Unit] = perform(Audit.Note(s))
+
+def auditToWriter[A](using c: Effects, w: Writer % String :? c.Effs)(body: c.Body[Audit, A, A]): c.Prog[A] =
+  Effects.handle(new Handler[c.Prog, Audit, A, A]:
+    def ret(a: A): A = a
+    def apply[X](op: Audit[X], k: X => c.Prog[A]): c.Prog[A] = op match
+      case Audit.Note(s) => tell(s"[audit] $s").flatMap(_ => k(())))(body)
+
+def audited(using c: Effects, a: Audit :? c.Effs): c.Prog[Int] = audit("a").flatMap(_ => audit("b")).map(_ => 7)
+
+run(writer[String, Int](auditToWriter(audited)))   // (List("[audit] a", "[audit] b"), 7)
+```
+
+**An effect of one's own, its handler installing another inside, hidden.** The caller sees `Ticket` only; the state
+is the handler's own:
+
+```scala
+enum Ticket[+A]:
+  case Next extends Ticket[Int]
+
+def ticket(using c: Effects, in: Ticket :? c.Effs): c.Prog[Int] = perform(Ticket.Next)
+
+private case class Issued(n: Int)
+
+private def issuing[A](body: A ! Ticket)(using c: Effects, s: State % Issued :? c.Effs): c.Prog[A] =
+  Effects.handle(new Handler[c.Prog, Ticket, A, A]:
+    def ret(a: A): A = a
+    def apply[X](op: Ticket[X], k: X => c.Prog[A]): c.Prog[A] = op match
+      case Ticket.Next => modify[Issued](i => Issued(i.n + 1)).flatMap(i => k(i.n)))(body)
+
+def tickets[A](body: A ! Ticket)(using c: Effects): c.Prog[(Int, A)] =
+  state[A](Issued(0))(issuing(body)).map((i, a) => (i.n, a))
+
+def twoTickets: Int ! Ticket = ticket.flatMap(a => ticket.map(b => a * 10 + b))
+
+run(tickets(twoTickets))   // (2, 12)
+```
+
+- The body is an `A ! Ticket`, not a `c.Body`: a `c.Body` is a program in the context right under the handler, at
+  `c`; this body runs one handler further in, under the state. An `A ! Ticket` runs in any context with `Ticket`.
+- The hidden effect's type is private. A `State % Int` there would be the one the body's own `get[Int]` finds, the
+  nearest; `State % Issued` no one outside can name, so the caller's state is the caller's:
+
+```scala
+def mixed(using c: Effects, s: State % Int :? c.Effs): c.Prog[(Int, Int)] =
+  tickets[Int](ticket.flatMap(a => ticket.map(b => a + b))).flatMap(r => incr.map(_ => r))
+
+run(state[(Int, Int)](100)(mixed))   // (101, (2, 3))
+```
+
+**An existing effect changed for a part of the program** — an interceptor (below, *Intercepting*), its clause
+passing the operation on, changed:
+
+```scala
+def shouting[A](using c: Effects, w: Writer % String :? c.Effs)(body: c.Reset[A] ?=> c.Within[A, A, A]): c.Prog[A] =
+  Effects.intercept(new Handler[c.Prog, Writer % String, A, A]:
+    def ret(a: A): A = a
+    def apply[X](op: Writer[String, X], k: X => c.Prog[A]): c.Prog[A] = op match
+      case Writer.Tell(s) => tell(s.toUpperCase).flatMap(_ => k(())))(body)
+
+def partly(using c: Effects, w: Writer % String :? c.Effs): c.Prog[Unit] = tell("a").flatMap(_ => shouting(tell("b")))
+
+run(writer[String, Unit](partly))   // (List("a", "B"), ())
+```
+
+For a `Program[R, A]` (below), the second way is a `Program.HandlerAt`, its clauses performing the row outside by
+`ops.perform`.
+
 ## Delimited control
 
 `reset` delimits, `shift` captures the rest up to the nearest delimiter — a `reset`, a handler, or the top — as `k`:

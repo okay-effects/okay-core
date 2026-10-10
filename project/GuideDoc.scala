@@ -6,7 +6,7 @@ import sbt._
  * a comment, `expr   // value`, is a check, `expr` against `value` — run by TestGuideDoc. A value `the same` is
  * the one before it; a value's trailing `, on Cont` (the monad named) is not part of it */
 object GuideDoc {
-  private val Declaration = "^(def |enum |type |case class |given |object |trait |class ).*".r
+  private val Declaration = "^(private |final )*(def |enum |type |case class |given |object |trait |class ).*".r
   private val Checked = "^(.*?\\S)\\s+//\\s*(.*)$".r
   private val OnMonad = "^(.*), on \\w+$".r
 
