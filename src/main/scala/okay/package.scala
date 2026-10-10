@@ -20,7 +20,7 @@ infix type :?[E[_], R <: okay.core.Row] = okay.core.:?[E, R]
 type Row = okay.core.Row
 infix type +:[E[_], T <: okay.core.Row] = okay.core.+:[E, T]
 type Pure = okay.core.Pure
-export okay.core.{perform, pure, Effects, Handler, Answering, Program, Top}
+export okay.core.{perform, pure, Effects, Handler, Answering, Program, Top, RowEffects}
 export okay.core.Control.{reset, shift}
 
 /** `effect(op)`: an operation of one's own effect, a program — okay's word for `perform` */

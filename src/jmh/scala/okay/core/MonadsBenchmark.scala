@@ -100,6 +100,18 @@ class MonadsBenchmark:
   @Benchmark
   def stateProgram(): Int = Program.run(top)(Programs.state(0)(countingP(n)))._1
 
+  /** the same loop written over okay's interface, `RowEffects`: each operation `E.perform` by its path, binds by
+   * `E`'s `flatMap` — what okay's facade over okay-core costs against `Program` itself */
+  def countingRows[M[_ <: Row, _]](i: Int)(using E: RowEffects[M]): M[State % Int +: Pure, Int] =
+    val get = E.perform[State % Int, State % Int +: Pure, Int](State.Get())
+    if i == 0 then get
+    else get.flatMap(x => E.perform[State % Int, State % Int +: Pure, Unit](State.Put(x + 1))).flatMap(_ => countingRows[M](i - 1))
+  lazy val rows: RowEffects[Program] = RowEffects.on(top)
+  @Benchmark
+  def stateRows(): Int =
+    given RowEffects[Program] = rows
+    rows.run(Programs.state(0)(countingRows[Program](n)))._1
+
   type Deep = Reader % Int +: Writer % Int +: State % Int +: Pure
   def countingDeep(i: Int): Program[Deep, Int] =
     if i == 0 then Programs.get[Deep, Int]

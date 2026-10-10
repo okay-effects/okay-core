@@ -73,6 +73,11 @@ object Program:
     def ret(a: A): Ans
     def apply[R <: Row, X](ops: Ops[R])(op: E[X], k: X => ops.P[Ans]): ops.P[Ans]
 
+  /** a TAIL-RESUMPTIVE handler for programs: each operation answered by its value alone, in place — as
+   * `okay.core.Answering`, and run as one */
+  trait Answering[E[_], A, Ans] extends Handler[E, A, Ans] with Value[E]:
+    final def apply[R <: Row, X](ops: Ops[R])(op: E[X], k: X => ops.P[Ans]): ops.P[Ans] = k(value(op))
+
   /** A HANDLER OF `E` FOR PROGRAMS OVER THE ROW `O` OUTSIDE IT: as `Handler`, its clauses able to perform the effects
    * of `O` too — `ops.perform`, by their paths in `O` */
   trait HandlerAt[O <: Row, E[_], A, Ans]:
@@ -92,9 +97,15 @@ object Program:
   def handle[E[_], R <: Row, A, Ans](h: Handler[E, A, Ans])(p: Program[R, A])(using rm: Removed[E, R]): Program[rm.Out, Ans] =
     new Program[rm.Out, Ans]:
       def on(c: Effects { type Effs = rm.Out }): c.Prog[Ans] =
-        c.handle(new okay.core.Handler[c.Prog, E, A, Ans]:
-          def ret(a: A): Ans = h.ret(a)
-          def apply[X](op: E[X], k: X => c.Prog[Ans]): c.Prog[Ans] = h(ops(c))(op, k))(hc ?=> p.on(View(hc, rm.tr)))
+        val in = h match
+          // answering stays answering: the monads answer it in place
+          case a: Answering[E, A, Ans] @unchecked => new okay.core.Answering[c.Prog, E, A, Ans]:
+            def ret(x: A): Ans = a.ret(x)
+            def value[X](op: E[X]): X = a.value(op)
+          case _ => new okay.core.Handler[c.Prog, E, A, Ans]:
+            def ret(a: A): Ans = h.ret(a)
+            def apply[X](op: E[X], k: X => c.Prog[Ans]): c.Prog[Ans] = h(ops(c))(op, k)
+        c.handle(in)(hc ?=> p.on(View(hc, rm.tr)))
 
   /** A HANDLER IN CONTEXT AS ONE OF PROGRAMS: `h`, written in a context — given its body, a program of that context
    * — over `p`, its effect `E` taken off wherever it is in `p`'s row: `p` built in a view of the handler's context

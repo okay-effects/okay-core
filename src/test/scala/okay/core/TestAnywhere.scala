@@ -2,31 +2,6 @@ package okay.core
 
 import okay.std.*
 
-/** OKAY'S INTERFACE, as okay's root `Effects[M]` has it (okay/src/main/scala/Effects.scala): a program `M[R, A]`, the
- * row in its type; an operation by its path; a handler taking its effect off wherever it is in the row. Here over
- * okay-core's rows and its `Program`, on the monad of a top — the shape okay would stand on */
-trait OkayEffects[M[_ <: Row, _]]:
-  def pure[R <: Row, A](a: A): M[R, A]
-  def perform[E[_], R <: Row, X](op: E[X])(using In[E, R]): M[R, X]
-  def defer[R <: Row, A, B](thunk: () => M[R, A])(f: A => M[R, B]): M[R, B]
-  def tailcall[R <: Row, A](thunk: => M[R, A]): M[R, A] = defer(() => thunk)(pure)
-  extension [R <: Row, A](m: M[R, A])
-    def flatMap[B](f: A => M[R, B]): M[R, B]
-    def map[B](f: A => B): M[R, B] = m.flatMap(a => pure(f(a)))
-  def handle[E[_], A, Ans, R <: Row](h: Program.Handler[E, A, Ans])(m: M[R, A])(using rm: Removed[E, R]): M[rm.Out, Ans]
-  def run[A](m: M[Pure, A]): A
-
-/** okay's interface over `Program`, run on `top`'s monad */
-final class OnProgram(top: Top) extends OkayEffects[Program]:
-  def pure[R <: Row, A](a: A): Program[R, A] = Program.pure(a)
-  def perform[E[_], R <: Row, X](op: E[X])(using in: In[E, R]): Program[R, X] = Program.perform(op)
-  def defer[R <: Row, A, B](thunk: () => Program[R, A])(f: A => Program[R, B]): Program[R, B] = Program.defer(thunk()).flatMap(f)
-  extension [R <: Row, A](m: Program[R, A])
-    def flatMap[B](f: A => Program[R, B]): Program[R, B] = m.flatMap(f)
-  def handle[E[_], A, Ans, R <: Row](h: Program.Handler[E, A, Ans])(m: Program[R, A])(using rm: Removed[E, R]): Program[rm.Out, Ans] =
-    Program.handle(h)(m)
-  def run[A](m: Program[Pure, A]): A = Program.run(top)(m)
-
 /** a handler of an effect wherever it is in a row: okay's shape, on each monad */
 abstract class TestAnywhereOn(top: Top, stackSafe: Boolean = true) extends munit.FunSuite:
   override def munitTestTransforms: List[TestTransform] = super.munitTestTransforms :+ TestTransform("stack", t =>
@@ -38,30 +13,44 @@ abstract class TestAnywhereOn(top: Top, stackSafe: Boolean = true) extends munit
   enum Say[+A]:
     case Line(s: String) extends Say[Unit]
 
-  def reader[A](n: Int): Program.Handler[Ask, A, A] = new Program.Handler[Ask, A, A]:
+  def reader[A](n: Int): Program.Answering[Ask, A, A] = new Program.Answering[Ask, A, A]:
     def ret(a: A): A = a
-    def apply[R <: Row, X](ops: Program.Ops[R])(op: Ask[X], k: X => ops.P[A]): ops.P[A] = op match
-      case Ask.Number => k(n)
+    def value[X](op: Ask[X]): X = op match
+      case Ask.Number => n
   def writer[A]: Program.Handler[Say, A, (List[String], A)] = new Program.Handler[Say, A, (List[String], A)]:
     def ret(a: A): (List[String], A) = (Nil, a)
     def apply[R <: Row, X](ops: Program.Ops[R])(op: Say[X], k: X => ops.P[(List[String], A)]): ops.P[(List[String], A)] = op match
       case Say.Line(s) => ops.map(k(()))((log, a) => (s :: log, a))
 
   /** a program written once over the interface: its row declared, each operation by its path */
-  def prog[M[_ <: Row, _]](using E: OkayEffects[M]): M[Ask +: Say +: Pure, Int] =
+  def prog[M[_ <: Row, _]](using E: RowEffects[M]): M[Ask +: Say +: Pure, Int] =
     E.perform[Ask, Ask +: Say +: Pure, Int](Ask.Number).flatMap(n =>
       E.perform[Say, Ask +: Say +: Pure, Unit](Say.Line(n.toString)).map(_ => n + 1))
 
-  given E: OkayEffects[Program] = OnProgram(top)
+  given E: RowEffects[Program] = RowEffects.on(top)
 
   test("okay's interface over Program: handlers apply in any order, each takes its effect wherever it is"):
     assertEquals(E.run(E.handle(writer[Int])(E.handle(reader[Int](41))(prog[Program]))), (List("41"), 42))
     assertEquals(E.run(E.handle(reader[(List[String], Int)](41))(E.handle(writer[Int])(prog[Program]))), (List("41"), 42))
 
-  test("okay's interface: a tail call costs no frame — 100 000 of them"):
-    def loop[M[_ <: Row, _]](n: Int, acc: Int)(using E: OkayEffects[M]): M[Ask +: Pure, Int] =
+  test("okay's words: A ! R, an operation at the row expected, handle wherever the effect is, value"):
+    import E.*
+    val counting: Int ! (State % Int +: Say +: Pure) =
+      for
+        // an effect of two parameters named: from a `Put[Int]` the compiler abstracts more than `State[Int, _]`
+        n <- effect[State % Int, Int](State.Get())
+        _ <- effect[State % Int, Unit](State.Put(n + 1))
+        _ <- Say.Line(s"$n").perform
+        m <- effect[State % Int, Int](State.Get())
+      yield m
+    assertEquals(Programs.state(41)(counting).handle(writer[(Int, Int)]).value, (List("41"), (42, 42)))
+    assertEquals(Programs.state(41)(counting.handle(writer[Int])).value, (42, (List("41"), 42)))
+
+  test("Pure + A + B and A +: B +: Pure are one row; a tail call costs no frame — 100 000 of them"):
+    import RowEffects.+
+    def loop[M[_ <: Row, _]](n: Int, acc: Int)(using E: RowEffects[M]): M[Pure + Ask, Int] =
       if n == 0 then E.pure(acc)
-      else E.perform[Ask, Ask +: Pure, Int](Ask.Number).flatMap(x => E.tailcall(loop[M](n - 1, acc + x)))
+      else E.perform[Ask, Pure + Ask, Int](Ask.Number).flatMap(x => E.tailcall(loop[M](n - 1, acc + x)))
     assertEquals(E.run(E.handle(reader[Int](1))(loop[Program](100000, 0))), 100000)
 
   // -- the standard effects taken off wherever they are

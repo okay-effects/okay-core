@@ -63,8 +63,10 @@ The layers:
   context's own, its delimiters' contexts views too. `Programs`' handlers, and `Program.handle(h)(p)` with a
   `Program.Handler` (clauses written in any context outside). For it the interface's monad one level in is two
   members, not one indexed by a row: `Within` (a reset's, an interceptor's body) and `Handling[E]` (a handler's) —
-  so a view keeps its row and takes the monad of the context it views. okay's own `TestEffectsRows`, over okay's
-  interface `Effects[M[_ <: Row, _]]` written here over `Program` (`TestAnywhereOn`), passes on the four monads.
+  so a view keeps its row and takes the monad of the context it views. okay's interface `Effects[M[_ <: Row, _]]` is
+  `RowEffects` (`RowEffects.scala`), okay's words its members, its instance `RowEffects.on(top)` over `Program`:
+  okay's own `TestEffectsRows` passes on the four monads (`TestAnywhereOn`); what is the same as okay's and what is
+  not, [okay.md](okay.md).
 - **Integrations, outside the core.** Modules of their own, each library behind one: `okay-core-cats`
   (`okay.interop.CatsProgram`), `okay-core-tofu` (`okay.interop.TofuProgram`); for Scala 2, `okay-core-scala2-prelude`,
   `-cats`, `-tofu`, compiled by scalac 2.13 against the libraries' 2.13 artifacts.
