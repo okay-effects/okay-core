@@ -2,7 +2,6 @@ package okay.std
 
 import okay.core.*
 
-import java.util.concurrent.atomic.AtomicReference
 import scala.util.control.NonFatal
 
 /** ASYNC: a program that waits — on a computation suspended, `Run`, or on a callback, `Await`, whose `Left` is the
@@ -52,7 +51,7 @@ object Async:
           op match
             case Run(run) => resume(try Right(run()) catch { case NonFatal(e) => Left(e) })
             case Await(register) =>
-              val slot = AtomicReference[Slot[X]](Slot.Waiting)
+              val slot = Swap[Slot[X]](Slot.Waiting)
               register: r =>
                 if !slot.compareAndSet(Slot.Waiting, Slot.Ready(r)) then go(resume(r))
               if slot.compareAndSet(Slot.Waiting, Slot.Detached) then f.pure(())
@@ -84,15 +83,15 @@ object Async:
     def subscribe(f: W => Unit)(done: Either[Throwable, Unit] => Unit): Unit =
       runAsync(using top)(handled((w, rest) => { f(w); rest }))(done)
     def push(f: W => Unit): Unit =
-      val result = java.util.concurrent.CompletableFuture[Either[Throwable, Unit]]()
-      subscribe(f)(result.complete)
-      result.get().fold(e => throw e, identity)
+      val result = Mailbox[Either[Throwable, Unit]]()
+      subscribe(f)(result.put)
+      result.take().fold(e => throw e, identity)
 
     def iterator: Stream.Iter[W] = new Stream.Iter[W]:
       private enum Pulled:
         case Next(w: W, resume: Either[Throwable, Unit] => Unit)
         case End(r: Either[Throwable, Unit])
-      private val steps = java.util.concurrent.LinkedBlockingQueue[Pulled]()
+      private val steps = Mailbox[Pulled]()
       @volatile private var cancelled = false
       private var started = false
       private var current: Pulled | Null = null
@@ -156,6 +155,6 @@ object Async:
    * at the edge of a program only; its failure raised in the context */
   def run[A](body: Body[A])(using c: Effects, has: Throws % Throwable :? c.Effs): c.Prog[A] =
     c.delay:
-      val result = java.util.concurrent.CompletableFuture[Either[Throwable, A]]()
-      runAsync(using c.top)(body)(result.complete)
-      result.get().fold(raise[Throwable, A], c.pure)
+      val result = Mailbox[Either[Throwable, A]]()
+      runAsync(using c.top)(body)(result.put)
+      result.take().fold(raise[Throwable, A], c.pure)
