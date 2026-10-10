@@ -66,5 +66,20 @@ object Program:
           def ret(a: A): Ans = h.ret(a)
           def apply[X](op: E[X], k: X => c.Prog[Ans]): c.Prog[Ans] = h(c)(op, k))(hc ?=> p.on(View(hc, rm.tr)))
 
+  /** A HANDLER IN CONTEXT AS ONE OF PROGRAMS: `h`, written in a context — given its body, a program of that context
+   * — over `p`, its effect `E` taken off wherever it is in `p`'s row: `p` built in a view of the handler's context
+   * (`View`), its paths translated. So an effect is written once, in context; its `Program` is this */
+  def handled[E[_], R <: Row, A, Ans](p: Program[R, A])(using rm: Removed[E, R])(
+      h: (c: Effects { type Effs = rm.Out }) => c.Body[E, Ans, A] => c.Prog[Ans]): Program[rm.Out, Ans] =
+    new Program[rm.Out, Ans]:
+      def on(c: Effects { type Effs = rm.Out }): c.Prog[Ans] = h(c)(hc ?=> p.on(View(hc, rm.tr)))
+
+  /** AN INTERCEPTOR IN CONTEXT AS ONE OF PROGRAMS: `h` over `fa`, the row the same — `fa` built again in the
+   * interceptor's context */
+  def within[R <: Row, A, B](fa: Program[R, A])(
+      h: (c: Effects { type Effs = R }) => (c.Reset[B] ?=> c.Within[B, B, A]) => c.Prog[B]): Program[R, B] =
+    new Program[R, B]:
+      def on(c: Effects { type Effs = R }): c.Prog[B] = h(c)(r ?=> fa.on(r))
+
   /** `run(top)(p)`: a program with nothing left to handle, built at the top of a monad and run there */
   def run[A](top: Top)(p: Program[Pure, A]): A = top.run(p.on(top.at[A]))

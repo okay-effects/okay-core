@@ -269,7 +269,9 @@ in any context whose row is `R`. So its type names its row — `F[A]` for code w
 what Scala 2 can write — and it can be built again where a delimiter needs it. The standard effects as programs
 are in `okay.std.Programs`; `Program.run(top)(p)` runs one on a monad. A handler of a `Program` takes its effect off
 WHEREVER it is in the row (`Removed`, okay's): the order of effects in a type says nothing, the order of handlers
-everything. Your own: `Program.handle(h)(p)`, `h` a `Program.Handler`.
+everything. Your own effect is written once, in context — its handler for programs is one line,
+`Program.handled(p)(c => body => yourHandler(using c)(body))` (an interceptor's, `Program.within`); or a
+`Program.Handler`, written for programs, by `Program.handle(h)(p)`.
 
 ```scala
 type Row1 = Reader % Int +: Throws % String +: Pure

@@ -94,6 +94,22 @@ abstract class TestAnywhereOn(top: Top, stackSafe: Boolean = true) extends munit
       .flatMap(a => Programs.handleWith[R2, String, Int](Programs.raise[R2, String, Int]("x"))(e => Program.pure(e.length + a)))
     assertEquals(Program.run(top)(Programs.throws[String](Programs.reader(4)(body))), Right(41))
 
+  // -- one's own effect written once, in context; its Program handler derived
+  enum Log[+A]:
+    case Line(s: String) extends Log[Unit]
+  def logging[A](using c: Effects)(body: c.Body[Log, (List[String], A), A]): c.Prog[(List[String], A)] =
+    Effects.handle(new Handler[c.Prog, Log, A, (List[String], A)]:
+      def ret(a: A): (List[String], A) = (Nil, a)
+      def apply[X](op: Log[X], k: X => c.Prog[(List[String], A)]): c.Prog[(List[String], A)] = op match
+        case Log.Line(l) => k(()).map((ls, a) => (l :: ls, a)))(body)
+  def loggingP[R <: Row, A](p: Program[R, A])(using rm: Removed[Log, R]) =
+    Program.handled[Log, R, A, (List[String], A)](p)(c => b => logging[A](using c)(b))
+
+  test("one's own effect written in context, its Program handler one line: taken off wherever it is"):
+    type R5 = Reader % Int +: Log +: Pure
+    val p: Program[R5, Int] = Programs.ask[R5, Int].flatMap(n => Program.perform[Log, R5, Unit](Log.Line(s"n=$n")).map(_ => n * 2))
+    assertEquals(Program.run(top)(Programs.reader(21)(loggingP(p))), (List("n=21"), 42))
+
   test("100 000 operations of an effect deep in the row, its handler taken off from there"):
     type R4 = Writer % Int +: Reader % Int +: State % Int +: Pure
     def loop(i: Int): Program[R4, Unit] =
