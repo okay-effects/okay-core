@@ -40,3 +40,37 @@ The typed front unchanged — the allocations byte for byte the same, the times 
 program written once over the kernel's `Effects` (KernelMixedBenchmark): 316 / 348 — slower than the translating
 bridge with `Direct` (219 / 248, okay-kernel's bench at 4ee71a0): the native path is to be made fast (a lookup by
 Type each operation, no cache; a `try` a bind; a signal check an operation).
+
+## The native path made fast, round 1
+
+Profiled (JMH `-prof gc`, async-profiler, JDK 26): of the mixed program written once over `Effects`, the program's
+own code and its lambdas' captures were half the time; okay-core's machines and `OnCore` about a third. Changed, the
+kernel's path only:
+
+- `guard` and `in` inline: no thunk a bind;
+- a bind (and a map) over a kernel operation one node, `KOpK`/`KSuspend` with its value read first (`checked`), as
+  Cont0's typed `bind` fuses an `Op` — no `Bind`, no frame an operation;
+- the walk of the handlers in force by fields (`KHandler.key eq` the effect, `decide`), the operation's `effect()`
+  asked once, not a virtual `accepts` and an interface call a handler;
+- the kernel's nodes one case each loop (`KNode` in Cont0; Cont's last case): Cont's `run` 2991 → 2680 bytes (2515
+  before the kernel), Cont0's `deliver` 3347 → 3035;
+- a failure of a `Returning`'s answer, or of a map's function, a signal VALUE raised at the next bind or handler's
+  return (`recover` reads its body's value; `ensuring`, a region, `$`, the top read theirs): no `Bind` and `Return`
+  a handler — and a map Cont's own `Map` node; on Cont0 a bind, measured faster there (250 against 337 µs);
+- the machine's nodes typed `Prog[Any]`, a user's `Fn`'s result untyped: no `checkcast` to the kernel's interface a
+  call.
+
+JDK 26, `-f 2 -wi 5 -i 5 -prof gc`, µs (cont / zero), B an order:
+
+| | before | now |
+|---|---|---|
+| KernelMixedBenchmark.orders | 316 / 348 | 229.1 / 250.5 (2122 / 1934 B) |
+| the reference machine `Steps`, the same program | | 522.9 (2414 B) |
+| MixedBenchmark.orders (typed) | 142.3 / 124.5 | 141.9 / 127.2 |
+| MonadsBenchmark choose, general, reads | 26.3 / 24.1, 9.9 / 8.1, 4.8 / 4.9 | 26.4 / 24.1, 9.9 / 8.1, 4.6 / 4.6 |
+| state, stateBang, stateProgram | 14.6 / 13.6, 14.1 / 13.2, 25.4 / 23.6 | 14.1 / 12.8, 13.7 / 13.1, 23.8 / 23.2 |
+| stateReaderBang, throwing | 20.7 / 18.8, 16.6 / 14.5 | 20.1 / 17.8, 16.3 / 13.8 |
+
+The typed front unchanged. The kernel's program at the bridge's (219 / 248) — and bimodal by build: a change the
+JIT takes differently moves one machine by ±35% (cont 246 or 318, zero 250 or 340 across builds), each build steady
+across forks.

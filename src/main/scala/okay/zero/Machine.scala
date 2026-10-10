@@ -162,16 +162,9 @@ private[zero] object Meta:
     case _ => leave(bail(c, k, d))
   // the kernel's operations, by their effect's identity: answered in place by the nearest handler in force taking it,
   // if it can; else to the delimiter, as an operation is — after every typed node, costing them nothing
-  case o: KOp[t, oo, x] => kernelInPlace(o.op, ev) match
-    case null => leave(kernelRoute(o.op, false, kcheck, k, d, ev))
-    case h => h.value(o.op) match
-      case s: okay.core.kernel.Signal => deliver[RB, L, I0, V, A, T, X, Z](trustK[Cont0[T, Cont0[L, L, Res[RB, L, V]], X]](ZeroMachine.raise(s)), k, d, ev, depth, meta)
-      case v => k match
-        case th: Frames.Then[a1, x1, i1, t1, t2, b1] => deliver[RB, L, I0, V, A, t1, x1, Z](trustK[Cont0[t1, Cont0[L, L, Res[RB, L, V]], x1]](th.f(v.asInstanceOf[a1])), th.next, d, ev, depth, meta)
-        case _ => deliver[RB, L, I0, V, A, T, X, Z](Return(v).asInstanceOf[Cont0[T, Cont0[L, L, Res[RB, L, V]], X]], k, d, ev, depth, meta)
-  case o: KOpK[t, oo, x] => kernelInPlace(o.op, ev) match
-    case null => leave(kernelRoute(o.op, o.region, o.k, k, d, ev))
-    case h => deliver[RB, L, I0, V, A, T, X, Z](trustK[Cont0[T, Cont0[L, L, Res[RB, L, V]], X]](o.k(h.value(o.op))), k, d, ev, depth, meta)
+  case o: KNode[t, oo, x] => kernelInPlace(o.op, ev) match
+    case null => leave(kernelRoute(o.op, o.region, kernelRest(o), k, d, ev))
+    case h => deliver[RB, L, I0, V, A, T, X, Z](trustK[Cont0[T, Cont0[L, L, Res[RB, L, V]], X]](kernelAnswered(o, h)), k, d, ev, depth, meta)
   case _ => leave(bail(c, k, d))
 
 /** THE TRUSTED STEP of the kernel's nodes in the machine: untyped, okay-core's types phantom at run time */
@@ -182,11 +175,16 @@ private inline def trustK[C](p: Any): C = p.asInstanceOf[C]
 private def kernelInPlace(op: okay.kernel.Op[?], ev: Ev[?]): okay.core.kernel.KHandler | Null =
   if op eq okay.core.kernel.HereOp then okay.core.kernel.Machine.here(kernelHandlers(ev))
   else
+    val t = op.effect()
+    val internal = ZeroMachine.internal(t)
     var e: Ev[?] = ev
     while e.isInstanceOf[Ev.Entry[?, ?]] do
       val en = e.asInstanceOf[Ev.Entry[?, ?]]
       en.answers match
-        case h: okay.core.kernel.KHandler if h.accepts(op) => return if h.answersInPlace(op) then h else null
+        case h: okay.core.kernel.KHandler => h.decide(op, t, internal) match
+          case 0 =>
+          case 1 => return h
+          case _ => return null
         case _ =>
       e = en.outer
     null

@@ -24,7 +24,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .jvmConfigure(_.enablePlugins(JmhPlugin))
   .jvmSettings(
-    libraryDependencies += "dev.okay" % "okay-kernel-api" % kernelVersion,
+    libraryDependencies ++= Seq("dev.okay" % "okay-kernel-api" % kernelVersion,
+      // okay-kernel's reference machine: KernelMixedBenchmark's yardstick, the same program on it
+      "dev.okay" %% "okay-kernel-steps" % kernelVersion % Test),
     Test / unmanagedSourceDirectories ++= platformDirs("test", "jvm", "jvm-native").value,
     // sun.misc.Unsafe's memory access allowed in every forked JVM — run and test when forked, the JMH host
     // (always forked) and its benchmark forks, which inherit the host's options: JDK 24+ warns on the first call

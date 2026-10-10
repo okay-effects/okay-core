@@ -9,7 +9,8 @@ import okay.kernel.std.{Handlers, Reader, Results, State, Throws, Writer}
  * `MixedBenchmark`'S PROGRAM WRITTEN ONCE over okay-kernel's `Effects` — okay-kernel's bench/MixedBenchmark, the same
  * code — run on okay-core's machines natively (`okay.core.kernel.OnCore`): n orders, each priced from a reader's
  * base, its supplier the first of three that fits (a choice), a failure for some (a raise, a handler per order), the
- * total a state, the failures a log. Against `MixedBenchmark`, the same program in okay-core's own words
+ * total a state, the failures a log. Against `MixedBenchmark`, the same program in okay-core's own words, and okay-kernel's
+ * reference machine (`steps`), the same program on a plain interpreter
  */
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -19,7 +20,7 @@ import okay.kernel.std.{Handlers, Reader, Results, State, Throws, Writer}
 @Fork(2)
 class KernelMixedBenchmark:
 
-  @Param(Array("cont", "zero"))
+  @Param(Array("cont", "zero", "steps"))
   var backend: String = ""
 
   @Param(Array("1000"))
@@ -27,7 +28,11 @@ class KernelMixedBenchmark:
 
   private var e: Effects = null
 
-  @Setup def setup(): Unit = e = if backend == "cont" then okay.core.kernel.OnCore.cont else okay.core.kernel.OnCore.zero
+  @Setup def setup(): Unit = e = backend match
+    case "cont" => okay.core.kernel.OnCore.cont
+    case "zero" => okay.core.kernel.OnCore.zero
+    // okay-kernel's reference machine, a plain interpreter of the same program: the yardstick
+    case _ => okay.kernel.steps.Steps
 
   private def prog[A](f: Effects => Prog[A]): Program[A] = new Program[A] { def in(e: Effects): Prog[A] = f(e) }
   private def fn[A, B](f: A => B): Fn[A, B] = new Fn[A, B] { def apply(a: A): B = f(a) }

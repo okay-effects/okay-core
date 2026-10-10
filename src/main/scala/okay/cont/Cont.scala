@@ -55,7 +55,8 @@ enum Cont[R <: Row, I, O, A] extends okay.kernel.Prog[A]:
    * a signal where it was performed. Matched after every typed node */
   case KInject[R <: Row, S, X](op: okay.kernel.Op[?]) extends Cont[R, S, S, X]
   /** a kernel operation with the rest bound to its value as it is; `region`, an `uncancelable` region crossed */
-  case KSuspend[R <: Row, I, O, A](op: okay.kernel.Op[?], region: Boolean, k: Any => Cont[R, I, O, A]) extends Cont[R, I, O, A]
+  case KSuspend[R <: Row, I, O, A](op: okay.kernel.Op[?], region: Boolean, k: Any => Cont[R, I, O, A], checked: Boolean = false)
+    extends Cont[R, I, O, A]
 
   def flatMap[I2, B](f: A => Cont[R, I2, I, B]): Cont[R, I2, O, B] = this match
     case i: Inject[e, r, s, x] => Cont.bound(i, f)
@@ -225,12 +226,10 @@ object Cont:
       case _ => run(mm, Frames.Then(g, k), d, ev, m, ex, depth)
     // the kernel's operations, by their effect's identity: answered in place by the nearest handler in force taking
     // it, if it can; else to the delimiter, as an operation is — after every typed node, costing them nothing
-    case ki: KInject[r, s, x] => kernelInPlace(ki.op, ev) match
-      case null => leave(kernelPerformed(ki.op, false, kernelThen(kcheck, k), d))
-      case h => run(kernelValue[R, T, O, A](h.value(ki.op)), k, d, ev, m, ex, depth)
-    case ks: KSuspend[r, i, o, a] => kernelInPlace(ks.op, ev) match
-      case null => leave(kernelPerformed(ks.op, ks.region, kernelThen(ks.k, k), d))
-      case h => run(trustK[Cont[R, T, O, A]](ks.k(h.value(ks.op))), k, d, ev, m, ex, depth)
+    // (`KInject`, `KSuspend`: one case, the loop kept small)
+    case _ => kernelInPlace(c, ev) match
+      case null => leave(kernelPerformed(c, kernelThen(kernelRest(c), k), d))
+      case h => run(trustK[Cont[R, T, O, A]](kernelAnswered(c, h)), k, d, ev, m, ex, depth)
 
   /** THE TRUSTED STEP of the kernel's nodes in the loop: untyped, okay-core's types phantom at run time */
   private inline def trustK[C](p: Any): C = p.asInstanceOf[C]
@@ -238,10 +237,25 @@ object Cont:
   /** a kernel operation's value read for a signal — the machine's `check`, at this monad's type */
   private def kcheck: Any => Cont[?, ?, ?, ?] = ContMachine.check.asInstanceOf[Any => Cont[?, ?, ?, ?]]
 
-  /** a kernel operation's value in place: itself, or the signal raised */
-  private def kernelValue[R <: Row, T, O, A](v: Any): Cont[R, T, O, A] = v match
-    case s: okay.core.kernel.Signal => trustK[Cont[R, T, O, A]](ContMachine.raise(s))
-    case _ => Return(v).asInstanceOf[Cont[R, T, O, A]]
+  /** the kernel operation of a kernel node */
+  private def kernelOp(c: Cont[?, ?, ?, ?]): okay.kernel.Op[?] = c match
+    case ks: KSuspend[?, ?, ?, ?] => ks.op
+    case ki: KInject[?, ?, ?] => ki.op
+    case _ => throw IllegalStateException("not a kernel operation")
+
+  /** a kernel operation's rest, leaving the loop: its value read first if it is to be */
+  private def kernelRest(c: Cont[?, ?, ?, ?]): Any => Cont[?, ?, ?, ?] = c match
+    case ks: KSuspend[?, ?, ?, ?] =>
+      if ks.checked then trustK[Any => Cont[?, ?, ?, ?]](ContMachine.checked(trustK[Any => AnyRef](ks.k))) else ks.k
+    case _ => kcheck
+
+  /** a kernel operation answered in place by `h`: the rest with its value — read first if it is to be */
+  private def kernelAnswered(c: Cont[?, ?, ?, ?], h: okay.core.kernel.KHandler): AnyRef = c match
+    case ks: KSuspend[?, ?, ?, ?] =>
+      val v = h.value(ks.op)
+      if ks.checked then ContMachine.checkThen(v, trustK[Any => AnyRef](ks.k)) else ks.k(v)
+    case ki: KInject[?, ?, ?] => ContMachine.check(h.value(ki.op))
+    case _ => throw IllegalStateException("not a kernel operation")
 
   /** `f` then the frames `k`: a kernel operation's rest */
   private def kernelThen[R <: Row, A, I, T, B](f: Any => Cont[?, ?, ?, ?], k: Frames[R, A, I, T, B]): Any => Cont[?, ?, ?, ?] = k match
@@ -250,14 +264,20 @@ object Cont:
 
   /** the nearest handler in force taking the kernel operation, if it answers it in place; `HereOp`, the offer of
    * those known to a foreign computation */
-  private def kernelInPlace(op: okay.kernel.Op[?], ev: Ev[?]): okay.core.kernel.KHandler | Null =
+  private def kernelInPlace(c: Cont[?, ?, ?, ?], ev: Ev[?]): okay.core.kernel.KHandler | Null =
+    val op = kernelOp(c)
     if op eq okay.core.kernel.HereOp then okay.core.kernel.Machine.here(kernelHandlers(ev))
     else
+      val t = op.effect()
+      val internal = ContMachine.internal(t)
       var e: Ev[?] = ev
       while e.isInstanceOf[Ev.Entry[?, ?]] do
         val en = e.asInstanceOf[Ev.Entry[?, ?]]
         en.answers match
-          case h: okay.core.kernel.KHandler if h.accepts(op) => return if h.answersInPlace(op) then h else null
+          case h: okay.core.kernel.KHandler => h.decide(op, t, internal) match
+            case 0 =>
+            case 1 => return h
+            case _ => return null
           case _ =>
         e = en.outer
       null
@@ -271,7 +291,11 @@ object Cont:
   /** the program leaving the delimiter `d` with a kernel operation not answered in place, `g` the rest: at a handler
    * that takes it, its clause, `k` the rest under it again; else on outside, the rest under the delimiter again. At
    * the top, none: a kernel program runs under its computation's top handler */
-  private def kernelPerformed[R <: Row, I, O, B, P](op: okay.kernel.Op[?], region: Boolean, g: Any => Cont[?, ?, ?, ?], d: Delim[R, I, O, B, P]): P =
+  private def kernelPerformed[R <: Row, I, O, B, P](c: Cont[?, ?, ?, ?], g: Any => Cont[?, ?, ?, ?], d: Delim[R, I, O, B, P]): P =
+    val op = kernelOp(c)
+    val region = c match
+      case ks: KSuspend[?, ?, ?, ?] => ks.region
+      case _ => false
     d match
       case _: TopOf[r, i, o, b] => throw IllegalStateException(s"a kernel operation with no handler: $op")
       case dr: ByReset[r, q, s, o, a1] => trustK[P](KSuspend[r, q, q, o](op, region, Redelimit[r, q, s, o, a1, Any](trustK[Any => Cont[r, s, o, a1]](g), dr.ret)))
