@@ -73,7 +73,7 @@ writer under a reader…), which is where the first rows matter.
 
 `Cont0`'s machine is an optimization of a definition that exists as code: each delimiter is a `$` whose answers are
 read. The machine falls back to it for what it does not take (`bail`), and the tests run every suite on the
-definition alone (`Ref`) and on a textbook CPS of shift0 (`Cps0`) beside the machine. `Cont`'s fold has no such
+definition alone (`Spec`) and on a textbook CPS of shift0 (`Cps0`) beside the machine. `Cont`'s fold has no such
 executable definition beside it.
 
 ## Where `Cont` is better

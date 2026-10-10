@@ -50,7 +50,7 @@ are compiled and run by `TestGuide`.
 | `okay.std` | the effects, written once: `Reader` (`local`), `State`, `Writer`, `Throws` (`handleWith`), `Choose`, `Emit` (`collect`, `stream`, `generate`), `PState`; `Programs`, the same as `Program`s |
 | `okay.cont` | `Cont`, its loop and fold; the instance `At`; `run`; `top` |
 | `okay.zero` | `Cont0` (the kernel, open as a monad of its own), the machine; the instance `At`; `run`; `top`; `shift0` |
-| `okay.async` (module `async/`) | `async`, `await`, `Async.run`, asynchronous streams — and what they race and wait with (`Swap`, `Mailbox`): the core has no thread in it |
+| `okay.async` (module `async/`) | `async`, `await`, `Async.run`, asynchronous streams — and what they race and wait with (`Ref`, `Mailbox`): the core has no thread in it |
 | `okay.interop` (modules `interop/cats`, `interop/tofu`) | cats' monad over `Program` (every platform), tofu's `WithLocal` and `Errors` (the JVM's) |
 | `okay.scala2` (modules `scala2/prelude`, `scala2/cats`, `scala2/tofu`) | for Scala 2.13: short names of effects and rows, and the same cats and tofu instances compiled by scalac 2.13 |
 
@@ -89,7 +89,7 @@ place where the operation is.
 
 ## Tests
 
-The suites are written once and run on four monads: `Cont`, `Cont0`, and two references in the tests — `Ref`
+The suites are written once and run on four monads: `Cont`, `Cont0`, and two references in the tests — `Spec`
 (`Cont0` without its machine, each delimiter its definition) and `Cps0` (shift0 and `$` in textbook CPS, no code of
 either monad). They agree on every suite; where `Cont0` differs by design, `TestMonads` says so.
 

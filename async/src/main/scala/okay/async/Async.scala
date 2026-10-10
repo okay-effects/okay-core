@@ -52,7 +52,7 @@ object Async:
           op match
             case Run(run) => resume(try Right(run()) catch { case NonFatal(e) => Left(e) })
             case Await(register) =>
-              val slot = Swap[Slot[X]](Slot.Waiting)
+              val slot = Ref[Slot[X]](Slot.Waiting)
               register: r =>
                 if !slot.compareAndSet(Slot.Waiting, Slot.Ready(r)) then go(resume(r))
               if slot.compareAndSet(Slot.Waiting, Slot.Detached) then f.pure(())

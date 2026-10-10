@@ -108,6 +108,6 @@ abstract class TestAnywhereOn(top: Top, stackSafe: Boolean = true) extends munit
 
 class TestAnywhere extends TestAnywhereOn(okay.cont.top)
 class TestAnywhereOnCont0 extends TestAnywhereOn(okay.zero.top)
-class TestAnywhereOnRef extends TestAnywhereOn(okay.zero.Ref.top)
+class TestAnywhereOnSpec extends TestAnywhereOn(okay.zero.Spec.top)
 /** the textbook CPS, not stack safe: on a thread of a large stack */
 class TestAnywhereOnCps0 extends TestAnywhereOn(Cps0.top, stackSafe = false)

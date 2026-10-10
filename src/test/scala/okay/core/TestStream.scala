@@ -106,6 +106,6 @@ abstract class TestStreamOn(top: Top, stackSafe: Boolean = true) extends munit.F
 
 class TestStream extends TestStreamOn(okay.cont.top)
 class TestStreamOnCont0 extends TestStreamOn(okay.zero.top)
-class TestStreamOnRef extends TestStreamOn(okay.zero.Ref.top)
+class TestStreamOnSpec extends TestStreamOn(okay.zero.Spec.top)
 /** the textbook CPS, not stack safe: on a thread of a large stack */
 class TestStreamOnCps0 extends TestStreamOn(Cps0.top, stackSafe = false)

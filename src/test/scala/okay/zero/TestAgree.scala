@@ -10,7 +10,7 @@ import scala.util.Random
 
 /** THE MONADS AGAINST THE REFERENCES ON PROGRAMS MADE AT RANDOM: handlers nested in any order, operations of the
  * effects in scope, resets and shifts to them — written once over the interface, run on `Cont`, on `Cont0`, on
- * `Ref` (the kernel alone) and on `Cps0` (the textbook CPS): the four agree. okay-java's AgreeTest.
+ * `Spec` (the kernel alone) and on `Cps0` (the textbook CPS): the four agree. okay-java's AgreeTest.
  *
  * A program is data, made first, then built — so every run builds the same. The paths to the effects are made as
  * the handlers nest, at run time: a test's casts, not the library's. A shift is made only where its nearest
@@ -122,7 +122,7 @@ class TestAgree extends munit.FunSuite:
     List(
       on(Backend.cont.run[Int](build(p, Nil))),
       on(ZeroBackend.run[Int](build(p, Nil))),
-      on(RefBackend.run[Int](build(p, Nil))),
+      on(SpecBackend.run[Int](build(p, Nil))),
       on(BackendSuite.onLargeStack(Backend.cps0.run[Int](build(p, Nil)))))
 
   def disagree(p: P): Boolean = outcomes(p).distinct.size > 1
@@ -167,7 +167,7 @@ class TestAgree extends munit.FunSuite:
     case P.Handle(_, _, body) => interceptors(body)
     case P.Intercept(_, _, body) => 1 + interceptors(body)
 
-  test("1 000 programs made at random: Cont, Cont0, Ref and Cps0 agree"):
+  test("1 000 programs made at random: Cont, Cont0, Spec and Cps0 agree"):
     val r = Random(20261009)
     var handlers = 0
     var crossing = 0

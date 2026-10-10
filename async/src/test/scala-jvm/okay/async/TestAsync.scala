@@ -63,6 +63,6 @@ class TestAsyncOnZero extends TestAsyncOn:
     okay.zero.run(throws[Throwable, A](Async.run(body)))
 
 /** `Async` on the reference: its top */
-class TestAsyncOnRef extends TestAsyncOn:
+class TestAsyncOnSpec extends TestAsyncOn:
   def runIO[A](body: (c: Effects { type Effs = Async +: Async.Fails; type S = Unit }) ?=> c.Prog[A]): Either[Throwable, A] =
-    okay.zero.Ref.run(throws[Throwable, A](Async.run(body)))
+    okay.zero.Spec.run(throws[Throwable, A](Async.run(body)))

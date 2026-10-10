@@ -11,8 +11,8 @@ okay.std    effects, written once   Reader (local), State, Writer, Throws (handl
                                    Programs (the same as Programs), Stream
 okay.zero   the monad Cont0         shift0 and $, a machine               — At, run, top, shift0   (the default)
 okay.cont   the monad Cont          shift/reset, a handler a fold         — At, run, top           (the second)
-tests       the references          Ref (Cont0 without the machine), Cps0 (textbook CPS); tofu over Program
-okay.async  module async/          Async, its streams, Swap and Mailbox — the core has no thread, wait or callback
+tests       the references          Spec (Cont0 without the machine), Cps0 (textbook CPS); tofu over Program
+okay.async  module async/          Async, its streams, Ref and Mailbox — the core has no thread, wait or callback
 okay.interop  interop/cats, /tofu    cats' monad over Program (every platform); tofu's WithLocal, Errors (the JVM's)
 scala2/     Scala 2.13              prelude (short names), cats, tofu — compiled by scalac 2.13; tests: one's own
                                     handlers in Scala 2, tofu over Program
@@ -183,7 +183,7 @@ a reset `Reset` and an interceptor `Icpt` (each a `$` whose answers are read, it
 The kernel's loop (`step`, `go`) runs any of them, the machine's nodes by entering the machine, with a
 metacontinuation of its own (`KMeta`): a `$` met is pushed — its `ret` and the frames outside — and its body run in
 the same loop; the body's head popped: a value through `ret`, a capture's body in the `$`'s place, the rest under it
-again. `$`s nested to any depth in constant stack — the definitions (`Ref`) included.
+again. `$`s nested to any depth in constant stack — the definitions (`Spec`) included.
 
 ### The machine (`Machine.scala`)
 
@@ -220,7 +220,7 @@ it does not compile.
 
 ## The references (tests)
 
-- **`Ref`** (`zero/Ref.scala`): `Cont0` by the kernel alone, each delimiter its definition (`handleRead`,
+- **`Spec`** (`zero/Spec.scala`): `Cont0` by the kernel alone, each delimiter its definition (`handleRead`,
   `resetRead`), no machine — what the machine must do. Shares the kernel with `okay.zero.At`; catches a machine
   that changes the meaning.
 - **`Cps0`** (`core/Cps0.scala`): shift0 and `$` from the textbook in CPS, a program a function `(A => I) => O`, the
@@ -228,20 +228,20 @@ it does not compile.
   tests run on a thread of a 2 GB stack.
 - **`Cps`** (`core/TestControlCps.scala`): Danvy–Filinski's shift and reset in CPS, control only.
 
-`Ref` and `Cps0` have `Cont`'s semantics for a shift directly under a handler; `okay.zero.At` differs there by
+`Spec` and `Cps0` have `Cont`'s semantics for a shift directly under a handler; `okay.zero.At` differs there by
 design, and `TestMonads` pins it.
 
 ## Tests
 
 The suites are written once over the interface and take a `Backend` — a monad's run (`BackendSuite`):
 `TestEffectsOn`, `TestContextOn`, `TestControlOn`, `TestTogetherOn`, `TestDynamicOn`, `TestPStateOn` (and in `async/`, `TestAsyncOn`).
-Each runs on `Cont`, `Cont0`, `Ref` and `Cps0`. Beside them: `TestCont` and `TestCont0` (the kernels), `TestMonads`
+Each runs on `Cont`, `Cont0`, `Spec` and `Cps0`. Beside them: `TestCont` and `TestCont0` (the kernels), `TestMonads`
 (the same programs on each monad, and where they differ), `TestShiftAtHandler` and `TestZero` (`Cont0`'s own),
 `TestStreamOn`, `TestAsyncStreamOn` (in `async/`) (streams on each monad's top), `TestInterceptOn` (`intercept`), `TestTofuOn`
 (tofu over `Program`, okay.tofu), `TestTofuFromScala2` (scala2/: the same from Scala 2.13), `TestSealed` (what does not compile), `TestGuide` (the guide's examples),
 `TestGuideDoc` (the guide's own text: its `scala` blocks generated into `GuideDoc` by `project/GuideDoc.scala`, each
 `expr   // value` line checked), `TestAgree` (1 000 programs made at random — handlers nested in any order, resets and
-shifts — on `Cont`, `Cont0`, `Ref` and `Cps0`, which must agree).
+shifts — on `Cont`, `Cont0`, `Spec` and `Cps0`, which must agree).
 
 ## Benchmarks
 

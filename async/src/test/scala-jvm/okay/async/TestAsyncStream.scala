@@ -66,6 +66,6 @@ abstract class TestAsyncStreamOn(top: Top, stackSafe: Boolean = true) extends mu
 
 class TestAsyncStream extends TestAsyncStreamOn(okay.cont.top)
 class TestAsyncStreamOnCont0 extends TestAsyncStreamOn(okay.zero.top)
-class TestAsyncStreamOnRef extends TestAsyncStreamOn(okay.zero.Ref.top)
+class TestAsyncStreamOnSpec extends TestAsyncStreamOn(okay.zero.Spec.top)
 /** the textbook CPS, not stack safe: on a thread of a large stack */
 class TestAsyncStreamOnCps0 extends TestAsyncStreamOn(Cps0.top, stackSafe = false)

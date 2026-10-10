@@ -41,7 +41,7 @@ Async.stream[Int](okay.zero.top)(ticks).toList   // List(1, 2)
 - `Async`, the effect: `Run` (a computation suspended) and `Await` (a callback's value). Its handler is at the top
   of the context's monad (`c.top`): `runAsync(body)(done)`, the run going on in the callback's thread when the
   callback comes later, in place when it came already — a loop, not a frame.
-- `Swap`, a cell `compareAndSet` decides on: the run and the callback race on it, which came first.
+- `Ref`, a cell `compareAndSet` decides on: the run and the callback race on it, which came first.
 - `Mailbox`, values put and taken in order, `take` waiting: where blocking code waits for the run (`Async.run`, a
   pushed or pulled async stream). `Platform.waits`: on JS nothing can be waited for, so `take` of an empty mailbox
   fails — the run did not complete at once; the non-blocking roads (`runAsync`, `subscribe`) work everywhere.

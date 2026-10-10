@@ -68,7 +68,7 @@ class TestMonads extends munit.FunSuite:
   test("a raise in k directly under throws: Cont and the reference abort the body; Cont0's k gets its Left"):
     def p(using c: Effects): c.Prog[Either[String, Int]] = okay.std.throws[String, Int](kRaising)
     assertEquals(okay.cont.run(p), Left("one"))
-    assertEquals(Ref.run(p), Left("one"))
+    assertEquals(Spec.run(p), Left("one"))
     assertEquals(okay.core.Cps0.run(p), Left("one"))
     assertEquals(run(p), Right(3 + 20))
 
@@ -81,5 +81,5 @@ class TestMonads extends munit.FunSuite:
     def p(using c: Effects): c.Prog[Int] = reader[Int](5)(moved.flatMap(x => ask[Int].map(_ + x)))
     assertEquals(okay.cont.run(p), 7)
     assertEquals(run(p), 7)
-    assertEquals(Ref.run(p), 7)
+    assertEquals(Spec.run(p), 7)
     assertEquals(okay.core.Cps0.run(p), 7)

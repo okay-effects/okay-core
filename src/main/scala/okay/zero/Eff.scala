@@ -25,7 +25,7 @@ opaque type Level[R <: Row, J, V] = Cont0[J, J, Res[R, J, V]]
  * and handlers — over the kernel, and no bridge to it: no raw `shift0` or `$` reaches a request */
 opaque type Eff[R <: Row, J, I, O, A] = Cont0[Level[R, J, I], Level[R, J, O], A]
 
-// THE PROGRAMS' OPERATIONS, for the contexts of `At` and `Ref` (At.scala): master's interface the way in
+// THE PROGRAMS' OPERATIONS, for the contexts of `At` and `Spec` (At.scala): master's interface the way in
 
 extension [R <: Row, J, I, O, A](p: Eff[R, J, I, O, A])
   private[zero] def flatMap[I2, B](f: A => Eff[R, J, I2, I, B]): Eff[R, J, I2, O, B] = p.flatMap(f)
@@ -82,7 +82,7 @@ private[zero] def shift0Program[R <: Row, J, T, A, S, O](c: Ctl0[R, J, T, A, S, 
     k => c.f(a => passAll(k(a))).map(o => Res.Done(o)))
 
 // THE DELIMITERS AS THEIR shift0 PROGRAMS: a handler, a reset, a `$` whose answers are read — their definitions,
-// what the machine runs fast; what it does not take it runs so (`bail`), and the reference in the tests (`Ref`)
+// what the machine runs fast; what it does not take it runs so (`bail`), and the reference in the tests (`Spec`)
 
 /** a handler of `E`: `Done∘ret $ body`, its answers read by `h` — the body's answer moved from `I0` to `V` by it */
 private[zero] def handleRead[E[_], R <: Row, J, T, A, I0, V](h: Handler[[X] =>> Eff[R, J, T, T, X], E, ?, V], ret: A => I0,

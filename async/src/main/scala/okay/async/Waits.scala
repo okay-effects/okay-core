@@ -1,8 +1,8 @@
 package okay.async
 
-/** A CELL SWAPPED AT ONCE: what a run and a callback race on — `compareAndSet` decides which of them came first.
+/** A MUTABLE CELL, ITS CHANGES AT ONCE: what a run and a callback race on — `compareAndSet` decides which of them came first.
  * `synchronized`, which every platform has (a no-op on JS's one thread) */
-final class Swap[A](init: A):
+final class Ref[A](init: A):
   private var value: A = init
   def get: A = synchronized(value)
   def compareAndSet(expect: A, update: A): Boolean = synchronized:

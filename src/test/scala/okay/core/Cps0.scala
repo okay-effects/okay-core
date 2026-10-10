@@ -3,7 +3,7 @@ package okay.core
 /** A TEXTBOOK REFERENCE of `Effects`, no code of `Cont` nor of `Cont0`: shift0 and `$` in CPS — a program a function
  * `(A => I) => O`, `shift0 f` the function `f` itself, `ret $ body` the body applied to `ret` (Materzok–Biernacki).
  * Under a delimiter the answers are programs of the level outside, yielding the body's answer or a request; an
- * operation and a `shift` requests, a handler and a reset a `$` whose answers are read — `okay.zero.Ref`'s reading,
+ * operation and a `shift` requests, a handler and a reset a `$` whose answers are read — `okay.zero.Spec`'s reading,
  * on functions. Not stack safe: for small programs only. Master's semantics: a shift's `k` under a handler the rest
  * under the handler's `ret`, its operations the shift body's handler's */
 object Cps0:

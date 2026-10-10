@@ -26,14 +26,14 @@ reported and is not stack recursion. The inventory, 2026-10-09 (30 rows):
 
 ## Delimiters nested deep
 
-Done on every monad — `Cont0`'s machine and kernel, `Ref`, `Cont` — the metacontinuation below,
+Done on every monad — `Cont0`'s machine and kernel, `Spec`, `Cont` — the metacontinuation below,
 `changelog.d/metacontinuation.md`; `TestNestingOn` runs 100 000 nested handlers and resets on each. What follows is
 the account of how it was.
 
 The rows marked not bounded are one thing: a delimiter — a handler, a reset, an interceptor — at the head of
 another's body is entered by a call, a few frames a level. A program nesting delimiters by recursion — a function
 that installs a handler and calls itself inside it — runs a thousand deep and overflows at about ten thousand, on
-both monads and on `Ref` (`TestNestingOn` pins it: 1 000 run; 100 000 overflow, asserted, so the test says when it
+both monads and on `Spec` (`TestNestingOn` pins it: 1 000 run; 100 000 overflow, asserted, so the test says when it
 is gone). Operations, binds, tail calls, resumptions, handlers one after another and handlers nested as deep as a
 program's text are all constant in stack; only nesting by recursion is not.
 

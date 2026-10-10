@@ -79,6 +79,6 @@ abstract class TestTofuOn(top: Top, stackSafe: Boolean = true) extends munit.Fun
 
 class TestTofu extends TestTofuOn(okay.cont.top)
 class TestTofuOnCont0 extends TestTofuOn(okay.zero.top)
-class TestTofuOnRef extends TestTofuOn(okay.zero.Ref.top)
+class TestTofuOnSpec extends TestTofuOn(okay.zero.Spec.top)
 /** the textbook CPS, not stack safe: on a thread of a large stack */
 class TestTofuOnCps0 extends TestTofuOn(okay.core.Cps0.top, stackSafe = false)
