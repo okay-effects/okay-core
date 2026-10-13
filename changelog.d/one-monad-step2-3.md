@@ -31,3 +31,8 @@
   general 8.79 (8.20), captures ×2, generate 21.7 (14.9), queens 159 (148), the mixed program 162 (130), the kernel's
   419 (231). The gate of step 3 is not passed by these; they are the kernel's (okay-one's §4 H work, in progress
   there), measured here as the landing will measure them.
+- Then: `Path` a value class (no object an operation found from the place), `choose` the kernel's `Choose.all` (a
+  list, each path's values in front of those gathered) — choose 16.0 → 13.05, chooseNested 23.0 → 18.1, the kernel's
+  own 13.08. The facade's cost on a program needing effects, the kernel's own lanes beside: reads 4.3 against 3.1
+  (a path found among the place's effects and checked at run time, an operation), stateBang 12.2 against state 11.1;
+  the rest within noise. A cell under the mixed program slower than a state (217 against 159): the kernel's, to look at.

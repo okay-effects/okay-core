@@ -76,7 +76,7 @@ beside okay-core-zero's last (bench.d/2026-10-10T14-20-56, the base of docs/one.
 | `Int ! State % Int` / `+ Reader % Int`, each path through the place | 13.15 / 17.88 | 12.42 / 18.70 |
 | reads / under `local` | 4.62 / 14.92 | 4.29 / 12.07 |
 | writer, throwing, collect | 17.42, 16.62, 12.66 | 9.00, 15.07, 11.25 |
-| choose / under one more handler; 8 queens (a run) | 24.35 / 34.88; 148 | 16.02 / 23.01; 159 |
+| choose / under one more handler; 8 queens (a run) | 24.35 / 34.88; 148 | 13.05 / 18.10; 159 |
 | a generator: pulled / mapped / taken / pushed | 14.88 / 16.59 / 13.81 / 7.39 | **21.66** / **23.68** / 15.50 / 7.67 |
 | a shift under a reset, 16 maps, `k` 8 times (a run) / 256 maps / once | 0.31 / 4.74 / 0.04 | **0.69** / 7.54 / 0.11 |
 | `MixedBenchmark`, 1000 orders: the total a state / a cell | 130 (a cell) | **162** / 214 |

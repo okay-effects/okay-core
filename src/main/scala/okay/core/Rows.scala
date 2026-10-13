@@ -14,7 +14,7 @@ infix type %[F[_, _], S] = okay.one.std.%[F, S]
  * row (`Needs`), whatever row `R` is still unknown to be; at a handler's body or the top, the place's (`Place`); else
  * from the row, the kernel's `In`. So an operation bound first in a chain, `get.flatMap(f).flatMap(g)`, is of the
  * program's row, not of one the compiler made up for it */
-final class Path[E[_], R <: Row](val in: In[E, R])
+final class Path[E[_], R <: Row](val in: In[E, R]) extends AnyVal
 object Path extends PathInRow:
   /** in a program needing effects: the place's row, the path found among its effects — whatever `R` is still
    * unknown to be, so an operation bound first in a chain is of the program's row */
