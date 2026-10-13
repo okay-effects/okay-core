@@ -2,6 +2,8 @@ package okay.core.kernel
 
 import munit.FunSuite
 import okay.kernel.*
+import okay.kernel.{Control => KControl}
+import okay.kernel.{Control => KControl}
 import okay.kernel.std.{Choose, Handlers, Results, State}
 import okay.kernel.steps.Steps
 import okay.kernel.types.typeOf
@@ -62,21 +64,21 @@ abstract class OnCoreSuite(name: String, e: Effects) extends FunSuite:
 
   test(s"$name: shift0 and $$: the laws") {
     val k = fn((x: Integer) => e.pure(Integer.valueOf(x * 2)))
-    assertEquals(run(prog(e => e.dollar[Integer, Integer, Integer](prog(_.pure(Integer.valueOf(21))), k))).intValue, 42)
-    val shifted = prog(e => e.shift0[Integer, Integer, Integer](fn((kk: Fn[Integer, Prog[Integer]]) => e.flatMap(kk(1), fn((a: Integer) => kk(a))))))
-    assertEquals(run(prog(e => e.dollar[Integer, Integer, Integer](shifted, fn((x: Integer) => e.pure(Integer.valueOf(x + 10)))))).intValue, 21)
+    assertEquals(run(prog(e => KControl.of(e).dollar[Integer, Integer, Integer](prog(_.pure(Integer.valueOf(21))), k))).intValue, 42)
+    val shifted = prog(e => KControl.of(e).shift0[Integer, Integer, Integer](fn((kk: Fn[Integer, Prog[Integer]]) => e.flatMap(kk(1), fn((a: Integer) => kk(a))))))
+    assertEquals(run(prog(e => KControl.of(e).dollar[Integer, Integer, Integer](shifted, fn((x: Integer) => e.pure(Integer.valueOf(x + 10)))))).intValue, 21)
     // shift0's body runs outside its delimiter: a shift0 in it reaches the next one out; a handler is a delimiter
-    val two = prog(e => e.shift0[Integer, Integer, Integer](fn((k1: Fn[Integer, Prog[Integer]]) =>
-      e.shift0[Integer, Integer, Integer](fn((k2: Fn[Integer, Prog[Integer]]) => e.flatMap(k1(1), fn((a: Integer) => k2(a))))))))
-    val nested = prog(e => e.dollar[Integer, Integer, Integer](prog(e2 => e2.dollar[Integer, Integer, Integer](two,
+    val two = prog(e => KControl.of(e).shift0[Integer, Integer, Integer](fn((k1: Fn[Integer, Prog[Integer]]) =>
+      KControl.of(e).shift0[Integer, Integer, Integer](fn((k2: Fn[Integer, Prog[Integer]]) => e.flatMap(k1(1), fn((a: Integer) => k2(a))))))))
+    val nested = prog(e => KControl.of(e).dollar[Integer, Integer, Integer](prog(e2 => KControl.of(e2).dollar[Integer, Integer, Integer](two,
       fn((x: Integer) => e2.pure(Integer.valueOf(x + 10))))), fn((x: Integer) => e.pure(Integer.valueOf(x * 2)))))
     assertEquals(run(nested).intValue, 22)
-    val underReader = Handlers.reader[Integer, Integer](rd, 5, prog(e => e.shift0[Integer, Integer, Integer](
+    val underReader = Handlers.reader[Integer, Integer](rd, 5, prog(e => KControl.of(e).shift0[Integer, Integer, Integer](
       fn((kk: Fn[Integer, Prog[Integer]]) => e.flatMap(kk(1), fn((a: Integer) => e.pure(Integer.valueOf(a + 100))))))))
     assertEquals(run(underReader).intValue, 101)
     // recover and ensuring are no delimiters: shift0 passes them to the $ around
-    val throughRecover = prog(e => e.dollar[Integer, Integer, Integer](prog(e2 => e2.recover[Integer](
-      prog(e3 => e3.shift0[Integer, Integer, Integer](fn((kk: Fn[Integer, Prog[Integer]]) => e3.map(kk(1), fn((a: Integer) => Integer.valueOf(a + 100)))))),
+    val throughRecover = prog(e => KControl.of(e).dollar[Integer, Integer, Integer](prog(e2 => e2.recover[Integer](
+      prog(e3 => KControl.of(e3).shift0[Integer, Integer, Integer](fn((kk: Fn[Integer, Prog[Integer]]) => e3.map(kk(1), fn((a: Integer) => Integer.valueOf(a + 100)))))),
       fn((_: Throwable) => e2.pure(Integer.valueOf(-1))))), fn((x: Integer) => e.pure(Integer.valueOf(x * 2)))))
     assertEquals(run(throughRecover).intValue, 102)
   }

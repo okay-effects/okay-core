@@ -42,7 +42,7 @@ machine hands any clause); `General` is a clause with the machine's `k`; `Return
 its failure a signal read where the handler is left. A `General` return (a program) makes the handler's answer that
 program, run when it is left.
 
-**Control.** `$` is a handler node whose return is `k`; `shift0` an operation (`Shift0Op`) to the nearest
+**Control** — the API's `Control`, apart from `Effects`; `OnCore` implements both. `$` is a handler node whose return is `k`; `shift0` an operation (`Shift0Op`) to the nearest
 delimiter — a `$` or a kernel handler — whose clause runs the body in the delimiter's place with the machine's `k`,
 the delimiter included. Not okay-core's `shift`/`shift0`: the native failures, finalizers and regions below are
 handler nodes too, and okay-core's control would stop at them; the kernel's passes them.

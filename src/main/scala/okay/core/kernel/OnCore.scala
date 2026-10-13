@@ -1,6 +1,6 @@
 package okay.core.kernel
 
-import okay.kernel.{Aborting, Answering, Answers, Computation, Effects, Fn, General, Handler, Op, Prog, Program, Resume,
+import okay.kernel.{Aborting, Answering, Answers, Computation, Control => KControl, Effects, Fn, General, Handler, Op, Prog, Program, Resume,
   Key, Returning, Step, Thunk, Translating, Type}
 import scala.util.control.NonFatal
 
@@ -27,7 +27,7 @@ import scala.util.control.NonFatal
  * okay-core's typed programs (paths, `A ! E1 + E2`) are untouched: a kernel node is matched after every typed one,
  * and costs nothing where there is none.
  */
-final class OnCore private[okay] (name: String, m: Machine) extends Effects:
+final class OnCore private[okay] (name: String, m: Machine) extends Effects with KControl:
   import OnCore.*
 
   override def toString: String = s"OnCore.$name"

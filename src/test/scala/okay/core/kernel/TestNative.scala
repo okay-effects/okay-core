@@ -2,6 +2,8 @@ package okay.core.kernel
 
 import munit.FunSuite
 import okay.kernel.*
+import okay.kernel.{Control => KControl}
+import okay.kernel.{Control => KControl}
 import okay.kernel.std.{Choose, Handlers, Reader, Results, State, Throws, Writer}
 
 /** okay-kernel's programs, written once over its `Effects`, on okay-core's machines natively — on every platform
@@ -50,10 +52,10 @@ abstract class NativeSuite(name: String, e: Effects) extends FunSuite:
   }
 
   test(s"$name: shift0 and $$, through recover") {
-    val twice = prog(x => x.shift0[Integer, Integer, Integer](fn((kk: Fn[Integer, Prog[Integer]]) => x.flatMap(kk(int(1)), fn((a: Integer) => kk(a))))))
-    assertEquals(run(prog(x => x.dollar[Integer, Integer, Integer](twice, fn((v: Integer) => x.pure(int(v + 10)))))).intValue, 21)
-    val through = prog(x => x.dollar[Integer, Integer, Integer](prog(y => y.recover[Integer](
-      prog(z => z.shift0[Integer, Integer, Integer](fn((kk: Fn[Integer, Prog[Integer]]) => z.map(kk(int(1)), fn((a: Integer) => int(a + 100)))))),
+    val twice = prog(x => KControl.of(x).shift0[Integer, Integer, Integer](fn((kk: Fn[Integer, Prog[Integer]]) => x.flatMap(kk(int(1)), fn((a: Integer) => kk(a))))))
+    assertEquals(run(prog(x => KControl.of(x).dollar[Integer, Integer, Integer](twice, fn((v: Integer) => x.pure(int(v + 10)))))).intValue, 21)
+    val through = prog(x => KControl.of(x).dollar[Integer, Integer, Integer](prog(y => y.recover[Integer](
+      prog(z => KControl.of(z).shift0[Integer, Integer, Integer](fn((kk: Fn[Integer, Prog[Integer]]) => z.map(kk(int(1)), fn((a: Integer) => int(a + 100)))))),
       fn((_: Throwable) => y.pure(int(-1))))), fn((v: Integer) => x.pure(int(v * 2)))))
     assertEquals(run(through).intValue, 102)
   }
