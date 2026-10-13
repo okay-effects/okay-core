@@ -1,122 +1,111 @@
 # okay-core
 
 Algebraic effects and handlers for Scala 3 — on the JVM, Scala.js and Scala Native, and from Scala 2.13 — with
-delimited control — `shift`/`reset` with the answer type modified
-(Danvy–Filinski, Asai–Kameyama) — written **once** over an interface and run on **two monads**:
+delimited control, on **one monad**: `Cont0[R, I, O, A]`, effects with rows in the monad of shift0 and `$`
+(`okay.one`), a CEK machine with `k` as data; and over it the facade, `A ! E1 + E2`.
 
-- **`Cont0`** (`okay.zero`), **the default** — Materzok–Biernacki's shift0 and `$`, the levels in the types; a
-  handler a delimiter run by a machine that answers operations in place;
-- **`Cont`** (`okay.cont`) — shift and reset; a handler a fold over the program. A second implementation of the same
-  interface, a different one: what keeps the interface an interface, not one monad's API.
-
-No macros, no runtime tests of an operation's class, no cast but one (`Cont0`'s empty cases shared): an operation carries a path to its effect in the row,
-and a handler follows it. (okay-kernel's programs, run natively by the same machines, are untyped by the kernel's
-design: their operations are found by identity, their nodes cast where they are made — `okay.core.kernel`.)
+No macros, no runtime tests of an operation's class, no cast: an operation carries a path to its effect in the row,
+and a handler follows it; a handler's `k` is a program over the row outside, resumed any number of times, anywhere
+that row is handled. (okay-kernel's programs, run natively by the same machine, are untyped by the kernel's design:
+their operations are found by identity — `okay.core.kernel`.)
 
 ## A taste
 
 ```scala
 import okay.*
 
-def greet: Int ! Reader % String + Writer % String =               // a program as its type says it
+def greet: Int ! Reader % String + Writer % String =                  // a program as its type says it
   ask[String].flatMap(name => tell(s"hello, $name").map(_ => name.length))
 
-def twice: Int ! Reader % Int =                                     // control, in the same program
-  reset[Int](shift[Int, Int](k => k(10).flatMap(k)).map(_ + 1))
+def twice[T <: Row]: Eff[T, Int] =                                      // control, an effect of the row
+  reset[Int, T](shift[Int, T, Int](k => k(10).flatMap(k)).at[Shifts[Int, T] +: T].map(_ + 1))
 
-run(reader("Ann")(writer[String, Int](greet)))                     // (List("hello, Ann"), 3), on Cont0
-runOn(okay.cont.top)(reader("Ann")(writer[String, Int](greet)))    // the same, on Cont
+run(reader("Ann")(writer[String, Int, Reader % String +: Pure](greet)))   // (List("hello, Ann"), 3)
+run(twice[Pure])                                                         // 12
 ```
 
-`A ! E1 + E2` is all a program's type says: a program of value `A`, in any context that has those effects — in any
-order, among any others, under any handlers. `!`, `+` and `%` are all a user needs to know; contexts, rows and
-paths, the monads and their machines are the library's own (`okay.core`, `okay.cont`, `okay.zero`). These examples
-are compiled and run by `TestGuide`.
+`A ! E1 + E2` is all a program's type says: a program of value `A`, in any place that has those effects — in any
+order, among any others, under any handlers. `!`, `+` and `%` are all a user needs to know; rows, paths, places and
+the machine are the library's own (`okay.core`, `okay.one`). These examples are compiled and run by `TestGuide`.
 
 ## Documentation
 
-- [Guide](docs/guide.md) — programs, `A ! E1 + E2`, rows, the standard effects, your own effects and handlers, answering
-  in place, `shift`/`reset`/`shift0`, `PState`, streams, intercepting (`local`, `handleWith`), `Program[R, A]`,
-  tofu, Scala 2, `Async`.
-- [What `Cont0` does better than `Cont`](docs/cont0-vs-cont.md) — and where it does not.
-- [Architecture](docs/architecture.md) — the interface, `Cont`, `Cont0` and its machine, the references, tests,
-  benchmarks.
-- [okay-core on one monad: the landing plan](docs/one.md) — the decision of 2026-10-13: one monad, `k` as data, what stays and what goes, the kernel's acceptance, the gates in order.
-- [okay-core as an implementation of okay-kernel](docs/kernel.md) — native: how the machines run the kernel's programs, what is exact.
+- [Guide](docs/guide.md) — programs, `A ! E1 + E2`, rows, the standard effects, your own effects and handlers,
+  answering in place, control's two faces, streams, intercepting (`local`, `handleWith`), `Eff[R, A]` and okay's
+  interface.
+- [okay-core on one monad: the landing plan](docs/one.md) — the decision of 2026-10-13: one monad, `k` as data, what
+  stays and what goes, the kernel's acceptance, the gates in order — and where the landing stands.
+- [Architecture](docs/architecture.md) — the kernel, the machine, the facade, tests, benchmarks (being re-written for
+  the one monad; the kernel's own account is okay-one's README).
+- [okay-core as an implementation of okay-kernel](docs/kernel.md) — native: how the machine runs the kernel's
+  programs, what is exact.
 - The history of the design in [`changelog.d`](changelog.d), the benchmark runs in [`bench.d`](bench.d).
 
 ## Layout
 
 | Package | What is in it |
 |---|---|
-| `okay.core` | the interface: rows (`Row`, `+:`, `Pure`, `E :? R`, `%`), `Context`, `Control` (`shift`, `reset`), `Effects` (`perform`, `handle`, `intercept`), `Handler`, `Answering`, `A ! E1 + E2` (`!`, `+`, `%`: all a program's type needs), `Top`; `Program[R, A]`, a program over a row built where it runs; `RowEffects`, okay's `Effects[M]` over it ([docs/okay.md](docs/okay.md)) |
-| `okay.std` | the effects, written once: `Reader` (`local`), `State`, `Writer`, `Throws` (`handleWith`), `Choose`, `Emit` (`collect`, `stream`, `generate`), `PState`; `Programs`, the same as `Program`s |
-| `okay.cont` | `Cont`, its loop and fold; the instance `At`; `run`; `top` |
-| `okay.zero` | `Cont0` (the kernel, open as a monad of its own), the machine; the instance `At`; `run`; `top`; `shift0` |
-| `okay.async` (module `async/`) | `async`, `await`, `Async.run`, asynchronous streams — and what they race and wait with (`Ref`, `Mailbox`): the core has no thread in it |
-| `okay.interop` (modules `interop/cats`, `interop/tofu`) | cats' monad over `Program` (every platform), tofu's `WithLocal` and `Errors` (the JVM's) |
-| `okay.core.kernel` | `OnCore.zero`, `OnCore.cont`: okay-kernel's `Effects` and protocol, native on Cont0 and Cont — kernel programs the machines' own nodes, operations found by their effect's identity, export and import ([docs/kernel.md](docs/kernel.md)); okay-kernel's TCK in the module `kernel/` |
-| `okay.scala2` (modules `scala2/prelude`, `scala2/cats`, `scala2/tofu`) | for Scala 2.13: short names of effects and rows, and the same cats and tofu instances compiled by scalac 2.13 |
+| `okay.one` | THE KERNEL, imported as it is from okay-one (`scripts/import-one.sh`, `docs/one-imported.txt`): `Cont0[R, I, O, A]`, the rows (`row`: `Row`, `+:`, `Pure`, `In`, `Removed`), the handler forms (`handler`: `Answering`, `Stateful`, `Translating`, `Aborting`, `Deep`), the machine of one `Meta` (`machine`), `Step`, its std (`Reader`, `State`, `Writer`, `Throws`, `Choose`, `Shift % S`, `Async`) and its suites (`TestReference`, the meaning in CPS) |
+| `okay.core` | THE FACADE over it: `A ! E1 + E2` (`!`, `+`, `%`: all a program's type needs) — a program fitted to the place it runs at (`Needs`, `Place`, `Path`); `Eff[R, A]`, the kernel's program over a row named, `E :? R`, `Has[E]`; `Op`, an operation bound where it is used; `Handler`, `Answering`; `handle`, `handleIn`, `translate`, `intercept`, `run`; `Control`: `reset`/`shift`/`shift0` over `Shifts[S, T]`, `cont`/`lower` for `Control[R]`; `RowEffects`, okay's `Effects[M]` over `Eff` ([docs/okay.md](docs/okay.md)) |
+| `okay.std` | the effects by their names, the kernel's std re-exported (one std): `reader` (`local`), `state` (each path its own), `cell`, `writer`, `throws` (`handleWith`), `choose`, `first`, `Emit` (`collect`, `generate`, `stream`, `Stream`, `Step`) |
+| `okay.core.kernel` | `OnCore`: okay-kernel's `Effects` and `Control` on the one monad — every delimiter of the bridge a `Deep` handler of one request effect, export through `Step` ([docs/kernel.md](docs/kernel.md)); okay-kernel's TCK in the module `kernel/` |
+| `okay.async` (module `async/`) | `async`, `await`, `Async.run`, asynchronous streams — not yet re-based on the one monad (docs/one.md §5, step 5) |
+| `okay.interop` (modules `interop/cats`, `interop/tofu`) | cats' monad, tofu's `WithLocal` and `Errors` — not yet re-based (step 6) |
+| `okay.scala2` (modules `scala2/*`) | for Scala 2.13 — not yet re-based (step 7) |
 
-## The two monads
+## The one monad
 
-The same program gives the same answer on both, but for one case by design: a `shift` directly under a handler,
-with no `reset` between — on `Cont0` its `k` holds the handler (a `raise` in `k` is that `k`'s `Left`), on `Cont`
-only the handler's `ret` (a `raise` in `k` aborts the shift's body). `shift0` is `Cont0`'s alone.
+`Cont0[R, I, O, A]`: a program of `A` over `R`; `R` a row of effects — then `I = O = Nothing`, a program of effects
+carries no answer types, which is what lets it run under any handlers — or `Control[R]`, delimited control with the
+answer type modified (Materzok–Biernacki's shift0 and `$`, typed as Asai–Kameyama's), its effects answered in
+place. One machine, `eval(c, k, m)`: the node, the frames of its level, the levels outside — a handler each, or a
+`$`; an operation answered in place goes straight into the frame on top; else out past each level, each put around
+its rest in a `Cont` — `k` as data, put back on the `Meta` in force where it is resumed. Everything in constant
+stack: operations, binds, handlers nested 100 000 deep, resets. The specification: `TestReference`, every node's
+meaning in CPS, random programs' answers pinned by a digest.
 
-`MonadsBenchmark`, the same programs on each (bench.d, 2026-10-10T14-20, JDK 26), ns an operation:
+`MonadsBenchmark`'s lanes on it (bench.d/2026-10-13T19-45_one-monad-5486b17.csv, JDK 26, JMH `-f 2 -wi 3 -i 5`),
+beside okay-core-zero's last (bench.d/2026-10-10T14-20-56, the base of docs/one.md §4 H), µs for n = 1000:
 
-| | `Cont` | `Cont0` |
+| | okay-core-zero | the one monad |
 |---|---|---|
-| an operation across 1 / 4 / 16 handlers | 5.6 / 7.1 / 18.3 | 6.9 / 5.5 / 5.8 |
-| answered in place / by a general clause | 5.5* / 9.9 | 5.5 / 8.2 |
-| state, writer, collect | 14.2, 19.7, 11.1 | 12.6, 17.4, 12.7 |
-| a generator, an element pulled / pushed | 17.2 / 7.6 | 14.9 / 7.4 |
-| an ask under `local` (an interceptor) / under the reader alone | 16.5 / 4.6 | 14.9 / 4.6 |
-| `Int ! State % Int` / `+ Reader % Int`, each path through the context | 13.8 / 20.6 | 13.2 / 17.9 |
-| `state` as a `Program`: the state first in the row / third / over okay's interface | 23.7 / 37.9 / 24.1 | 23.1 / 38.2 / 24.0 |
-| 8 queens (a run) | 160 µs | 148 µs |
-| a shift under a reset, 16 maps, `k` 8 times (a run) | 493 ns | 308 ns |
-| choose, throws | 26.0, 17.7 | 24.4, 16.6 |
-| pure binds | 3.20 | 3.21 |
-| `MixedBenchmark`, an order: a reader, a choice, a throw caught, a state, a log | 151 | 130 |
+| pure binds / tail calls | 3.21 / 2.20 | 3.09 / 2.12 |
+| answered in place / by a general clause | 5.52 / 8.20 | 5.14 / 8.79 |
+| an operation across 1 / 4 / 16 handlers | 6.94 / 5.54 / 5.83 | 5.53 / 6.97 / **17.5** |
+| state (each path its own) / a cell / under two more handlers | 12.64 (a cell) / — / — | 11.08 / 11.20 / 10.93 |
+| `Int ! State % Int` / `+ Reader % Int`, each path through the place | 13.15 / 17.88 | 12.42 / 18.70 |
+| reads / under `local` | 4.62 / 14.92 | 4.29 / 12.07 |
+| writer, throwing, collect | 17.42, 16.62, 12.66 | 9.00, 15.07, 11.25 |
+| choose / under one more handler; 8 queens (a run) | 24.35 / 34.88; 148 | 16.02 / 23.01; 159 |
+| a generator: pulled / mapped / taken / pushed | 14.88 / 16.59 / 13.81 / 7.39 | **21.66** / **23.68** / 15.50 / 7.67 |
+| a shift under a reset, 16 maps, `k` 8 times (a run) / 256 maps / once | 0.31 / 4.74 / 0.04 | **0.69** / 7.54 / 0.11 |
+| `MixedBenchmark`, 1000 orders: the total a state / a cell | 130 (a cell) | **162** / 214 |
+| `KernelMixedBenchmark`, the protocol's program | 231 (zero, native) | **419** |
 
-\* the full run's 7.2 ± 5.2 was noise; 5.50 ± 0.01 alone (changelog.d/cont-loop-small.md).
-
-Handlers nested by recursion — a function installing one and calling itself inside it — run in constant stack on
-both, a hundred thousand deep: each monad's loop keeps the delimiters it is inside as a stack of its own
-(docs/stack-safety.md).
-
-`Cont0` is ahead where handlers are layered (3.2× across 16), on a general clause, captures, `queens`, `choose` and
-the mixed program; elsewhere the two are within some per cent — both find a handler further out that answers in
-place where the operation is.
+The one monad is ahead on the lanes `k` works hardest on — choose, writer, `local`, state — and at the bar (§4 H)
+on most; behind it, each a kernel's item in okay-one (not the facade's — the lanes are written in the kernel's own
+forms): an operation across many handlers (`level` walks the levels each time; okay-core-zero kept the last lookup on
+the path), a generator pulled (`k` as data put back a level at a time), control as an effect against a native capture,
+the mixed program, and the kernel bridge (`OnCore`, the first cut).
 
 ## Tests
 
-The suites are written once and run on four monads: `Cont`, `Cont0`, and two references in the tests — `Spec`
-(`Cont0` without its machine, each delimiter its definition) and `Cps0` (shift0 and `$` in textbook CPS, no code of
-either monad). They agree on every suite; where `Cont0` differs by design, `TestMonads` says so.
-
-## With tofu, and from Scala 2
-
-`Program.Of[R]` is an `F[_]`: with cats' monad and tofu's `WithLocal` and `Errors` over it (the modules
-`okay-core-cats`, `okay-core-tofu`; for Scala 2, `okay-core-scala2-cats`, `-tofu`), code written over `F[_]` with tofu
-runs on okay's effects, on either monad — `local` and
-`handleWith` by `intercept`, an effect handled again where it is. Scala 2.13 reads the same artifact through its
-TASTy reader; `scala2/tests` holds the suites that prove it — one's own effects and handlers, tofu's 2.13 artifacts.
-The core itself names no library but okay-kernel's API (interfaces and records, no dependency of its own), which it implements natively ([docs/kernel.md](docs/kernel.md)).
+`sbt coreJVM/test`: okay-one's suites as imported (66), the facade's (TestEffects, TestContext, TestControl,
+TestDynamic, TestIntercept, TestNesting, TestTogether, TestStream, TestAnywhere, TestFacade), the guide's text
+compiled and checked (`TestGuide`, `TestGuideDoc`), the kernel bridge's (`TestNative`); `sbt kernel/test`:
+okay-kernel's TCK on `OnCore` and the bridge's own.
 
 ## Build
 
 ```sh
-sbt test                                      # every suite: the core and async/ on the JVM, JS and Native, scala2/
-sbt coreJVM/test                              # one platform's: coreJVM, coreJS, coreNative (asyncJVM, …)
+sbt coreJVM/test kernel/test                  # the core and the kernel bridge
 sbt bench                                     # JMH, then a summary table (project/Bench.scala)
-sbt "bench -f 1 -p backend=zero MonadsBenchmark.state"
+sbt "bench -f 1 MonadsBenchmark.state"
 sbt "bench save -prof gc"                     # keep the run in bench.d/ (index.tsv + CSV)
 sbt "benchHistory <regexp>"                   # the benchmarks matching it, run by run
-sbt "asyncJVM/Jmh/run -prof gc"               # the async module's own benchmark
+scripts/import-one.sh                         # okay-one's HEAD into okay.one again
 ```
 
-Scala 3.9.0 (and 2.13.18 for `scala2/`), Scala.js 1.22.0, Scala Native 0.5.12, sbt 1.13.0, JDK 25 or later; tests only: munit 1.2.3, tofu 0.14.3, cats 2.13.0. The benchmarks run on the JDK sbt runs on, JDK 26 for the runs in
+Scala 3.9.0 (and 2.13.18 for `scala2/`), Scala.js 1.22.0, Scala Native 0.5.12, sbt 1.13.0, JDK 25 or later; tests
+only: munit 1.2.3, tofu 0.14.3, cats 2.13.0. The benchmarks run on the JDK sbt runs on, JDK 26 for the runs in
 `bench.d` so far; `bench` prints it and `bench save` keeps it in the index's `jvm` column.

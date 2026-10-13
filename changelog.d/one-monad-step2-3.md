@@ -25,3 +25,9 @@
 - `MonadsBenchmark`'s lanes and `MixedBenchmark` over the one monad; `KernelMixedBenchmark` on `OnCore` and `steps`.
 - Not re-based yet (docs/one.md §5, steps 5–7): `async/`, `interop/`, `scala2/`. Scala.js: the core compiles; the
   test bridge fails to link on master too (`CompletionLatch.releaseShared`), a toolchain matter, step 7's.
+- The lanes (bench.d/2026-10-13T19-45_one-monad-5486b17.csv) against okay-core-zero's last, the bar of §4 H: at or
+  under it on pure, answered, forwarded (1), state, stateBang, reads, readsLocal, writer, throwing, choose,
+  chooseNested, collect, leftBinds, tailcallDelay; over it — forwarded16 17.5 (5.8), forwarded4 6.97 (5.54),
+  general 8.79 (8.20), captures ×2, generate 21.7 (14.9), queens 159 (148), the mixed program 162 (130), the kernel's
+  419 (231). The gate of step 3 is not passed by these; they are the kernel's (okay-one's §4 H work, in progress
+  there), measured here as the landing will measure them.
