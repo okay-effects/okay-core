@@ -5,6 +5,7 @@
   `TestGuide`.
 - [What `Cont0` does better than `Cont`](cont0-vs-cont.md) — the foundation, the guarantees, the semantics of a
   `shift` under a handler, the measurements; and where `Cont` is better.
+- [On one monad: the landing plan](one.md) — the decision of 2026-10-13 and the order of the landing, its gates.
 - [Architecture](architecture.md) — the interface, the two monads (`Cont`; `Cont0` and its machine), the references,
   the tests and the benchmarks.
 

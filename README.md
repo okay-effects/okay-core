@@ -41,6 +41,7 @@ are compiled and run by `TestGuide`.
 - [What `Cont0` does better than `Cont`](docs/cont0-vs-cont.md) — and where it does not.
 - [Architecture](docs/architecture.md) — the interface, `Cont`, `Cont0` and its machine, the references, tests,
   benchmarks.
+- [okay-core on one monad: the landing plan](docs/one.md) — the decision of 2026-10-13: one monad, `k` as data, what stays and what goes, the kernel's acceptance, the gates in order.
 - [okay-core as an implementation of okay-kernel](docs/kernel.md) — native: how the machines run the kernel's programs, what is exact.
 - The history of the design in [`changelog.d`](changelog.d), the benchmark runs in [`bench.d`](bench.d).
 
