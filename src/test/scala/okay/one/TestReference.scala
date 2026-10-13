@@ -187,6 +187,7 @@ class TestReference extends munit.FunSuite:
     @scala.annotation.tailrec def go(s: Step[Ask +: Pure, A]): A = s match
       case Step.Done(a) => a
       case Step.Failed(e) => throw e
+      case Step.Cancelled() => throw RuntimeException("cancelled")
       case y: Step.Yield[r, a, e, x] => y.in match
         case _: In.Here[f, t] => go(y.resume(asked(y.op, n)))
         case th: In.There[f, g, t] => In.absurd(th.in)

@@ -10,7 +10,14 @@ enum In[E[_], R <: Row]:
   case Here[E[_], T <: Row]() extends In[E, E +: T]
   case There[E[_], F[_], T <: Row](in: In[E, T]) extends In[E, F +: T]
 
+  /** what the interpreter found at this place last, and where from: kept on the path, one field — read and written
+   * whole, so a race costs a look-up again, nothing worse. Not the row's: the interpreter's (`In.Cache`) */
+  private[one] var cache: In.Cache[E] | Null = null
+
 object In extends InLow:
+  /** an interpreter's memory of a look-up by the path */
+  abstract class Cache[E[_]]
+
   inline given here[E[_], T <: Row]: In[E, E +: T] = Here()
 
   /** a place in `Pure`: none there but `null` */

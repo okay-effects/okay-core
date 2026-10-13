@@ -12,12 +12,19 @@ enum Step[R <: Row, A]:
   case Yield[R <: Row, A, E[_], X](op: E[X], in: In[E, R], resume: Step.Resume[X, R, A]) extends Step[R, A]
   /** an error raised in the program — user code threw — its levels unwound */
   case Failed(e: Throwable)
+  /** cancelled at a step: its levels unwound, their finalizers run, no recover asked */
+  case Cancelled()
 
 object Step:
   /** THE REST of a stepped program: resumed with the operation's value, or with an error raised where it was */
-  final class Resume[X, R <: Row, A](resume: X => Step[R, A], failing: Throwable => Step[R, A]):
+  final class Resume[X, R <: Row, A](resume: X => Step[R, A], failing: Throwable => Step[R, A],
+      cancelling: () => Step[R, A]):
     def apply(x: X): Step[R, A] = resume(x)
+    /** an error raised where the operation was: the levels of the rest unwound, their recovers asked */
     def fail(e: Throwable): Step[R, A] = failing(e)
+    /** cancelled: the rest's finalizers run, `Cancelled`; under `uncancelable`, this step given back, the cancel
+     * fired when the program leaves the mask */
+    def cancel(): Step[R, A] = cancelling()
 
   extension [R <: Row, I0, O0, A](p: Cont0[R, I0, O0, A])
     /** `p` run to its value or its first operation of `R` */

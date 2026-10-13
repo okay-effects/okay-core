@@ -19,6 +19,7 @@ class TestStep extends munit.FunSuite:
     @tailrec def go(s: Step[R, A], log: List[String]): (List[String], A) = s match
       case Step.Done(a) => (log.reverse, a)
       case Step.Failed(e) => throw e
+      case Step.Cancelled() => throw RuntimeException("cancelled")
       case y: Step.Yield[r, a, e, x] => y.in match
         case _: In.Here[f, t] => go(y.resume(asked(y.op, n)), log)
         case th: In.There[f, g, t] => th.in match

@@ -3,6 +3,7 @@ package okay.one.std
 import okay.one.*
 import okay.one.Cont0.{perform, pure, widen}
 import okay.one.handler.Deep
+import okay.one.machine.Machine
 import okay.one.row.*
 
 /** DELIMITED CONTROL AS AN EFFECT of the row, its answer `S` fixed, `T` the row outside its `reset`: under any handlers,
@@ -30,4 +31,8 @@ object Shift:
     def ret(a: S) = pure(a)
     def apply[X](op: Shift[S, T, X], k: X => S ! T) = op match
       case Up0(body) => body(k)
-      case Up(body) => body((x: X) => widen[Shifts[S, T], T, S](k(x))).handle(this)
+      case Up(body) =>
+        // k seen under the body's reset: the view's two parts made once, not at each k
+        val rm = Removed.Absent[Shifts[S, T], T]()
+        val end = Machine.Frame.End[T, S]()
+        body((x: X) => Cont0.View[Shifts[S, T], T, T, Nothing, S, S](rm, end, k(x))).handle(this)

@@ -30,6 +30,9 @@ object Async:
         case Step.Failed(e) =>
           done(Left(e))
           null
+        case Step.Cancelled() =>
+          done(Left(java.util.concurrent.CancellationException("cancelled")))
+          null
         case y: Step.Yield[r, a, e, x] => y.in match
           case _: In.Here[f, t] => awaited(y.op, y.resume, done)
           case th: In.There[f, g, t] => In.absurd(th.in)

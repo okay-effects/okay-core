@@ -56,8 +56,13 @@ enum Cont0[R, I, +O, +A]:
    * of `E` at any place in the row, the handler at its head */
   case View[E[_], R <: Row, T <: Row, S, X, A] private[one] (rm: Removed[E, R, T], k: Machine.Frame[R, X, A],
       body: Cont0[R, ?, ?, X]) extends Cont0[E +: T, S, S, A]
+  /** `body`, then its frames `k`, under the guard `g`: a level of no effect, the row the same in it */
+  case Guarded[T <: Row, S, X, A, B] private[one] (g: Guard[T, A, B], k: Machine.Frame[T, X, A],
+      body: Cont0[T, ?, ?, X]) extends Cont0[T, S, S, B]
   /** a `k` resumed with `y`: its levels put back, outermost first, then its rest with `y` under them */
   case Resume[Y, T <: Row, S, B] private[one] (c: Machine.Cont[Y, T, B], y: Y) extends Cont0[T, S, S, B]
+  /** a `k` failed with `e`: its levels put back, then `e` raised inside them */
+  case Fail[T <: Row, S, B] private[one] (c: Machine.Cont[Nothing, T, B], e: Throwable) extends Cont0[T, S, S, B]
 
   case Shift0[R <: Row, I1, O1, X1, O, A](f: (A => Cont0[Control[R], I1, O1, X1]) => O)
       extends Cont0[Control[R], Cont0[Control[R], I1, O1, X1], O, A]
@@ -70,6 +75,9 @@ enum Cont0[R, I, +O, +A]:
       extends Cont0[Control[R], I, O, B]
   /** a handler's `k` resumed in control: its levels with control outside them put back, then its rest */
   case ResumeC[Y, R <: Row, I, O, A] private[one] (c: Machine.ContC[Y, R, I, O, A], y: Y)
+      extends Cont0[Control[R], I, O, A]
+  /** a handler's `k` failed in control: its levels put back, then the error raised inside them */
+  case FailC[R <: Row, I, O, A] private[one] (c: Machine.ContC[Nothing, R, I, O, A], e: Throwable)
       extends Cont0[Control[R], I, O, A]
   /** `reset(c)`: `c`, a closed program of control — its value its initial answer — under a `$` of its own, the rest
    * the identity: a program of effects over `R`, its answer `O` the value */
@@ -116,6 +124,15 @@ object Cont0:
       h match
         case h: Stateless[E, T & Row, A, B] => Handle(h, Machine.Frame.End(), view(rm, p))
         case h: Stateful[E, T & Row, s, A, B] => HandleState(h, h.initial, Machine.Frame.End(), view(rm, p))
+
+    /** `p` under the guard `g` */
+    def guard[B](g: Guard[R, A, B]): B ! R = Guarded(g, Machine.Frame.End(), p)
+    /** `fin` after `p`, whatever way it is left: an end, an error, an abort, a cancel */
+    def ensure(fin: Unit ! R): A ! R = guard(Guard.ensuring(fin))
+    /** an error thrown in `p` given to `f` */
+    def recover(f: Throwable => A ! R): A ! R = guard(Guard.recover(f))
+    /** a cancel at a step of `p` kept for when it is left */
+    def uncancelable: A ! R = guard(Guard.uncancelable)
 
     /** `p` a program of control at any answer: to put under its `$`s and `shift0`s, its effects handled around it in
      * place */

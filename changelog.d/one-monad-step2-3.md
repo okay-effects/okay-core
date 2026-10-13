@@ -36,3 +36,6 @@
   own 13.08. The facade's cost on a program needing effects, the kernel's own lanes beside: reads 4.3 against 3.1
   (a path found among the place's effects and checked at run time, an operation), stateBang 12.2 against state 11.1;
   the rest within noise. A cell under the mixed program slower than a state (217 against 159): the kernel's, to look at.
+- okay-one re-imported at 6c83952 (Guard — ensuring, recover, cancel at a step; a look-up kept on the path; k
+  failed/cancelled; captures in control): its suites 77 here, the JVM's 219. `pstate` back: the kernel's `PState` in
+  control, lowered to a program of effects (`okay.std.pstate`); `TestPState` 4 — §4 C.
