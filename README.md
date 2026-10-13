@@ -64,29 +64,30 @@ its rest in a `Cont` — `k` as data, put back on the `Meta` in force where it i
 stack: operations, binds, handlers nested 100 000 deep, resets. The specification: `TestReference`, every node's
 meaning in CPS, random programs' answers pinned by a digest.
 
-`MonadsBenchmark`'s lanes on it (bench.d/2026-10-13T19-45_one-monad-5486b17.csv, JDK 26, JMH `-f 2 -wi 3 -i 5`),
+`MonadsBenchmark`'s lanes on it (bench.d/2026-10-13T23-00_one-monad-0500906.csv, okay-one 6c83952, JDK 26, JMH `-f 2 -wi 3 -i 5`),
 beside okay-core-zero's last (bench.d/2026-10-10T14-20-56, the base of docs/one.md §4 H), µs for n = 1000:
 
 | | okay-core-zero | the one monad |
 |---|---|---|
-| pure binds / tail calls | 3.21 / 2.20 | 3.09 / 2.12 |
-| answered in place / by a general clause | 5.52 / 8.20 | 5.14 / 8.79 |
-| an operation across 1 / 4 / 16 handlers | 6.94 / 5.54 / 5.83 | 5.53 / 6.97 / **17.5** |
-| state (each path its own) / a cell / under two more handlers | 12.64 (a cell) / — / — | 11.08 / 11.20 / 10.93 |
-| `Int ! State % Int` / `+ Reader % Int`, each path through the place | 13.15 / 17.88 | 12.42 / 18.70 |
-| reads / under `local` | 4.62 / 14.92 | 4.29 / 12.07 |
-| writer, throwing, collect | 17.42, 16.62, 12.66 | 9.00, 15.07, 11.25 |
-| choose / under one more handler; 8 queens (a run) | 24.35 / 34.88; 148 | 13.05 / 18.10; 159 |
-| a generator: pulled / mapped / taken / pushed | 14.88 / 16.59 / 13.81 / 7.39 | **21.66** / **23.68** / 15.50 / 7.67 |
-| a shift under a reset, 16 maps, `k` 8 times (a run) / 256 maps / once | 0.31 / 4.74 / 0.04 | **0.69** / 7.54 / 0.11 |
-| `MixedBenchmark`, 1000 orders: the total a state / a cell | 130 (a cell) | **162** / 214 |
-| `KernelMixedBenchmark`, the protocol's program | 231 (zero, native) | **419** |
+| pure binds / tail calls | 3.21 / 2.20 | 3.09 / 2.14 |
+| answered in place / by a general clause | 5.52 / 8.20 | 5.10 / 8.88 |
+| an operation across 1 / 4 / 16 handlers | 6.94 / 5.54 / 5.83 | 5.36 / 5.34 / 5.55 |
+| state (each path its own) / a cell / under two more handlers | 12.64 (a cell) / — / — | 10.94 / 10.96 / 10.82 |
+| `Int ! State % Int` / `+ Reader % Int`, each path through the place | 13.15 / 17.88 | 12.17 / 18.45 |
+| reads / under `local` | 4.62 / 14.92 | 4.27 / 12.17 |
+| writer, throwing, collect | 17.42, 16.62, 12.66 | 9.14, 14.87, 11.24 |
+| choose / under one more handler; 8 queens (a run) | 24.35 / 34.88; 148 | 13.05 / 18.19; **179** |
+| a generator: pulled / mapped / taken / pushed | 14.88 / 16.59 / 13.81 / 7.39 | **20.45** / **24.13** / 17.58 / 7.42 |
+| a shift under a reset, 16 maps, `k` 8 times (a run) / 256 maps / once | 0.31 / 4.74 / 0.04 | **0.69** / 7.36 / 0.12 |
+| `MixedBenchmark`, 1000 orders: the total a state / a cell | 130 (a cell) | **218** / 222 (162 / 214 on okay-one c7af924) |
+| `KernelMixedBenchmark`, the protocol's program | 231 (zero, native) | **417** |
 
 The one monad is ahead on the lanes `k` works hardest on — choose, writer, `local`, state — and at the bar (§4 H)
-on most; behind it, each a kernel's item in okay-one (not the facade's — the lanes are written in the kernel's own
-forms): an operation across many handlers (`level` walks the levels each time; okay-core-zero kept the last lookup on
-the path), a generator pulled (`k` as data put back a level at a time), control as an effect against a native capture,
-the mixed program, and the kernel bridge (`OnCore`, the first cut).
+on most, an operation across 16 handlers now too (okay-one 6c83952 keeps the look-up on the path); behind it, each a
+kernel's item in okay-one (not the facade's — the lanes are written in the kernel's own forms): a generator pulled
+(`k` as data put back a level at a time), control as an effect against a native capture, 8 queens, the mixed program
+— 162 on okay-one c7af924, 218 on 6c83952, a regression of the kernel's between them, with queens' — and the kernel
+bridge (`OnCore`, the first cut).
 
 ## Tests
 

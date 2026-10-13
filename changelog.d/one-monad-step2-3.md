@@ -39,3 +39,7 @@
 - okay-one re-imported at 6c83952 (Guard — ensuring, recover, cancel at a step; a look-up kept on the path; k
   failed/cancelled; captures in control): its suites 77 here, the JVM's 219. `pstate` back: the kernel's `PState` in
   control, lowered to a program of effects (`okay.std.pstate`); `TestPState` 4 — §4 C.
+- The lanes on okay-one 6c83952 (bench.d/2026-10-13T23-00_one-monad-0500906.csv): forwarded16 17.5 → 5.55,
+  forwarded4 6.97 → 5.34 (the look-up kept on the path — the bar's 5.8 met); the rest as before, but the mixed program
+  162 → 218 (a state; a cell 222) and queens 159 → 179, generateTaken 15.5 → 17.6: a regression of the kernel's between
+  c7af924 and 6c83952 (Guard, k failed/cancelled, the look-up), the kernel's to find.
