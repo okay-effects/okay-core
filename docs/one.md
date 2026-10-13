@@ -60,13 +60,35 @@ sealed abstract class Handler[E[_], T <: Row, A, B]     // E handled; T the row 
   order — is `Shift % S`: an effect with a fixed answer `S`, `reset` its `Deep` handler, `shift` its operation with
   `k`. `shift(identity)` is `pure(k)` with `S` holding it. `Control[R]` is for the answer *moved* (printf,
   `PState`). Two faces of control, each where its typing is free.
+- **`Lower`, the way back from control to effects**: `reset[S, O](body: Cont0[Control[R], S, O, S]): O ! R` — a
+  closed program of control (its value its initial answer, the rest the identity) is a program of effects over `R`.
+  Inside it, an operation of `R` not answered in place goes **out**, to the handlers of effects around the reset;
+  a `Deep` handler's `k` taken past the reset holds the `$` as a level and puts it back when resumed. So
+  `choose(reset(printf))` and `attempt(reset(…))` are programs; `reset(choose(…))` is refused by the types, as
+  before. This is what makes `$`s levels of the **same** `Meta` as handlers — one machine, not a machine of
+  control beside a machine of effects: a `$` is a kind of level, a `shift0` goes out to the nearest `$`-level past
+  no handler-level (the types see to it), an operation goes out past `$`-levels to its handler-level.
+- **Failure is a node, not an exception in flight**: a user function (`Bind`'s, `Map`'s, a clause, `value`) that
+  throws is caught at its call site — a `try` with nothing thrown costs nothing — and the machine goes on with
+  `Raise(e)`: the frames of the level dropped, the levels unwound innermost first; at the top `Step.Failed(e)`
+  (`run` rethrows). A `Stateful` register is never left behind by an exception flying through `Meta`.
+- **`Guard`, the level with no effect** — `ret(a)`, `finalizer: Unit ! T`, `recover(e): B ! T`: `ensuring`,
+  `recover` and `uncancelable` are its three instances. Unwinding runs each `Guard`'s finalizer and gives `e` to
+  the first `recover`; an `Aborting` handler's drop of the levels between unwinds them too, so `attempt` runs the
+  finalizers it skips. `Cancelled` is an unwinding no `recover` catches, started only at a suspension —
+  `Step.Yield.cancel()`, the protocol's `Resume.cancel` — and, under `uncancelable`, kept pending until the level
+  is left (the `Yield` given back as it is, its `resume` to cancel at the mask's exit). With `k` as data a `Guard`
+  taken into a `k` is put back each resumption: its finalizer runs once per completion or abort of each
+  resumption (Koka's); a `k` never resumed runs none — abort is `Aborting`, not a `k` not called; okay's `Resource`
+  is linear, said so.
 - **The machine** is one `@tailrec` CEK loop, `eval(c, k, m)`: `c` the node, `k` the frames of the level, `m` the
   levels outside — a handler each (its state, if `Stateful`, a register there), or a `$`. An operation answered in
   place goes straight into the frame on top, the levels between untouched; else out past each level, each put
   around its rest in a `Cont`; `k(y)` a `Resume` node, the levels put back on **the `Meta` in force where it is
   resumed**, outermost first, then the rest. No cast; no exception at run time for a program that type checks;
   constant stack at any depth of handlers, binds, resets.
-- **`Step[R, A]`** = `Done(a) | Yield(op, in, resume) | Failed(e)`: the top-level driver's face — `Async`, replay,
+- **`Step[R, A]`** = `Done(a) | Yield(op, in, resume) | Failed(e)`, `resume` with `apply(x)`, `fail(e)`,
+  `cancel()`: the top-level driver's face — `Async`, replay,
   a pull stream, a foreign monad, and the kernel protocol's `Computation`/`Yield`/`Resume` almost verbatim.
 - **`TestReference`**: the meaning of every node in CPS, nothing clever; random programs run by both.
 
@@ -124,6 +146,14 @@ suites already and are named by them.
   shifts, `flatMap` and `filter` over 100 000 empties, binds nested to the left, lifted operations in a reset.
 - **G. `TestReference`** extended to `k` stored and resumed later and elsewhere, to `Step`, to `Shift % S`; a
   thousand random programs, one digest (okay-kernel's TCK does the same).
+- **I. `Lower`.** printf under `choose`: `choose(reset(shift0(k => pure(x => k(x)))…))` gives a function per
+  path; a `Deep` handler's `k` resumed twice past a reset — the `$` put back each time, `TestControlCps`'s programs
+  with the handler outside the reset; `reset(choose(…))` does not compile.
+- **J. `Raise`, `Guard`.** A `throw` in a `map` under `state` comes out `Step.Failed(e)`, the state's register
+  gone with its level; `ensuring` under `attempt`: `raise` runs the finalizer, then `attempt` answers `Left`; a
+  finalizer under `choose`'s `k` resumed twice runs twice; `recover` catches a `throw`, not a `raise`;
+  `cancel()` at a `Yield` runs the finalizers and ends `Cancelled`, under `uncancelable` the same `Yield` is given
+  back and the cancel fires at the mask's exit.
 - **H. Speed**, `MonadsBenchmark`'s lanes on the same machine and JDK as `bench.d`'s last run, µs at n = 1000. The
   bar: no lane worse than okay-core-zero's by more than 5 % without a reason written in `changelog.d`; the lanes
   `k` works on at okay-eff's: answered ≤ 4.9, general ≤ 8.8, state ≤ 11.4, choose ≤ 12.9, forwarded16 ≤ 17.2; an
@@ -133,10 +163,10 @@ suites already and are named by them.
 
 | step | what | gate |
 |---|---|---|
-| 1 | the kernel as a package `okay.one` beside `okay.cont`/`okay.zero`: monad, rows, handlers, machine, `Step`, `TestReference`; std under its own names | okay-one's suites green here; §4 A–D, F–H |
+| 1 | the kernel as a package `okay.one` beside `okay.cont`/`okay.zero`: monad, rows, handlers, machine (`$` a level of `Meta`, `Lower`, `Raise`), `Step` with `Failed`, `TestReference`; std under its own names, `Shift % S` among them | okay-one's suites green here; §4 A–D, F–I |
 | 2 | `okay.core` re-written over it: `Rows` (the facade) over `In`/`Removed`; `RowEffects` over `A ! R`; `std` by its names; `Stream`; `pstate` over `Control[R]` | `TestGuide` (8), `TestFacade` (5), `TestEffects` (27), `TestControl` (6), `TestControlCps` (6), `TestPState` (4), `TestStream` (13), `TestIntercept` (8), `TestNesting` (3), `TestTogether` (5), `TestDynamic` (6), `TestAnywhere` (8) — each re-written where it spoke the context language, none weakened |
 | 3 | `okay.cont`, `okay.zero`, `Backend`/`Cps0`/`Spec`, `TestMonads`, `TestAgree`, the two kernels' modules deleted; `MonadsBenchmark` over the one monad; `architecture.md` re-written, `cont0-vs-cont.md` to `changelog.d` | `sbt coreJVM/test` green; `bench save`, the table in the README beside okay-core-zero's last |
-| 4 | `okay.core.kernel.OnCore` through `Step`: one bridge; okay-kernel's TCK | `kernel/` (14), `TestNative` (6), TCK; `KernelMixedBenchmark` not worse than native's 231/255 |
+| 4 | `Guard` (`ensuring`, `recover`, `uncancelable`), `Step.Yield.cancel()`; `okay.core.kernel.OnCore` through `Step`: one bridge; okay-kernel's TCK | §4 J; `kernel/` (14), `TestNative` (6), TCK; `KernelMixedBenchmark` not worse than native's 231/255 |
 | 5 | `async/` over `Step` | `TestAsync` (7), `TestAsyncStream` (5), `TestAsyncCross` (4), `AsyncBenchmark` |
 | 6 | `interop/cats`, `interop/tofu` over `RowEffects` | `TestCatsProgram`, `TestTofu` (6) |
 | 7 | JS, Native (`crossProject` back on), `scala2/` through the TASTy reader | `sbt test` as today: every suite on every platform; `TestOwnHandlerFromScala2`, `TestTofuFromScala2` |
@@ -146,11 +176,32 @@ is touched before 3 is green.
 
 ## 6. Deferred, named
 
-- **Finalizers and cancellation** (`ensuring`, `uncancelable`, the protocol's `Cancelled`): a handler kind of its
-  own, after step 4 — `Step.Failed` is what the kernel carries until then.
-- **A handler between a `shift0` and its `$` in `Control[R]`** (okay-free's `Linear`): refused by the types, by
-  design; `Shift % S` is the control that mixes with handlers.
+- **A handler between a `shift0` and its `$` in `Control[R]`** (okay-free's `Linear`, a `shift0` crossing a
+  `Deep` handler): refused by the types, for good — the record says what it costs. What was wanted of it is had
+  the other way round: a `Deep` handler's `k` crossing a `$` (`Lower`), and `Shift % S` for control under
+  handlers with the answer fixed.
 - **`Needs`/`Place`'s object a run**: measured in step 2 (`stateRows` against the kernel's own: okay-core's 4 % on
   `Cont0`); if it costs more than that over the one monad, the facade is the place to pay it, not the kernel.
 - **okay-free, okay-eff, okay-cont**: experiments concluded, their READMEs the record; frozen once their authors
   are done writing them up.
+
+## 7. For okay-one's author, now — while the machine is being written
+
+Three things cost a line each now and a rewrite later:
+
+1. **One `Meta`, the `$` a kind of level in it** — not `Delimited.eval` beside `Effects.eval`. A `Deep` handler's
+   `k` (`Cont`) must be able to hold a `$` as a level, so a `reset` can sit under `choose`. Node: `Lower[R, S, O]
+   (c: Cont0[Control[R], S, O, S]) extends Cont0[R, Nothing, Nothing, O]`; surface `reset(body)`; an operation of
+   `R` inside the reset not answered in place by a `HandleIn` goes out past the `$`-level to its handler-level.
+   Acceptance §4 I.
+2. **`Raise(e)` as a node; the `try` at each call of user code** (`Bind`/`Map` frames, `value`, `next`, a clause),
+   never around the `@tailrec` loop: on a throw the frames of the level are dropped, the levels unwound innermost
+   first, the top answers `Step.Failed(e)`; `run` rethrows. `Step.Yield.resume` grows `fail(e)` beside `apply(x)`
+   (the protocol's). `cancel()` and `Guard` come in okay-core at step 4 — but the unwinding they ride on is this
+   one. Acceptance §4 J's first line.
+3. **`Shift % S` in std** as a `Deep` effect: `reset[S]` its handler, `shift`/`shift0` its operations with `k`;
+   `shift(identity)` = `pure(k)`. No node for it. Acceptance §4 B.
+
+Who does what: 1–3 in okay-one, by its author, now; `Guard`/`cancel` in okay-core at step 4 by whoever holds the
+sprint item `one-monad` then; the facade and `RowEffects` at step 2 likewise. Read §4 before writing a test, §5
+before starting a step.
