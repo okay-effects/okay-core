@@ -1,96 +1,73 @@
 package okay.core
 
-/** EFFECTS over the monad: an operation at its path in the row, and a handler — a delimiter that answers the
- * operations of its effect; a reset is one that answers none. So effects are control with handlers: every context
- * with effects has `shift` and `reset`, and its delimiters' contexts are so too */
-abstract class Effects extends Control:
-  /** the monad of the body of a handler of `E` here: over the row `E +: Effs`, one level in */
-  type Handling[E[_], I, O, A]
-  /** the context under a handler of `E` here, at its answer `S2`: the row `E +: R`, the monad `Handling` */
-  type Handled[E[_], S2] <: Effects { type M[I, O, A] = Effects.this.Handling[E, I, O, A]; type Effs = E +: Effects.this.Effs; type S = S2 }
-  type Reset[S2] <: Effects { type M[I, O, A] = Effects.this.Within[I, O, A]; type Effs = Effects.this.Effs; type S = S2 }
-  type Answer[S2] <: Effects { type M[I, O, A] = Effects.this.M[I, O, A]; type Effs = Effects.this.Effs; type S = S2 }
-  /** a handler of `E`'s body here, of value `A`, at the handler's answer `Ans`: in its context, one level in */
-  type Body[E[_], Ans, A] = Handled[E, Ans] ?=> Handling[E, Ans, Ans, A]
-  /** an interceptor's body here, of value `A`, at the interceptor's answer `Ans`: in its context, the row the same */
-  type Intercepted[Ans, A] = Reset[Ans] ?=> Within[Ans, Ans, A]
-  def perform[E[_], S2, X](op: E[X], in: In[E, Effs]): M[S2, S2, X]
-  /** a handler of `E` here: the body in its context, over `E +: R` at the answer `Ans`; its answers read by `h` */
-  def handle[E[_], A, Ans](h: Handler[Prog, E, A, Ans])(body: Handled[E, Ans] ?=> Handling[E, Ans, Ans, A]): M[S, S, Ans]
-  /** an INTERCEPTOR of `E`, an effect already in this row at `in`: the body in a context of its own, the row the
-   * same, at the answer `Ans` — its operations at `in` to `h`'s clauses, `k` the rest under the interceptor again
-   * (deep), every other operation on outside as it is; a clause runs outside it, so an operation of `E` there is the
-   * handler's at `in`. A delimiter, as a reset: a `shift` in the body reaches it. What `local` and `handleWith` are
-   * (tofu's `WithLocal`, `Handle`), and a handler over an effect anywhere in a row */
-  def intercept[E[_], A, Ans](in: In[E, Effs], h: Handler[Prog, E, A, Ans])(body: Reset[Ans] ?=> Within[Ans, Ans, A]): M[S, S, Ans]
-  /** this context with the paths of the effects a program needs: the context of an `A ! Es` */
-  type Needing[Es <: AnyKind] <: Needs[Es] { type M[I, O, A] = Effects.this.M[I, O, A]; type Effs = Effects.this.Effs; type S = Effects.this.S }
-  def needing[Es <: AnyKind](p: Paths[Es, Effs]): Needing[Es]
-  /** this monad's top, for a library re-entering it (`Async`): a run there on the same monad */
-  def top: Top
+import okay.one.Cont0
+import okay.one.handler.{Answering as OneAnswering, Deep, Handler as OneHandler, Translating}
 
-/** THE CONTEXT WITH THE EFFECTS A PROGRAM NEEDS, `Es`, found in its row: a context of the instance's own making,
- * `c.needing(paths)` — for `Cont`, an `At` itself, so an operation is the context's own call, nothing forwarded */
-trait Needs[Es <: AnyKind] extends Effects:
-  def find[E[_]](r: Req[E, Es]): In[E, Effs]
-object Needs:
-  given all[Es <: AnyKind](using c: Effects, p: Paths[Es, c.Effs])
-    : (Needs[Es] { type M[I, O, A] = c.M[I, O, A]; type Effs = c.Effs; type S = c.S }) = c.needing(p)
-  /** an effect needed: its path in the context's row */
-  given found[E[_], Es <: AnyKind](using n: Needs[Es], r: Req[E, Es]): In[E, n.Effs] = n.find(r)
+/** AN OPERATION, not yet a program: of the row where it is bound — `for n <- ask[Int]; _ <- tell(n) yield n`, the
+ * row the expected type's, so a program needing effects names no row; or named, `at[R]`, `perform[R]` */
+final class Op[E[_], X](val op: E[X]) extends AnyVal:
+  def at[R <: Row](using p: Path[E, R]): Eff[R, X] = Cont0.perform[E, R, X](op)(using p.in)
+  def perform[R <: Row](using Path[E, R]): Eff[R, X] = at[R]
+  def flatMap[R <: Row, B](f: X => Eff[R, B])(using Path[E, R]): Eff[R, B] = at[R].flatMap(f)
+  def map[R <: Row, B](f: X => B)(using Path[E, R]): Eff[R, B] = at[R].map(f)
+object Op:
+  /** an operation where a program is expected: performed there, in the row expected */
+  given toProgram[E[_], X, R <: Row](using Path[E, R]): Conversion[Op[E, X], Eff[R, X]] = _.at[R]
 
-/** `A ! E1 + E2 + …`: a program of value `A`, in any context whose row has every effect it names — one,
- * `Int ! Reader % Int`, or several joined, `Int ! Reader % Int + Writer % String` — in any order, among any others;
- * written under any handlers, the row never named. At the context's answer, not `Free`'s `Unit`: under a handler the
- * answer is the handler's — `Either[E, A]` under `throws` — so a `Free` program would run only where nothing is
- * answered */
-infix type ![A, F[_]] = (c: Needs[F]) ?=> c.Prog[A]
+/** `perform(op)`: an operation of `E`, a program of the row it is bound in */
+def perform[E[_], X](op: E[X]): Op[E, X] = Op(op)
+/** `pure(a)`: the value, a program over any row */
+def pure[R <: Row, A](a: A): Eff[R, A] = Cont0.pure(a)
+def unit[R <: Row]: Eff[R, Unit] = Cont0.pure(())
+/** `defer(p)`: `p` built when the run gets to it — a tail call, in constant stack */
+def defer[R <: Row, A](p: => Eff[R, A]): Eff[R, A] = Cont0.defer(p)
 
-object Effects:
-  /** `handle(h)(body)` in context: the body written in the handler's context, over `E +: c.Effs`, at its answer */
-  def handle[E[_], A, Ans](using c: Effects)(h: Handler[c.Prog, E, A, Ans])
-            (body: c.Body[E, Ans, A]): c.Prog[Ans] =
-    c.handle(h)(body)
-  /** `intercept(h)(body)` in context: `E`, already in the context's row, handled again for the body */
-  def intercept[E[_], A, Ans](using c: Effects, in: In[E, c.Effs])(h: Handler[c.Prog, E, A, Ans])
-               (body: c.Intercepted[Ans, A]): c.Prog[Ans] =
-    c.intercept(in, h)(body)
-  /** `translate[E](f)(body)`: a handler of `E` whose every clause is a program outside it, `f(op)`, the rest of the
-   * body then resumed with its value — `E`'s operations translated to the effects outside; the body's value the
-   * answer. Its effect invariant (`enum E[A]`): of a covariant one a match knows the value's type only from below,
-   * and a program of it is not one of `X`. A clause needing `k` itself — twice, never, not last — is a `Handler` */
-  def translate[E[_]](using c: Effects)[A](f: [X] => E[X] => c.Prog[X])(body: c.Body[E, A, A]): c.Prog[A] =
-    c.handle(new Handler[c.Prog, E, A, A]:
-      def ret(a: A): A = a
-      def apply[X](op: E[X], k: X => c.Prog[A]): c.Prog[A] = f(op).flatMap(k))(body)
-
-/** A HANDLER of the effect `E`, its clauses over the programs `P` outside it, whatever the monad: the body's value
- * `A` to the answer `Ans`; each operation with the rest of the body up to the delimiter, `k`, deep — the handler
- * stays in force through a resumption. An operation of another effect goes on outside, its path one shorter */
-trait Handler[P[_], E[_], A, Ans]:
+/** A HANDLER of the effect `E`, over any row outside it: the body's value `A` to the answer `Ans`; each operation with
+ * the rest of the body under the handler, `k` — deep, data: dropped, resumed, resumed again, kept. Its clauses are
+ * programs over the row outside, `T`, whatever it is — so they perform nothing of it; a handler made of other
+ * effects is the kernel's `Deep` over a row that has them (`handleIn`) */
+trait Handler[E[_], A, Ans]:
   def ret(a: A): Ans
-  def apply[X](op: E[X], k: X => P[Ans]): P[Ans]
+  def apply[T <: Row, X](op: E[X], k: X => Eff[T, Ans]): Eff[T, Ans]
+  /** the kernel's form of it, over the row `T` */
+  def at[T <: Row]: OneHandler[E, T, A, Ans] = new Deep[E, T, A, Ans]:
+    def ret(a: A): Eff[T, Ans] = Cont0.pure(Handler.this.ret(a))
+    def apply[X](op: E[X], k: X => Eff[T, Ans]): Eff[T, Ans] = Handler.this.apply[T, X](op, k)
 
 /** an operation's value, by the operation alone */
 trait Value[E[_]]:
   def value[X](op: E[X]): X
 
-/** a TAIL-RESUMPTIVE handler: each clause is `k(value(op))`, the value of the operation alone — so the operation is
- * ANSWERED IN PLACE: the run goes on with the rest of the body at once, no resumption built, nothing handed out
- * (Koka's, Effekt's optimisation; here by the handler's declaration) */
-trait Answering[P[_], E[_], A, Ans] extends Handler[P, E, A, Ans] with Value[E]:
-  final def apply[X](op: E[X], k: X => P[Ans]): P[Ans] = k(value(op))
+/** a handler ANSWERING IN PLACE: each clause `k(value(op))`, the value of the operation alone — the run goes on with
+ * the rest of the body at once, nothing captured (the kernel's `Answering`) */
+trait Answering[E[_], A, Ans] extends Handler[E, A, Ans] with Value[E]:
+  final def apply[T <: Row, X](op: E[X], k: X => Eff[T, Ans]): Eff[T, Ans] = k(value(op))
+  override def at[T <: Row]: OneHandler[E, T, A, Ans] = new OneAnswering[E, T, A, Ans]:
+    def ret(a: A): Eff[T, Ans] = Cont0.pure(Answering.this.ret(a))
+    def value[X](op: E[X]): X = Answering.this.value(op)
 
-/** `perform(op)`: an operation of `E`, in the context — its row has `E`, its answer is the operation's */
-def perform[E[_], X](op: E[X])(using c: Effects, in: In[E, c.Effs]): c.Prog[X] = c.perform(op, in)
+/** `handle(h)(body)`: the body at the handler's place — `E` at the head of the row outside, `T` — its value through
+ * `h`, its operations of `E` to `h`'s clauses. `T` is the row where the result is used: so the handlers make the row,
+ * the outermost last */
+def handle[E[_], A, Ans, T <: Row](h: Handler[E, A, Ans])(body: Under[E, T, A]): Eff[T, Ans] = handleIn(h.at[T])(body)
 
-/** `pure(a)`: the value, a program here */
-def pure[A](a: A)(using c: Context): c.Prog[A] = c.pure(a)
+/** the same with a handler in the kernel's form over the row outside, `T` — one made of the effects of `T`: its
+ * clauses perform them by their paths, `(using In[Log, T])` */
+def handleIn[E[_], T <: Row, A, Ans](h: OneHandler[E, T, A, Ans])(body: Under[E, T, A]): Eff[T, Ans] =
+  // the body built when the run enters the handler: a handler installed by a recursive call costs no stack
+  defer(body(using Place.head).handle(h))
 
-/** A MONAD'S TOP: its context there, over `Pure` at an answer `J`, and a run of a program of it — what a library
- * re-entering the top takes (`Async`, a run going on in a callback's thread; `stream`, a run of a generator); every
- * context has its monad's, `c.top`. `M[J, I, O, A]`: the monad at the top answering `J` */
-trait Top:
-  type M[J, I, O, A]
-  def at[J]: Effects { type M[I, O, A] = Top.this.M[J, I, O, A]; type Effs = Pure; type S = J }
-  def run[J](p: M[J, J, J, J]): J
+/** `translate(f)(body)`: `E`'s operations each a program over the row outside, run where it is performed, the body
+ * resumed with its value — no `k`, no delimiter (the kernel's `Translating`) */
+def translate[E[_], T <: Row, A](f: [X] => E[X] => Eff[T, X])(body: Under[E, T, A]): Eff[T, A] =
+  handleIn(new Translating[E, T, A, A]:
+    def ret(a: A): Eff[T, A] = Cont0.pure(a)
+    def apply[X](op: E[X]): Eff[T, X] = f(op))(body)
+
+/** `intercept(h)(body)`: `E`, already in the row outside, handled again for the body by `h` — its clauses' own
+ * operations of `E` go to the handler outside (`local`, `handleWith`) */
+def intercept[E[_], T <: Row, A](h: OneHandler[E, T, A, A])(body: Under[E, T, A])(using Path[E, T]): Eff[T, A] =
+  handleIn(h)(body)
+
+/** `run(p)`: a program with nothing left to handle — its value */
+def run[A](p: Place[Pure] ?=> Eff[Pure, A]): A = p(using Place.top).run

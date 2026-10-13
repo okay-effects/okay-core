@@ -6,6 +6,9 @@ import okay.one.Handlers.*
 import okay.one.handler.*
 import okay.one.row.*
 import okay.one.machine.Machine
+import okay.one.std.{Shift, Shifts}
+import okay.one.step.Step
+import okay.one.step.Step.*
 
 /**
  * THE MACHINE AGAINST ONE REFERENCE: random programs of the whole monad run by the machine — with all it does for
@@ -14,7 +17,7 @@ import okay.one.machine.Machine
  * program's rest. Control: shift0 and `$` as in the calculus, the effects in it answered by the handlers around.
  */
 class TestReference extends munit.FunSuite:
-  val Digest = -1603108864
+  val Digest = -603317515
 
   // THE MEANING
 
@@ -115,7 +118,7 @@ class TestReference extends munit.FunSuite:
   def gen[R <: Row](r: Random, depth: Int)(using In[Ask, R], In[St, R], In[Choose, R], In[Throws, R]): Int ! R =
     val c = r.nextInt(5)
     if depth == 0 then pure(c)
-    else r.nextInt(18) match
+    else r.nextInt(21) match
       case 0 => pure(c)
       case 1 =>
         val rest = gen[R](r, depth - 1)
@@ -148,14 +151,58 @@ class TestReference extends munit.FunSuite:
       case 14 => gen[St +: Choose +: R](r, depth - 1).handle(choose).map(_.sum).handle(state(c)).map(_._2)
       case 16 => gen[Ask +: R](r, depth - 1).handle(askFromSt[R](c))
       case 17 => gen[Choose +: Ask +: R](r, depth - 1).handle(askFromSt[Choose +: R](c)).handle(choose).map(_.sum)
+      /** a shift0 up to a reset of control as an effect, k dropped, once, twice */
+      case 18 =>
+        val rest = gen[R](r, depth - 1)
+        val how = r.nextInt(3)
+        Shift.shift0[Int, R, Int, Shifts[Int, R] +: R](k => how match
+          case 0 => pure(c)
+          case 1 => k(c)
+          case _ => k(c).flatMap(a => k(a + 1).map(_ + a)))
+          .flatMap(x => widen[Shifts[Int, R], R, Int](rest).map(_ + x)).handle(Shift.reset[Int, R])
+      /** a shift, its body under the reset — Danvy–Filinski's */
+      case 19 =>
+        val rest = gen[R](r, depth - 1)
+        Shift.shift[Int, R, Int, Shifts[Int, R] +: R](k => k(c).flatMap(a => k(a * 2)))
+          .flatMap(x => widen[Shifts[Int, R], R, Int](rest).map(_ - x)).handle(Shift.reset[Int, R])
+      /** k kept in the answer, resumed after the handler has answered, under the handlers outside it */
+      case 20 => gen[Ask +: R](r, depth - 1).handle(keep[R]).flatMap(kept => drained[R](c, kept))
       case _ => gen[Ask +: Throws +: R](r, depth - 1).handle(attempt).map(_.fold(_.length, identity))
         .handle(askSt[R](c, true))
 
   type R4 = Ask +: St +: Choose +: Throws +: Pure
 
+  /** each `Get` given back with its rest, k kept: the rest resumed later, outside the handler */
+  def keep[R <: Row] = new Deep[Ask, R, Int, KeptR[R]]:
+    def ret(a: Int) = pure(KeptR.Value(a))
+    def apply[X](op: Ask[X], k: X => KeptR[R] ! R) = op match { case Ask.Get => pure(KeptR.Rest(k)) }
+
+  /** the rests kept, resumed one by one with `c` and a state moved on before each */
+  def drained[R <: Row](c: Int, kept: KeptR[R])(using In[St, R]): Int ! R = kept match
+    case KeptR.Value(v) => pure(v)
+    case KeptR.Rest(k) => perform[St, R, Unit](St.Put(c)).flatMap(_ => k(c)).flatMap(next => drained(c + 1, next))
+
+  /** a program stepped, each `Get` answered `n` by the driver */
+  def driven[A](s: Step[Ask +: Pure, A], n: Int): A =
+    @scala.annotation.tailrec def go(s: Step[Ask +: Pure, A]): A = s match
+      case Step.Done(a) => a
+      case Step.Failed(e) => throw e
+      case y: Step.Yield[r, a, e, x] => y.in match
+        case _: In.Here[f, t] => go(y.resume(asked(y.op, n)))
+        case th: In.There[f, g, t] => In.absurd(th.in)
+    go(s)
+  def asked[X](op: Ask[X], n: Int): X = op match { case Ask.Get => n }
+
+  test("step: random programs stepped, their Gets answered by the driver — as the meaning with a reader") {
+    val r = Random(37)
+    for i <- 1 to 300 do
+      val p = gen[R4](r, 4).handle(attempt).handle(choose).handle(state(1))
+      assertEquals(driven(p.step, 2), value(norm(p.handle(reader(2)))), s"program $i")
+  }
+
   test("the semantics pinned: the answers of random programs, their digest — changed only knowingly") {
     val r = Random(29)
-    val answers = (1 to 300).map(_ => gen[R4](r, 4).handle(attempt).handle(choose).handle(state(1)).handle(reader(2)).run)
+    val answers = (1 to 1000).map(_ => gen[R4](r, 4).handle(attempt).handle(choose).handle(state(1)).handle(reader(2)).run)
     assertEquals(answers.toString.hashCode, Digest)
   }
 
@@ -263,3 +310,8 @@ class TestReference extends munit.FunSuite:
           Shift0[Pure, L[Pure], L[Pure], Int, B[Pure], Int](k => k(c).flatMap(a => k(a * 2)))
         val after = body0(r, depth - 1)
         Dollar[Pure, B[Pure], L[Pure], L[Pure], Int, Int](inner, a => Return(a + c)).flatMap(x => after.map(_ + x))
+
+/** an answer holding a kept rest */
+enum KeptR[R <: Row]:
+  case Value(v: Int)
+  case Rest(k: Int => KeptR[R] ! R)

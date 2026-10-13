@@ -1,39 +1,34 @@
 package okay.core
 
-/** DELIMITED CONTROL over the monad: `shift` and `reset`, answers moved — Danvy–Filinski's, typed as Asai–Kameyama's.
- * The raw operations at the context's row; `Control.shift` and `Control.reset` are them in context */
-abstract class Control extends Context:
-  /** the context in a reset here, its body written at `S2`: the monad `Within` */
-  type Reset[S2] <: Control { type M[I, O, A] = Control.this.Within[I, O, A]; type Effs = Control.this.Effs; type S = S2 }
-  /** this context at the answer `S2`, the monad the same: a shift's body, where the delimiter was */
-  type Answer[S2] <: Control { type M[I, O, A] = Control.this.M[I, O, A]; type Effs = Control.this.Effs; type S = S2 }
-  def answer[S2]: Answer[S2]
-  /** `shift(k => body)`: `k` the context up to the nearest delimiter, under a delimiter of its own, delivering the
-   * answer at the hole, `I`; the body runs under the delimiter at its final answer `O`, its value that answer.
-   * `same`, if the shift keeps the answer: what a monad whose `k` holds a handler's clauses needs */
-  def shift[I, O, A](f: (A => M[O, O, I]) => M[O, O, O], same: (I =:= O) | Null): M[I, O, A]
-  /** the delimiter: the body, in its context, written at `S2`, its value the answer; its final answer `O` the
-   * delimiter's value here */
-  def reset[S2, O](body: Reset[S2] ?=> Within[S2, O, S2]): M[S, S, O]
+import okay.one.Cont0
+import okay.one.std.{Shift, Shifts}
 
-/** whether a shift keeps the answer, `T` to `O`: the proof, if the types say so; else nothing known */
-opaque type Keeps[T, O] = (T =:= O) | Null
-object Keeps extends KeepsLow:
-  given kept[T]: Keeps[T, T] = keptProof
-  extension [T, O](k: Keeps[T, O]) def proof: (T =:= O) | Null = k
-private def keptProof[T]: Keeps[T, T] = <:<.refl
-private def unknownProof[T, O]: Keeps[T, O] = null
-trait KeepsLow:
-  given unknown[T, O]: Keeps[T, O] = unknownProof
-
+/**
+ * DELIMITED CONTROL, two faces, each where its typing is free (docs/one.md §2):
+ *
+ *  - AS AN EFFECT OF THE ROW, the answer fixed: `Shift % S` — `reset[S](body)` its handler, `Deep`; `shift`
+ *    and `shift0` its operations, given `k`, the rest up to the reset — data, a program over the row outside the
+ *    reset, `T`. Under any handlers, in any order; a shift directly under a handler holds the handler in its `k`.
+ *    What okay's `shift`/`reset` are.
+ *  - THE ANSWER MOVED, `Control[R]`: `shift0` and `$` with the answer type modified (Materzok–Biernacki, Asai–
+ *    Kameyama's typing), the kernel's own nodes — a program of effects enters it by `cont`, a closed program of
+ *    control is one of effects again by `lower` (`Cont0.reset`). For printf, `pstate`.
+ */
 object Control:
-  /** `reset[S](body)`: the body written at the answer `S`, its value; the delimiter answers what the body moved
-   * the answer to, `O` */
-  def reset[S](using c: Control)[O](body: c.Reset[S] ?=> c.Within[S, O, S]): c.Prog[O] =
-    c.reset(body)
+  /** `reset[S](body)`: the shifts in the body up to here, each with the rest as `k`; the body's value the answer,
+   * `S`. `T` the row outside the reset — the clauses of its shifts programs over it */
+  def reset[S, T <: Row](body: Under[Shifts[S, T], T, S]): Eff[T, S] = handleIn(Shift.reset[S, T])(body)
 
-  /** `shift[A, O](k => body)`: the hole's value `A` and the answer the delimiter is moved to, `O`; the hole's
-   * answer is the context's. The body is written at `O`, under the delimiter */
-  def shift[A, O](using c: Control)(f: c.Answer[O] ?=> (A => c.M[O, O, c.S]) => c.M[O, O, O])
-      (using k: Keeps[c.S, O]): c.M[c.S, O, A] =
-    c.shift(f(using c.answer), k.proof)
+  /** `shift[S, T, X](k => body)`: `k` the rest up to the reset, the reset included; the body runs under the reset
+   * again — a shift in it captures up to the same one (Danvy–Filinski's) */
+  def shift[S, T <: Row, X](f: (X => Eff[Shifts[S, T] +: T, S]) => Eff[Shifts[S, T] +: T, S]): Op[Shifts[S, T], X] =
+    Op(Shift.Up(f))
+
+  /** `shift0[S, T, X](k => body)`: the same, the body run outside the reset, in its place */
+  def shift0[S, T <: Row, X](f: (X => Eff[T, S]) => Eff[T, S]): Op[Shifts[S, T], X] = Op(Shift.Up0(f))
+
+  /** a program of effects in control, at any answer */
+  export Cont0.cont
+  /** `lower(c)`: a closed program of control — its value its initial answer, the rest the identity — a program of
+   * effects over `R`: its operations go out past its `$` to the handlers around */
+  def lower[R <: Row, S, O](c: Cont0[okay.one.Control[R], S, O, S]): Eff[R, O] = Cont0.reset(c)

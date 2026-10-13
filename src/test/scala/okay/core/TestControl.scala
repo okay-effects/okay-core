@@ -1,35 +1,72 @@
 package okay.core
 
-import okay.cont.{Cont, Free, At}
+import okay.one.Cont0
+import okay.one.Cont0.{Dollar, Shift0}
+import okay.std.*
+import okay.core.Control.{lower, reset, shift, shift0}
 
-import Control.{reset, shift}
-
-/** CONTROL alone, beyond master's: Danvy–Filinski's shift in a shift's body, k lazy, shift0's hierarchy */
-abstract class TestControlOn(on: Backend) extends BackendSuite(on):
+/** CONTROL'S TWO FACES: `Shift % S`, shift and reset as an effect of the row — Danvy–Filinski's shift in a shift's
+ * body, k lazy, k data; and `Control[R]`, the answer type modified — printf, nested delimiters */
+class TestControl extends munit.FunSuite:
+  type P = Pure
+  type Sh[S] = Shifts[S, P] +: P
 
   test("a body dropping k aborts the reset: the rest never runs"):
     var ran = false
-    assertEquals(run[Int](reset[Int](shift[Int, Int](_ => pure(-1)).map(x => { ran = true; x }))), -1)
+    assertEquals(run(reset[Int, P](shift[Int, P, Int](_ => pure(-1)).at[Sh[Int]].map(x => { ran = true; x }))), -1)
     assert(!ran)
 
   test("multi-shot: k resumed twice, the answers joined"):
-    assertEquals(run[List[Int]](reset[List[Int]](shift[Int, List[Int]](k => k(1).flatMap(a => k(2).map(b => a ++ b))).map(x => List(x, x * 10)))),
-      List(1, 10, 2, 20))
+    assertEquals(run(reset[List[Int], P](shift[List[Int], P, Int](k => k(1).flatMap(a => k(2).map(b => a ++ b))).at[Sh[List[Int]]]
+      .map(x => List(x, x * 10)))), List(1, 10, 2, 20))
 
   test("a shift's body runs under the reset: a shift in it captures up to the same reset — Danvy–Filinski's"):
-    assertEquals(run[Int](reset[Int](shift[Int, Int](k => shift[Int, Int](k2 => k2(1).map(_ * 100)).flatMap(k)).map(_ + 1))), 200)
+    assertEquals(run(reset[Int, P](shift[Int, P, Int](k => shift[Int, P, Int](k2 => k2(1).map(_ * 100)).at[Sh[Int]].flatMap(k)).at[Sh[Int]]
+      .map(_ + 1))), 200)
 
   test("a shift captures up to the nearest reset only"):
-    assertEquals(run[Int](reset[Int](shift[Int, Int](k => k(1).map(_ * 100))).flatMap(a => reset[Int](shift[Int, Int](k => k(2).map(_ + 7)).map(_ + a)))), 109)
+    assertEquals(run(reset[Int, P](shift[Int, P, Int](k => k(1).map(_ * 100)).at[Sh[Int]]).flatMap(a =>
+      reset[Int, P](shift[Int, P, Int](k => k(2).map(_ + 7)).at[Sh[Int]].map(_ + a)))), 109)
 
   test("k applied runs nothing of the rest: the rest runs when stepped"):
     var ran = false
-    assertEquals(run[Int](reset[Int](shift[Int, Int](k => { k(1); pure(if ran then 1 else 0) }).flatMap(x => { ran = true; pure(x) }))), 0)
+    assertEquals(run(reset[Int, P](shift[Int, P, Int](k => { k(1); pure(if ran then 1 else 0) }).at[Sh[Int]].flatMap(x => { ran = true; pure(x) }))), 0)
+
+  test("shift0: its body runs outside the reset, in its place"):
+    // reset(shift0(k => k(1) + 1) * 10): k = _ * 10, the body outside the reset
+    assertEquals(run(reset[Int, P](shift0[Int, P, Int](k => k(1).map(_ + 1)).at[Sh[Int]].map(_ * 10))), 11)
 
   test("100 000 resets and shifts in constant stack"):
-    def many(n: Int, acc: Int)(using c: Effects): c.Prog[Int] =
-      if n == 0 then pure(acc) else reset[Int](shift[Int, Int](k => k(1)).map(_ + 1)).flatMap(x => many(n - 1, acc + x))
-    assertEquals(run[Int](many(100000, 0)), 200000)
+    def many(n: Int, acc: Int): Eff[P, Int] =
+      if n == 0 then pure(acc)
+      else reset[Int, P](shift[Int, P, Int](k => k(1)).at[Sh[Int]].map(_ + 1)).flatMap(x => defer(many(n - 1, acc + x)))
+    assertEquals(run(many(100000, 0)), 200000)
 
-/** on `Cont` */
-class TestControl extends TestControlOn(Backend.cont)
+  test("k kept: shift0(k => pure(k)) gives k itself, resumed after the reset has answered"):
+    enum Kept:
+      case Value(v: Int)
+      case Rest(k: Int => Eff[P, Kept])
+    val p = shift0[Kept, P, Int](k => pure(Kept.Rest(k))).at[Shifts[Kept, P] +: P].map(x => Kept.Value(x * 2))
+    run(reset[Kept, P](p)) match
+      case Kept.Rest(k) => assertEquals(run(k(21)), Kept.Value(42))
+      case v => fail(s"no k: $v")
+
+  // -- the answer moved: Control[R]
+
+  /** a program of control over `R` at the answer `L`, unmoved */
+  type C[R <: Row, L, A] = Cont0[okay.one.Control[R], L, L, A]
+
+  test("the answer type modified: printf — an Int hole, the reset's answer a function; an effect asked in it"):
+    type R = Reader % Int +: Pure
+    type F = Int => String
+    val body: Cont0[okay.one.Control[R], C[R, String, String], C[R, F, F], Int] =
+      Shift0[R, String, String, String, C[R, F, F], Int](k => Cont0.Return((x: Int) => lower(k(x)).handle(okay.one.std.Reader[Int, Pure, String](0)).run))
+    val p: C[R, F, F] = Dollar[R, C[R, String, String], F, F, F, String](
+      ask[Int].at[R].cont[C[R, F, F]].flatMap(n => body.map(x => s"$n:$x")), (s: String) => Cont0.Return("got " + s))
+    assertEquals(run(reader(1)(lower(p)))(42), "got 1:42")
+
+  test("a handler over a reset: its k taken past the $, the $ put back each time it is resumed"):
+    type R = Choose +: Pure
+    val p: C[R, Int, Int] = Dollar[R, C[R, Int, Int], Int, Int, Int, Int](
+      among(Seq(1, 2)).at[R].cont[C[R, Int, Int]].map(_ * 10), (a: Int) => Cont0.Return(a + 1))
+    assertEquals(run(choose(lower(p))), Seq(11, 21))

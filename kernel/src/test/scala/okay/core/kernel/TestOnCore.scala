@@ -193,9 +193,7 @@ object OnCoreSuite:
     case _: Step.Cancelled[A @unchecked] => throw IllegalStateException("cancelled")
     case y: Step.Yield[?, ?] => throw IllegalStateException(s"an operation with no handler: ${y.op()}")
 
-class TestOnCoreZero extends OnCoreSuite("zero", OnCore.zero)
-class TestOnCoreCont extends OnCoreSuite("cont", OnCore.cont)
+class TestOnCoreOne extends OnCoreSuite("one", OnCore)
 
 /** okay-kernel's TCK on each machine, nesting through the reference machine */
-class TestTckZero extends okay.kernel.tck.TckSuite("okay-core zero", OnCore.zero, others = List(Steps))
-class TestTckCont extends okay.kernel.tck.TckSuite("okay-core cont", OnCore.cont, others = List(Steps))
+class TestTckOne extends okay.kernel.tck.TckSuite("okay-core", OnCore, others = List(Steps))

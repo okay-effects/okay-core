@@ -1,164 +1,113 @@
 package okay.core
 
-/** a ROW: the effects a program may perform, nominal — `Ask +: Say +: Pure`. Nominal, not a union: a union
- * value cannot be told apart without a cast, and a union type cannot be taken apart by the compiler; a class
- * can, so every walk here is total, no claim, no cast, no runtime test of an operation's class */
-sealed trait Row
-/** the effect `E` in front of the row `T` */
-sealed trait +:[E[_], T <: Row] extends Row
-/** the empty row: a program over it performs nothing */
-sealed trait Pure extends Row
+import okay.one.row.{+:, In, Pure, Row}
 
-/** the effect `E` IN the row `R`: a path to it, the compiler builds it — the first, by priority. An operation
- * carries its path; a handler follows it: at `Here`, the operation is the handler's; at `There`, it goes on
- * outside, one effect off the row */
-enum In[E[_], R <: Row]:
-  case Here[E[_], T <: Row]() extends In[E, E +: T]
-  case There[E[_], E2[_], T <: Row](in: In[E, T]) extends In[E, E2 +: T]
-  /** what a monad finding handlers by path found last by this one, and where: the same path from the same place
-   * finds the same, so a loop's operations look up once (`okay.zero`'s machine). Typed by `E`, no cast; one
-   * object, its fields final, read whole on any thread */
-  private[okay] var found: In.Found[E] | Null = null
+/** THE KERNEL'S ROWS, as they are: `Pure`, `E +: T`; an effect's place `In[E, R]`; `Removed[E, R, T]` */
+export okay.one.row.{Row, +:, Pure, In, Removed}
+/** the kernel's program of effects over the row `R` — `okay.one`'s `A ! R`, named the other way round here, the row
+ * first, as a monad is: `Eff[R, A]`. `A ! Es` (below) is the facade's: the effects named, the row the handlers' */
+type Eff[R <: Row, +A] = okay.one.![A, R]
 
-/** EFFECTS JOINED, `E1 + E2 + …`: what a program needs, written as the user writes it — `Int ! Reader % Int + Async`.
- * Two effects joined are an effect again (`Both`, a marker), so `+` goes on — and an effect not yet known, `F`, is
- * one too: `A ! Choose + F`. The compiler finds each effect in it (`Req`) and its path in a row (`Paths`) */
+/** an effect of two parameters, its first given: `Reader % Int` is the effect `[X] =>> Reader[Int, X]` */
+infix type %[F[_, _], S] = okay.one.std.%[F, S]
+/** THE PATH TO `E` IN `R`, as the facade finds it — from the place first: in a program needing effects, the place's
+ * row (`Needs`), whatever row `R` is still unknown to be; at a handler's body or the top, the place's (`Place`); else
+ * from the row, the kernel's `In`. So an operation bound first in a chain, `get.flatMap(f).flatMap(g)`, is of the
+ * program's row, not of one the compiler made up for it */
+final class Path[E[_], R <: Row](val in: In[E, R])
+object Path extends PathInRow:
+  /** in a program needing effects: the place's row, the path found among its effects — whatever `R` is still
+   * unknown to be, so an operation bound first in a chain is of the program's row */
+  given fromNeeds[E[_], Es[_]](using n: Needs[Es], r: Req[E, Es]): Path[E, n.R] = Path(n.paths.find(r))
+sealed trait PathInRow extends PathGiven:
+  /** in a row named: the kernel's path, walked here — the head, or past it */
+  given here[E[_], T <: Row]: Path[E, E +: T] = Path(In.Here())
+  given there[E[_], F[_], T <: Row](using p: Path[E, T]): Path[E, F +: T] = Path(In.There(p.in))
+sealed trait PathGiven:
+  /** the kernel's own evidence, given by hand or by a signature */
+  given fromIn[E[_], R <: Row](using in: In[E, R]): Path[E, R] = Path(in)
+
+/** `E :? R`, the effect `E` in the row `R`: a signature's — `(using Reader % E :? R)` */
+infix type :?[E[_], R <: Row] = Path[E, R]
+/** `E` in the row, as a bound: `def p[R <: Row: Has[Ask]: Has[Log]]: Eff[R, Int]` */
+type Has[E[_]] = [R <: Row] =>> Path[E, R]
+
+/** EFFECTS JOINED, `E1 + E2 + …`: what a program needs, in any order — `Reader % Int + Writer % String`. Two joined are
+ * an effect again, a marker, so `+` goes on */
 sealed trait Both[F[_], G[_], X]
 infix type +[F[_], G[_]] = [X] =>> Both[F, G, X]
 
-/** `E :? R`, the effect `E` in the row `R`: `In` as it is written in a signature, `(using in: Reader % E :? c.Effs)` —
- * a `:`-operator, so `%` and `+:` bind tighter: `Ask :? Ask +: Pure` */
-infix type :?[E[_], R <: Row] = In[E, R]
-
-object In extends InLow:
-  /** a lookup from `from`: the handler of `E` answering in place, or none */
-  final class Found[E[_]](val from: AnyRef, val answers: Value[E] | Null)
-  given here[E[_], T <: Row]: In[E, E +: T] = Here()
-  /** two paths in one row, the same one: then their effects are the same, `Same` the proof — by the compiler's own
-   * reading of the two paths, no cast. A walk as long as the paths, the row's length at most */
-  @scala.annotation.tailrec
-  def same[E1[_], E2[_], R <: Row](a: In[E1, R], b: In[E2, R]): Same[E1, E2] | Null = a match
-    case _: Here[e1, t1] => b match
-      case _: Here[e2, t2] => Same.Refl()
-      case _ => null
-    case t: There[e1, x1, t1] => b match
-      case u: There[e2, x2, t2] => same(t.in, u.in)
-      case _ => null
-
-/** the effects `E1` and `E2`, the same: an operation of one an operation of the other */
-enum Same[E1[_], E2[_]]:
-  case Refl[E[_]]() extends Same[E, E]
-  def apply[X](op: E1[X]): E2[X] = this match
-    case Refl() => op
-  /** a path to one, a path to the other */
-  def in[R <: Row](path: In[E1, R]): In[E2, R] = this match
-    case Refl() => path
-sealed trait InLow:
-  given there[E[_], E2[_], T <: Row](using in: In[E, T]): In[E, E2 +: T] = In.There(in)
-
-/** an effect of two parameters, its first given: `Reader % Int` is the effect `[X] =>> Reader[Int, X]` — the
- * effect in a row, a path, a handler, by name */
-infix type %[F[_, +_], S] = [X] =>> F[S, X]
-
-/** THE ROW `Es` IN THE ROW `R`: a path in `R` for each path in `Es` — the effects a program needs, found in the
- * context's row. Two cases, both total: the last effect, `E0 +: Pure`, where a path can only be `Here` (one past
- * it would be into `Pure`, and there is none — the compiler sees it); and an effect in front of more */
-sealed trait Sub[Es <: Row, R <: Row]:
-  def apply[E[_]](in: In[E, Es]): In[E, R]
-object Sub:
-  given last[E0[_], R <: Row](using head: In[E0, R]): Sub[E0 +: Pure, R] = new Sub[E0 +: Pure, R]:
-    def apply[E[_]](in: In[E, E0 +: Pure]): In[E, R] = in match
-      case In.Here() => head
-  given cons[E0[_], E1[_], T <: Row, R <: Row](using head: In[E0, R], tail: Sub[E1 +: T, R]): Sub[E0 +: E1 +: T, R] =
-    new Sub[E0 +: E1 +: T, R]:
-      def apply[E[_]](in: In[E, E0 +: E1 +: T]): In[E, R] = in match
-        case In.Here() => head
-        case In.There(out) => tail(out)
-
-/** the effect `E` AMONG THE EFFECTS a program needs, `Es`: the one effect it is, `Only`; its path in the row of
- * them, `Path`; or in one of two joined, `Left` and `Right`. Which is for the compiler's search to choose — by the
- * kind of `Es`, an effect, a row, two joined; the left first, as written */
-enum Req[E[_], Es <: AnyKind]:
+/** `E` AMONG THE EFFECTS JOINED `Es`: the one it is, or in the left or the right of two — the compiler finds it, the
+ * left first */
+enum Req[E[_], Es[_]]:
   case Only[E[_]]() extends Req[E, E]
-  case Path[E[_], Es <: Row](in: In[E, Es]) extends Req[E, Es]
   case Left[E[_], F[_], G[_]](r: Req[E, F]) extends Req[E, F + G]
   case Right[E[_], F[_], G[_]](r: Req[E, G]) extends Req[E, F + G]
 object Req extends ReqLow:
   given only[E[_]]: Req[E, E] = Only()
-  given path[E[_], Es <: Row](using in: In[E, Es]): Req[E, Es] = Path(in)
   given left[E[_], F[_], G[_]](using r: Req[E, F]): Req[E, F + G] = Left(r)
 sealed trait ReqLow:
   given right[E[_], F[_], G[_]](using r: Req[E, G]): Req[E, F + G] = Req.Right(r)
 
-/** THE PATHS of the effects a program needs, `Es` — one effect, or a row of them — in the row `R` */
-sealed abstract class Paths[Es <: AnyKind, R <: Row]:
+/** THE PATHS of the effects a program needs, `Es`, in the row `R`: one effect's, or of two joined each side's — the
+ * compiler builds them where the program is placed (`Needs`); an effect among them found by its `Req` */
+sealed abstract class Paths[Es[_], R <: Row]:
   def find[E[_]](r: Req[E, Es]): In[E, R]
-  /** a context of an instance's own making with these paths kept in it, by their kind — an operation then the
-   * context's own call, no `Paths` between */
-  def kept[C](make: Paths.Keep[R, C]): C & Needs[Es]
-object Paths:
-  /** how an instance keeps the paths in a context of its own: one effect's, a row's */
-  trait Keep[R <: Row, C]:
-    def one[E0[_]](head: In[E0, R]): C & Needs[E0]
-    def row[Es <: Row](sub: Sub[Es, R]): C & Needs[Es]
-    /** effects joined: the paths of each side, kept as they are */
-    def both[F[_], G[_]](paths: Paths.Both[F, G, R]): C & Needs[F + G]
-  /** one effect, `E0`, at its path */
+object Paths extends PathsLow:
+  /** one effect, `E0`, at its path. `Only` is its one case: `E0` an effect, not two joined — those have `Both`, by
+   * priority — which the checker cannot tell apart, hence unchecked */
   final class One[E0[_], R <: Row](val head: In[E0, R]) extends Paths[E0, R]:
-    // `Only`: a `Path` is into a row, `E0` is an effect — of another kind, which the checker does not tell apart
     def find[E[_]](r: Req[E, E0]): In[E, R] = (r: @unchecked) match
       case Req.Only() => head
-    def kept[C](make: Keep[R, C]): C & Needs[E0] = make.one(head)
-  /** a row of them, `Pure` at the end, each at its path */
-  final class Of[Es <: Row, R <: Row](val sub: Sub[Es, R]) extends Paths[Es, R]:
-    // `Path`: `Only` is for one effect, `Es` is a row — of another kind, as above
-    def find[E[_]](r: Req[E, Es]): In[E, R] = (r: @unchecked) match
-      case Req.Path(in) => sub(in)
-    def kept[C](make: Keep[R, C]): C & Needs[Es] = make.row(sub)
-  /** two effects joined, `F + G`, each side's paths found on its own */
+  /** two effects joined, `F + G`, each side's paths found on its own. `Left`, `Right` its cases: an operation of
+   * the marker `Both` itself there is none */
   final class Both[F[_], G[_], R <: Row](val left: Paths[F, R], val right: Paths[G, R]) extends Paths[F + G, R]:
     def find[E[_]](r: Req[E, F + G]): In[E, R] = (r: @unchecked) match
       case Req.Left(l) => left.find(l)
       case Req.Right(g) => right.find(g)
-    def kept[C](make: Keep[R, C]): C & Needs[F + G] = make.both(this)
-  given one[E0[_], R <: Row](using head: In[E0, R]): Paths[E0, R] = One(head)
-  given row[Es <: Row, R <: Row](using sub: Sub[Es, R]): Paths[Es, R] = Of(sub)
   given both[F[_], G[_], R <: Row](using left: Paths[F, R], right: Paths[G, R]): Paths[F + G, R] = Both(left, right)
+sealed trait PathsLow:
+  given one[E0[_], R <: Row](using head: In[E0, R]): Paths[E0, R] = Paths.One(head)
 
+/** A PLACE WITH THE EFFECTS `Es`: a row that has them, and their paths in it — where a program needing them runs,
+ * `A ! Es`. Made where the program is fitted to a row — a handler's body, a program over a row named — or in a
+ * program's own place with more effects. One object a fitting, the facade's cost — the kernel knows nothing of it */
+sealed abstract class Needs[Es[_]]:
+  type R <: Row
+  def paths: Paths[Es, R]
+object Needs extends NeedsMore:
+  def of[Es[_], R0 <: Row](p: Paths[Es, R0]): Needs[Es] { type R = R0 } = new Needs[Es]:
+    type R = R0
+    def paths: Paths[Es, R0] = p
+  /** at a place: its row, the paths of these in it — the nearest. The place says the row: a handler's body, the top
+   * (`run`), or one named by hand, `Place.at[R]` */
+  given under[Es[_], R0 <: Row](using h: Place[R0], p: Paths[Es, R0]): (Needs[Es] { type R = R0 }) = of(p)
+  /** an effect needed: its path in the place's row — what `perform` finds in a program needing effects */
+  given found[E[_], Es[_]](using n: Needs[Es], r: Req[E, Es]): In[E, n.R] = n.paths.find(r)
+sealed trait NeedsMore:
+  /** in a program's place with more effects: its row, the paths of these in it */
+  given more[Es[_], Fs[_]](using c: Needs[Fs], p: Paths[Es, c.R]): (Needs[Es] { type R = c.R }) = Needs.of(p)
 
-/** A PATH IN `RV` MADE ONE IN `RC`: what a context seen over one row and run over another translates its operations
- * by (`View`) */
-trait Tr[RV <: Row, RC <: Row]:
-  def apply[E[_]](in: In[E, RV]): In[E, RC]
-object Tr:
-  /** the same row: each path as it is */
-  def same[R <: Row]: Tr[R, R] = new Tr[R, R]:
-    def apply[E[_]](in: In[E, R]): In[E, R] = in
-  /** under a handler of `E`, in front of both rows: its own path the same, another's translated */
-  def under[E[_], RV <: Row, RC <: Row](t: Tr[RV, RC]): Tr[E +: RV, E +: RC] = new Tr[E +: RV, E +: RC]:
-    def apply[X[_]](in: In[X, E +: RV]): In[X, E +: RC] = in match
-      case In.Here() => In.Here()
-      case In.There(out) => In.There(t(out))
+/** WHERE A PROGRAM NEEDING EFFECTS IS FITTED TO A ROW — the row named: a handler's body, its effect in front of the
+ * row outside; the top; one named by hand. So the handlers make the row, the outermost last, each its own at the
+ * head. A row's place carries the row into the search for the program's paths */
+opaque type Place[R <: Row] = Unit
+object Place:
+  /** the place of a handler of `E`, the row outside `T` — nothing made */
+  inline def head[E[_], T <: Row]: Place[E +: T] = ()
+  /** the top: no handler, no effect */
+  inline def top: Place[Pure] = ()
+  /** a row named by hand: `given Place[R] = Place.at` fits programs needing effects to `R` */
+  inline def at[R <: Row]: Place[R] = ()
 
-/** `E` IN THE ROW `R`, BY ITS POSITION — okay's `Removed`: the row without it, `Out`, and every path in `R` as a path in
- * `E +: Out`, the row a handler of `E` makes over `Out` — so a handler takes its effect off wherever it is in a row.
- * The compiler builds it: at the head, first by priority, or through the tail */
-trait Removed[E[_], R <: Row]:
-  type Out <: Row
-  def tr: Tr[R, E +: Out]
-object Removed extends RemovedLow:
-  /** the proof with its `Out` named, so a handler's result row is known where it is called */
-  type Aux[E[_], R <: Row, O <: Row] = Removed[E, R] { type Out = O }
-  given here[E[_], T <: Row]: Aux[E, E +: T, T] = new Removed[E, E +: T]:
-    type Out = T
-    def tr: Tr[E +: T, E +: T] = Tr.same
-sealed trait RemovedLow:
-  given there[E[_], H[_], T <: Row, O <: Row](using r: Removed.Aux[E, T, O]): Removed.Aux[E, H +: T, H +: O] = new Removed[E, H +: T]:
-    type Out = H +: O
-    // `H`, in front: one past `E`; a path in the tail: as the tail's, `E` in front, then `H` after it
-    def tr: Tr[H +: T, E +: H +: O] = new Tr[H +: T, E +: H +: O]:
-      def apply[X[_]](in: In[X, H +: T]): In[X, E +: H +: O] = in match
-        case In.Here() => In.There(In.Here())
-        case In.There(out) => r.tr(out) match
-          case In.Here() => In.Here()
-          case In.There(rest) => In.There(In.There(rest))
+/** `A ! E1 + E2`: A PROGRAM OF `A` NEEDING THE EFFECTS `E1`, `E2` — in any order, in any row that has them among
+ * others, under any handlers: a function of the place it runs at, its row there. `A ! Reader % Int`,
+ * `A ! Choose + State % Int`. A program over a row named is `Eff[R, A]` */
+infix type ![+A, Es[_]] = (c: Needs[Es]) ?=> Eff[c.R, A]
+
+/** a program's body at a handler's place: over `E +: T`, the handler's effect at the head — what a handler takes; a
+ * program needing effects is fitted to it; built when the run enters the handler */
+type Under[E[_], T <: Row, A] = Place[E +: T] ?=> Eff[E +: T, A]
+
+/** the effect of the shifts of answer `S`, the row outside their `reset` `T`: control as an effect of the row */
+type Shifts[S, T <: Row] = okay.one.std.Shifts[S, T]

@@ -1,37 +1,29 @@
 package okay.core
 
-import okay.cont.{Cont, Free, At}
-
-import Effects.*
-import Control.*
 import okay.std.*
 
-/** a generator's consumer on `Cont`, generic over its monad: the next element and the rest, a program at the
- * generator's own answer; or done */
-enum Gen[M[_, _, _], W]:
-  case Next(w: W, rest: M[Gen[M, W], Gen[M, W], Gen[M, W]])
+/** a generator's consumer: the next element and the rest, a program of nothing of the generator's own answer; or done */
+enum Gen[W]:
+  case Next(w: W, rest: Eff[Pure, Gen[W]])
   case Done()
 
-/** the effects in context: the syntax and the answer never named — the handlers build the syntax, outside in */
-/** the effects in context, on any monad of master's `Effects` — `on`'s run: the syntax and the answer never named,
- * the handlers build the syntax, outside in */
-abstract class TestEffectsOn(on: Backend) extends BackendSuite(on):
+/** the effects in a program's place: the row never named — the handlers make it, outside in */
+class TestEffects extends munit.FunSuite:
 
   test("reader: ask answered in place"):
-    assertEquals(run(reader[Int](41)(ask[Int].map(_ + 1))), 42)
+    assertEquals(run(reader(41)(ask[Int].map(_ + 1))), 42)
 
   test("writer: the log in order, and the value"):
-    assertEquals(run(writer[String, Int](tell("a").flatMap(_ => tell("b")).map(_ => 1))), (List("a", "b"), 1))
+    assertEquals(run(writer[String, Int, Pure](tell("a").flatMap(_ => tell("b")).map(_ => 1))), (List("a", "b"), 1))
 
-  test("reader and writer, the handlers in either order: a program needs only its capabilities"):
-    def prog(using c: Effects, r: Reader % Int :? c.Effs, w: Writer % String :? c.Effs): c.Prog[Int] =
-      ask[Int].flatMap(n => tell(n.toString).map(_ => n + 1))
-    assertEquals(run(writer[String, Int](reader[Int](41)(prog))), (List("41"), 42))
-    assertEquals(run(reader[(List[String], Int)](41)(writer[String, Int](prog))), (List("41"), 42))
+  test("reader and writer, the handlers in either order: a program needs only its effects"):
+    def prog: Int ! Reader % Int + Writer % String = ask[Int].flatMap(n => tell(n.toString).map(_ => n + 1))
+    assertEquals(run(writer[String, Int, Pure](reader(41)(prog))), (List("41"), 42))
+    assertEquals(run(reader(41)(writer[String, Int, Reader % Int +: Pure](prog))), (List("41"), 42))
 
   test("state: get, put, modify; the last state and the value"):
     val r = run:
-      state[String](1):
+      state(1):
         for
           a <- get[Int]
           _ <- put(a + 1)
@@ -40,39 +32,39 @@ abstract class TestEffectsOn(on: Backend) extends BackendSuite(on):
     assertEquals(r, (20, "1,20"))
 
   test("100 000 operations answered in place, and forwarded through a handler, in constant stack"):
-    def loop(i: Int)(using c: Effects, s: State % Int :? c.Effs): c.Prog[Int] =
-      if i == 0 then get[Int] else modify[Int](_ + 1).flatMap(_ => loop(i - 1))
-    assertEquals(run(state[Int](0)(loop(100000))), (100000, 100000))
-    def asks(i: Int, acc: Int)(using c: Effects, r: Reader % Int :? c.Effs): c.Prog[Int] =
-      if i == 0 then c.pure(acc) else ask[Int].flatMap(x => asks(i - 1, acc + x))
-    assertEquals(run(reader[(List[String], Int)](1)(collect[String, Int](asks(100000, 0)))), (Nil, 100000))
+    def loop(i: Int): Int ! State % Int =
+      if i == 0 then get[Int].perform else modify[Int](_ + 1).flatMap(_ => loop(i - 1))
+    assertEquals(run(state(0)(loop(100000))), (100000, 100000))
+    def asks(i: Int, acc: Int): Int ! Reader % Int =
+      if i == 0 then pure(acc) else ask[Int].flatMap(x => asks(i - 1, acc + x))
+    assertEquals(run(reader(1)(collect[String, Int, Reader % Int +: Pure](asks(100000, 0)))), (Nil, 100000))
 
   test("an operation through 16 handlers of other effects, and back, 10 000 times"):
-    def loop(i: Int, acc: Int)(using c: Effects, r: Reader % Int :? c.Effs): c.Prog[Int] =
-      if i == 0 then c.pure(acc) else ask[Int].flatMap(x => loop(i - 1, acc + x))
-    def nested(d: Int)(using c: Effects, r: Reader % Int :? c.Effs): c.Prog[Int] =
-      if d == 0 then loop(10000, 0) else reader[Int](0.5)(nested(d - 1))
-    assertEquals(run(reader[Int](2)(nested(16))), 20000)
+    def loop(i: Int, acc: Int): Int ! Reader % Int =
+      if i == 0 then pure(acc) else ask[Int].flatMap(x => loop(i - 1, acc + x))
+    def nested[T <: Row](d: Int)(using In[Reader % Int, T]): Eff[T, Int] =
+      given Place[T] = Place.at
+      if d == 0 then loop(10000, 0) else reader[Double, Int, T](0.5)(nested[Reader % Double +: T](d - 1))
+    assertEquals(run(reader(2)(nested[Reader % Int +: Pure](16))), 20000)
 
   test("two instances of one effect, State[Int] and State[String]: each goes to its own handler, by its path"):
-    def body(using c: Effects, i: State % Int :? c.Effs, s: State % String :? c.Effs): c.Prog[Unit] =
-      modify[Int](_ + 1).flatMap(n => modify[String](_ + n)).map(_ => ())
-    assertEquals(run(state[(Int, Unit)]("x")(state[Unit](41)(body))), ("x42", (42, ())))
-    assertEquals(run(state[(String, Unit)](41)(state[Unit]("x")(body))), (42, ("x42", ())))
+    def body: Unit ! State % Int + State % String =
+      get[Int].flatMap(n => put(n + 1).flatMap(_ => get[String].flatMap(s => put(s + (n + 1))))).map(_ => ())
+    assertEquals(run(state("x")(state(41)(body))), ("x42", (42, ())))
+    assertEquals(run(state(41)(state("x")(body))), (42, ("x42", ())))
 
   test("throws: raise aborts the body, Left; no raise, Right"):
-    assertEquals(run(throws[String, Int](raise[String, Int]("boom").map(_ + 1))), Left("boom"))
-    assertEquals(run(throws[String, Int](summon[Effects].pure(1).map(_ + 1))), Right(2))
+    assertEquals(run(throws[String, Int, Pure]((raise("boom").at[Throws % String +: Pure]: Eff[Throws % String +: Pure, Int]).map(_ + 1))), Left("boom"))
+    assertEquals(run(throws[String, Int, Pure](pure(1).map(_ + 1))), Right(2))
 
   test("state and throws: the order of handlers is the semantics — state kept or lost on a failure"):
-    def body(using c: Effects, s: State % Int :? c.Effs, t: Throws % String :? c.Effs): c.Prog[Int] =
-      put(5).flatMap(_ => raise[String, Int]("boom"))
-    assertEquals(run(state[Either[String, Int]](0)(throws[String, Int](body))), (5, Left("boom")))
-    assertEquals(run(throws[String, (Int, Int)](state[Int](0)(body))), Left("boom"))
+    def body: Int ! State % Int + Throws % String = put(5).flatMap(_ => raise("boom").perform)
+    assertEquals(run(state(0)(throws[String, Int, State % Int +: Pure](body))), (5, Left("boom")))
+    assertEquals(run(throws[String, (Int, Int), Pure](state(0)(body))), Left("boom"))
 
   test("choose: every path, in order — multi-shot"):
     val r = run:
-      choose[(Int, Int)]:
+      choose:
         for
           x <- among(Seq(1, 2, 3))
           y <- among(Seq(10, 20))
@@ -80,80 +72,74 @@ abstract class TestEffectsOn(on: Backend) extends BackendSuite(on):
     assertEquals(r, Seq((1, 10), (1, 20), (2, 10), (2, 20), (3, 10), (3, 20)))
 
   test("choose among 10 000: every path, in order"):
-    assertEquals(run(choose[Int](among(0 until 10000).map(_ * 2))), (0 until 10000).map(_ * 2))
+    assertEquals(run(choose(among(0 until 10000).map(_ * 2))), (0 until 10000).map(_ * 2))
 
   test("8 queens by choose: 92 solutions"):
     def safe(col: Int, placed: List[Int]) = placed.zipWithIndex.forall((c, d) => c != col && math.abs(c - col) != d + 1)
-    def place(row: Int, placed: List[Int])(using c: Effects, ch: Choose :? c.Effs): c.Prog[List[Int]] =
-      if row == 8 then c.pure(placed) else among((0 until 8).filter(safe(_, placed))).flatMap(col => place(row + 1, col :: placed))
-    val all = run(choose[List[Int]](place(0, Nil)))
+    def place(row: Int, placed: List[Int]): List[Int] ! Choose =
+      if row == 8 then pure(placed) else among((0 until 8).filter(safe(_, placed))).flatMap(col => place(row + 1, col :: placed))
+    val all = run(choose(place(0, Nil)))
     assertEquals(all.length, 92)
     assertEquals(all.head, List(3, 1, 6, 2, 5, 7, 4, 0))
 
   test("choose with an empty choice prunes the path"):
-    assertEquals(run(choose[Int](among(Seq(1, 2)).flatMap(x => among(if x == 1 then Seq.empty else Seq(x))))), Seq(2))
+    assertEquals(run(choose(among(Seq(1, 2)).flatMap(x => among(if x == 1 then Seq.empty else Seq(x))))), Seq(2))
 
-  test("choose and state: a resumption shares the cell — the second path sees the first's last state"):
-    assertEquals(run(state[Seq[Int]](0)(choose[Int](among(Seq(1, 2)).flatMap(x => modify[Int](_ + x))))), (3, Seq(1, 3)))
+  test("choose under a state: the state threaded through the paths — the second sees the first's last"):
+    assertEquals(run(state(0)(choose(among(Seq(1, 2)).flatMap(x => modify[Int](_ + x))))), (3, Seq(1, 3)))
+
+  test("a state under choose: each path its own; a cell: one, every path's"):
+    def counted: Int ! Choose + State % Int =
+      among(Seq(1, 2, 3)).flatMap(x => get[Int].flatMap(s => put(s + x).flatMap(_ => get[Int].perform)))
+    assertEquals(run(state(0)(choose(counted))), (6, Seq(1, 3, 6)))
+    assertEquals(run(choose(state(0)(counted))), Seq((1, 1), (2, 2), (3, 3)))
+    assertEquals(run(choose(cell(0)(counted))), Seq((1, 1), (3, 3), (6, 6)))
 
   test("collect: every element yielded, and the value"):
-    assertEquals(run(collect[Int, String](yield_(1).flatMap(_ => yield_(2)).map(_ => "done"))), (List(1, 2), "done"))
+    assertEquals(run(collect[Int, String, Pure](yield_(1).flatMap(_ => yield_(2)).map(_ => "done"))), (List(1, 2), "done"))
 
-  test("collect and choose: a resumption shares the buffer — both paths' elements, in the order they ran"):
-    assertEquals(run(collect[Int, Seq[Int]](choose[Int](among(Seq(1, 2)).flatMap(x => yield_(x).map(_ => x * 10))))), (List(1, 2), Seq(10, 20)))
+  test("collect over choose: both paths' elements, in the order they ran"):
+    assertEquals(run(collect[Int, Seq[Int], Pure](choose(among(Seq(1, 2)).flatMap(x => yield_(x).map(_ => x * 10))))), (List(1, 2), Seq(10, 20)))
 
-  test("an effect its context does not have cannot be performed"):
-    assert(compileErrors("""run(reader[Unit](1)(tell("x")))""").nonEmpty)
+  test("an effect its place does not have cannot be performed"):
+    assert(compileErrors("""run(reader(1)(tell("x").at[Reader % Int +: Pure]))""").nonEmpty)
 
   test("translate: an effect's operations to a writer outside — in order, the body's value the answer"):
-    def notes(using c: Effects, w: Writer % String :? c.Effs)[A](body: c.Body[Note, A, A]): c.Prog[A] =
-      Effects.translate[Note]([X] => (op: Note[X]) => op match
-        case Note.Say(s) => tell(s"[$s]").map(_ => s.length))(body)
-    def prog(using c: Effects, n: Note :? c.Effs): c.Prog[Int] =
-      perform(Note.Say("ab")).flatMap(a => perform(Note.Say("c")).map(b => a * 10 + b))
-    assertEquals(run(writer[String, Int](notes(prog))), (List("[ab]", "[c]"), 21))
+    def notes[A, T <: Row](body: Under[Note, T, A])(using In[Writer % String, T]): Eff[T, A] =
+      translate[Note, T, A]([X] => (op: Note[X]) => op match
+        case Note.Say(s) => tell(s"[$s]").at[T].map(_ => s.length))(body)
+    def prog: Int ! Note = perform(Note.Say("ab")).flatMap(a => perform(Note.Say("c")).map(b => a * 10 + b))
+    assertEquals(run(writer[String, Int, Pure](notes(prog))), (List("[ab]", "[c]"), 21))
 
   test("translate: an effect on a state installed inside, of a private type — the caller's own state untouched"):
-    def counted[A](body: A ! Note)(using c: Effects): c.Prog[(Int, A)] =
-      state[A](Count(0)):
-        Effects.translate[Note]([X] => (op: Note[X]) => op match
+    def counted[A, T <: Row](body: Under[Note, State % Count +: T, A]): Eff[T, (Int, A)] =
+      state(Count(0)):
+        translate[Note, State % Count +: T, A]([X] => (op: Note[X]) => op match
           case Note.Say(s) => modify[Count](n => Count(n.n + s.length)).map(_.n))(body)
       .map((n, a) => (n.n, a))
-    def prog(using c: Effects, s: State % Int :? c.Effs): c.Prog[(Int, Int)] =
-      counted[Int](perform(Note.Say("ab")).flatMap(_ => perform(Note.Say("c")))).flatMap(r => modify[Int](_ + 1).map(_ => r))
-    assertEquals(run(state[(Int, Int)](100)(prog)), (101, (3, 3)))
+    def prog: (Int, Int) ! State % Int =
+      counted(perform(Note.Say("ab")).flatMap(_ => perform(Note.Say("c")))).flatMap(r => modify[Int](_ + 1).map(_ => r))
+    assertEquals(run(state(100)(prog)), (101, (3, 3)))
 
   test("translate: 100 000 operations in constant stack"):
-    def says(i: Int, acc: Int)(using c: Effects, n: Note :? c.Effs): c.Prog[Int] =
-      if i == 0 then c.pure(acc) else perform(Note.Say("x")).flatMap(v => says(i - 1, acc + v))
-    assertEquals(run[Int](Effects.translate[Note][Int]([X] => (op: Note[X]) => op match
+    def says(i: Int, acc: Int): Int ! Note =
+      if i == 0 then pure(acc) else perform(Note.Say("x")).flatMap(v => says(i - 1, acc + v))
+    assertEquals(run(translate[Note, Pure, Int]([X] => (op: Note[X]) => op match
       case Note.Say(s) => pure(s.length))(says(100000, 0))), 100000)
 
-/** an effect of one's own, invariant — what `translate` takes */
-enum Note[A]:
-  case Say(s: String) extends Note[Int]
-final case class Count(n: Int)
-
-/** on `Cont`, and what is `Cont`'s own: a program kept as a value, run twice; `generate` at the top */
-class TestEffects extends TestEffectsOn(Backend.cont):
-  test("state: the cell is per run — the same program run twice starts from s0 twice"):
-    val p: Cont[Pure, (Int, Int), (Int, Int), (Int, Int)] = state[Int](using At[Pure, (Int, Int)]())(0)(modify[Int](_ + 1))
-    assertEquals(p.value, (1, 1))
-    assertEquals(p.value, (1, 1))
-
-  test("collect: the buffer is per run — the same program run twice collects from empty twice"):
-    val p: Cont[Pure, (List[Int], Unit), (List[Int], Unit), (List[Int], Unit)] =
-      collect[Int, Unit](using At[Pure, (List[Int], Unit)]())(yield_(1).flatMap(_ => yield_(2)))
-    assertEquals(p.value, (List(1, 2), ()))
-    assertEquals(p.value, (List(1, 2), ()))
+  test("a cell is per run — the same program run twice starts from s0 twice; collect's log too"):
+    val p: Eff[Pure, (Int, Int)] = cell(0)(modify[Int](_ + 1))
+    assertEquals(run(p), (1, 1))
+    assertEquals(run(p), (1, 1))
+    val q: Eff[Pure, (List[Int], Unit)] = collect(yield_(1).flatMap(_ => yield_(2)))
+    assertEquals(run(q), (List(1, 2), ()))
+    assertEquals(run(q), (List(1, 2), ()))
 
   test("generate is lazy: an infinite body, three elements pulled, nothing past them runs"):
-    type G = Gen[[I, O, A] =>> Cont[Pure, I, O, A], Int]
     var produced = 0
-    def from(n: Int)(using c: Effects, e: Emit % Int :? c.Effs): c.Prog[Unit] =
-      yield_(n).flatMap(_ => { produced += 1; from(n + 1) })
-    val gen: Cont[Pure, G, G, G] = generate[Int, G](using At[Pure, G]())(Gen.Next(_, _), Gen.Done())(from(0))
-    def take(n: Int, g: Cont[Pure, G, G, G]): List[Int] = if n == 0 then Nil else g.value match
+    def from(n: Int): Unit ! Emit % Int = yield_(n).flatMap(_ => { produced += 1; from(n + 1) })
+    val gen: Eff[Pure, Gen[Int]] = generate[Int, Gen[Int], Pure](Gen.Next(_, _), Gen.Done())(from(0))
+    def take(n: Int, g: Eff[Pure, Gen[Int]]): List[Int] = if n == 0 then Nil else run(g) match
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: take(n - 1, rest)
     assertEquals(take(3, gen), List(0, 1, 2))
@@ -161,52 +147,46 @@ class TestEffects extends TestEffectsOn(Backend.cont):
 
   test("generate over a remaining effect: the rest of the generator still asks, under the handler it is run in"):
     type F = Reader % Int +: Pure
-    type G = Gen[[I, O, A] =>> Cont[F, I, O, A], Int]
-    def all(g: Cont[F, G, G, G]): List[Int] = okay.cont.run(reader[G](7)(g)) match
-      case Gen.Done() => Nil
-      case Gen.Next(w, rest) => w :: all(rest)
-    val gen: Cont[F, G, G, G] =
-      generate[Int, G](using At[F, G]())(Gen.Next(_, _), Gen.Done())(ask[Int].flatMap(n => yield_(n)).flatMap(_ => ask[Int].flatMap(n => yield_(n * 2))))
+    enum G:
+      case Next(w: Int, rest: Eff[F, G])
+      case Done()
+    def all(g: Eff[F, G]): List[Int] = run(reader(7)(g)) match
+      case G.Done() => Nil
+      case G.Next(w, rest) => w :: all(rest)
+    val gen: Eff[F, G] =
+      generate[Int, G, F](G.Next(_, _), G.Done())(ask[Int].flatMap(n => yield_(n)).flatMap(_ => ask[Int].flatMap(n => yield_(n * 2))))
     assertEquals(all(gen), List(7, 14))
 
   test("Fibonacci: collected and generated agree, the generator infinite, and 10 000 of them in constant stack"):
-    def fibs(i: Int, a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
-      if i == 0 then c.pure(()) else yield_(a).flatMap(_ => fibs(i - 1, b, a + b))
-    def forever(a: Long, b: Long)(using c: Effects, e: Emit % Long :? c.Effs): c.Prog[Unit] =
-      yield_(a).flatMap(_ => forever(b, a + b))
-    type G = Gen[[I, O, A] =>> Cont[Pure, I, O, A], Long]
-    def take(n: Int, g: Cont[Pure, G, G, G]): List[Long] = if n == 0 then Nil else g.value match
+    def fibs(i: Int, a: Long, b: Long): Unit ! Emit % Long =
+      if i == 0 then pure(()) else yield_(a).flatMap(_ => fibs(i - 1, b, a + b))
+    def forever(a: Long, b: Long): Unit ! Emit % Long = yield_(a).flatMap(_ => forever(b, a + b))
+    def take(n: Int, g: Eff[Pure, Gen[Long]]): List[Long] = if n == 0 then Nil else run(g) match
       case Gen.Done() => Nil
       case Gen.Next(w, rest) => w :: take(n - 1, rest)
     val first = List(0L, 1, 1, 2, 3, 5, 8, 13, 21, 34)
-    assertEquals(okay.cont.run(collect[Long, Unit](fibs(10, 0, 1)))._1, first)
-    assertEquals(take(10, generate[Long, G](using At[Pure, G]())(Gen.Next(_, _), Gen.Done())(forever(0, 1))), first)
-    assertEquals(okay.cont.run(collect[Long, Unit](fibs(10000, 0, 1)))._1.length, 10000)
-
-  test("generate stays lazy over a forwarded effect: an infinite body asking at every step, three pulled"):
-    type F = Reader % Int +: Pure
-    type G = Gen[[I, O, A] =>> Cont[F, I, O, A], Int]
-    var produced = 0
-    def from(n: Int)(using c: Effects, e: Emit % Int :? c.Effs, r: Reader % Int :? c.Effs): c.Prog[Unit] =
-      ask[Int].flatMap(x => yield_(n * x)).flatMap(_ => { produced += 1; from(n + 1) })
-    def take(i: Int, g: Cont[F, G, G, G]): List[Int] = if i == 0 then Nil else okay.cont.run(reader[G](10)(g)) match
-      case Gen.Done() => Nil
-      case Gen.Next(w, rest) => w :: take(i - 1, rest)
-    assertEquals(take(3, generate[Int, G](using At[F, G]())(Gen.Next(_, _), Gen.Done())(from(1))), List(10, 20, 30))
-    assertEquals(produced, 2)
+    assertEquals(run(collect[Long, Unit, Pure](fibs(10, 0, 1)))._1, first)
+    assertEquals(take(10, generate[Long, Gen[Long], Pure](Gen.Next(_, _), Gen.Done())(forever(0, 1))), first)
+    assertEquals(run(collect[Long, Unit, Pure](fibs(10000, 0, 1)))._1.length, 10000)
 
   test("handlers are dynamic: a generator's rest asks the reader it is run under, not the one it was built under"):
     type F = Reader % Int +: Pure
-    type G = Gen[[I, O, A] =>> Cont[F, I, O, A], Int]
+    enum G:
+      case Next(w: Int, rest: Eff[F, G])
+      case Done()
     // built under reader(7): its rest is still a program over Reader — its type says it needs one — and the
-    // consumer runs it under reader(8). A handler found where the program was BUILT (evidence passing) would say 7
-    val gen: Cont[Pure, G, G, G] =
-      reader[G](using At[Pure, G]())(7)(generate[Int, G](Gen.Next(_, _), Gen.Done())(ask[Int].flatMap(yield_(_)).flatMap(_ => ask[Int].flatMap(yield_(_)))))
-    gen.value match
-      case Gen.Next(first, rest) =>
+    // consumer runs it under reader(8)
+    val gen: Eff[Pure, G] =
+      reader(7)(generate[Int, G, F](G.Next(_, _), G.Done())(ask[Int].flatMap(yield_(_)).flatMap(_ => ask[Int].flatMap(yield_(_)))))
+    run(gen) match
+      case G.Next(first, rest) =>
         assertEquals(first, 7)
-        okay.cont.run(reader[G](8)(rest)) match
-          case Gen.Next(second, _) => assertEquals(second, 8)
-          case Gen.Done() => fail("a second element")
-      case Gen.Done() => fail("a first element")
+        run(reader(8)(rest)) match
+          case G.Next(second, _) => assertEquals(second, 8)
+          case G.Done() => fail("a second element")
+      case G.Done() => fail("a first element")
 
+/** an effect of one's own, invariant — what `translate` takes */
+enum Note[A]:
+  case Say(s: String) extends Note[Int]
+final case class Count(n: Int)

@@ -3,7 +3,6 @@ package okay.core.kernel
 import munit.FunSuite
 import okay.kernel.*
 import okay.kernel.{Control => KControl}
-import okay.kernel.{Control => KControl}
 import okay.kernel.std.{Choose, Handlers, Reader, Results, State, Throws, Writer}
 
 /** okay-kernel's programs, written once over its `Effects`, on okay-core's machines natively — on every platform
@@ -27,7 +26,7 @@ abstract class NativeSuite(name: String, e: Effects) extends FunSuite:
   }
 
   test(s"$name: a kernel program is the machine's own nodes") {
-    assert(e.pure(int(1)).isInstanceOf[okay.zero.Cont0[?, ?, ?]] || e.pure(int(1)).isInstanceOf[okay.cont.Cont[?, ?, ?, ?]])
+    assert(e.pure(int(1)) match { case p: OnCore.P[?] => p.c.isInstanceOf[okay.one.Cont0[?, ?, ?, ?]]; case _ => false })
   }
 
   test(s"$name: state 100 000 operations in constant stack, answered in place") {
@@ -71,7 +70,7 @@ abstract class NativeSuite(name: String, e: Effects) extends FunSuite:
   }
 
   test(s"$name: import — another machine's computation under these handlers") {
-    val other = if e eq OnCore.zero then OnCore.cont else OnCore.zero
+    val other: Effects = e // its own: an import through the same implementation, on every platform
     val inner = other.computation(prog { x =>
       x.flatMap(Handlers.ask[Integer](rd).in(x), fn((n: Integer) => x.map(Handlers.among[Integer](java.util.Arrays.asList(n, int(n + 1))).in(x),
         fn((v: Integer) => int(v * 10)))))
@@ -80,5 +79,4 @@ abstract class NativeSuite(name: String, e: Effects) extends FunSuite:
       java.util.Arrays.asList(int(40), int(50)))
   }
 
-class TestNativeZero extends NativeSuite("zero", OnCore.zero)
-class TestNativeCont extends NativeSuite("cont", OnCore.cont)
+class TestNative extends NativeSuite("one", OnCore)

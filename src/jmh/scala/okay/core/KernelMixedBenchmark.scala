@@ -20,7 +20,7 @@ import okay.kernel.std.{Handlers, Reader, Results, State, Throws, Writer}
 @Fork(2)
 class KernelMixedBenchmark:
 
-  @Param(Array("cont", "zero", "steps"))
+  @Param(Array("one", "steps"))
   var backend: String = ""
 
   @Param(Array("1000"))
@@ -29,8 +29,7 @@ class KernelMixedBenchmark:
   private var e: Effects = null
 
   @Setup def setup(): Unit = e = backend match
-    case "cont" => okay.core.kernel.OnCore.cont
-    case "zero" => okay.core.kernel.OnCore.zero
+    case "one" => okay.core.kernel.OnCore
     // okay-kernel's reference machine, a plain interpreter of the same program: the yardstick
     case _ => okay.kernel.steps.Steps
 

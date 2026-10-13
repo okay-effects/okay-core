@@ -1,113 +1,112 @@
 package okay.core
 
+import okay.one.Cont0
+import okay.one.handler.Deep
 import okay.std.*
 
-/** a handler of an effect wherever it is in a row: okay's shape, on each monad */
-abstract class TestAnywhereOn(top: Top, stackSafe: Boolean = true) extends munit.FunSuite:
-  override def munitTestTransforms: List[TestTransform] = super.munitTestTransforms :+ TestTransform("stack", t =>
-    if stackSafe then t else t.withBody(() => BackendSuite.onLargeStack(t.body())))
+/** a handler of an effect wherever it is in a row: okay's shape, over the kernel's program itself */
+class TestAnywhere extends munit.FunSuite:
 
   // -- okay's TestEffectsRows, as it is written there
-  enum Ask[+A]:
-    case Number extends Ask[Int]
-  enum Say[+A]:
+  enum Ask[A]:
+    case Number() extends Ask[Int]
+  enum Say[A]:
     case Line(s: String) extends Say[Unit]
 
-  def reader[A](n: Int): Program.Answering[Ask, A, A] = new Program.Answering[Ask, A, A]:
+  def reader[A](n: Int): Answering[Ask, A, A] = new Answering[Ask, A, A]:
     def ret(a: A): A = a
     def value[X](op: Ask[X]): X = op match
-      case Ask.Number => n
-  def writer[A]: Program.Handler[Say, A, (List[String], A)] = new Program.Handler[Say, A, (List[String], A)]:
+      case Ask.Number() => n
+  def writer[A]: Handler[Say, A, (List[String], A)] = new Handler[Say, A, (List[String], A)]:
     def ret(a: A): (List[String], A) = (Nil, a)
-    def apply[R <: Row, X](ops: Program.Ops[R])(op: Say[X], k: X => ops.P[(List[String], A)]): ops.P[(List[String], A)] = op match
-      case Say.Line(s) => ops.map(k(()))((log, a) => (s :: log, a))
+    def apply[T <: Row, X](op: Say[X], k: X => Eff[T, (List[String], A)]): Eff[T, (List[String], A)] = op match
+      case Say.Line(s) => k(()).map((log, a) => (s :: log, a))
 
   /** a program written once over the interface: its row declared, each operation by its path */
   def prog[M[_ <: Row, _]](using E: RowEffects[M]): M[Ask +: Say +: Pure, Int] =
-    E.perform[Ask, Ask +: Say +: Pure, Int](Ask.Number).flatMap(n =>
+    E.perform[Ask, Ask +: Say +: Pure, Int](Ask.Number()).flatMap(n =>
       E.perform[Say, Ask +: Say +: Pure, Unit](Say.Line(n.toString)).map(_ => n + 1))
 
-  given E: RowEffects[Program] = RowEffects.on(top)
+  val E: RowEffects[Eff] = RowEffects.eff
 
-  test("okay's interface over Program: handlers apply in any order, each takes its effect wherever it is"):
-    assertEquals(E.run(E.handle(writer[Int])(E.handle(reader[Int](41))(prog[Program]))), (List("41"), 42))
-    assertEquals(E.run(E.handle(reader[(List[String], Int)](41))(E.handle(writer[Int])(prog[Program]))), (List("41"), 42))
+  test("okay's interface over the kernel's program: handlers apply in any order, each takes its effect wherever it is"):
+    assertEquals(E.run(E.handle(writer[Int])(E.handle(reader[Int](41))(prog[Eff]))), (List("41"), 42))
+    assertEquals(E.run(E.handle(reader[(List[String], Int)](41))(E.handle(writer[Int])(prog[Eff]))), (List("41"), 42))
 
   test("okay's words: A ! R, an operation at the row expected, handle wherever the effect is, value"):
     import E.*
     val counting: Int ! (State % Int +: Say +: Pure) =
       for
-        // an effect of two parameters named: from a `Put[Int]` the compiler abstracts more than `State[Int, _]`
         n <- effect[State % Int, Int](State.Get())
         _ <- effect[State % Int, Unit](State.Put(n + 1))
         _ <- Say.Line(s"$n").perform
         m <- effect[State % Int, Int](State.Get())
       yield m
-    assertEquals(Programs.state(41)(counting).handle(writer[(Int, Int)]).value, (List("41"), (42, 42)))
-    assertEquals(Programs.state(41)(counting.handle(writer[Int])).value, (42, (List("41"), 42)))
+    assertEquals(Cont0.handle(counting)(State[Int, Say +: Pure, Int](41)).handle(writer[(Int, Int)]).value, (List("41"), (42, 42)))
+    assertEquals(Cont0.handle(counting.handle(writer[Int]))(State[Int, Pure, (List[String], Int)](41)).value, (42, (List("41"), 42)))
 
   test("Pure + A + B and A +: B +: Pure are one row; a tail call costs no frame — 100 000 of them"):
     import RowEffects.+
     def loop[M[_ <: Row, _]](n: Int, acc: Int)(using E: RowEffects[M]): M[Pure + Ask, Int] =
       if n == 0 then E.pure(acc)
-      else E.perform[Ask, Pure + Ask, Int](Ask.Number).flatMap(x => E.tailcall(loop[M](n - 1, acc + x)))
-    assertEquals(E.run(E.handle(reader[Int](1))(loop[Program](100000, 0))), 100000)
+      else E.perform[Ask, Pure + Ask, Int](Ask.Number()).flatMap(x => E.tailcall(loop[M](n - 1, acc + x)))
+    assertEquals(E.run(E.handle(reader[Int](1))(loop[Eff](100000, 0))), 100000)
 
-  // -- the standard effects taken off wherever they are
+  // -- the standard effects taken off wherever they are: the kernel's handlers, over a row named
   type Row3 = State % Int +: Writer % String +: Throws % String +: Pure
-  def counting: Program[Row3, Int] =
-    Programs.get[Row3, Int].flatMap(n => Programs.put[Row3, Int](n + 1).flatMap(_ => Programs.tell[Row3, String](s"$n")
-      .flatMap(_ => if n > 100 then Programs.raise[Row3, String, Int]("big") else Programs.get[Row3, Int])))
+  def counting: Eff[Row3, Int] =
+    get[Int].at[Row3].flatMap(n => put(n + 1).at[Row3].flatMap(_ => tell(s"$n").at[Row3]
+      .flatMap(_ => if n > 100 then raise("big").at[Row3] else get[Int].at[Row3])))
 
   test("the standard handlers in any order: the order of handlers is the semantics, the row's says nothing"):
-    assertEquals(Program.run(top)(Programs.throws[String](Programs.writer[String](Programs.state(41)(counting)))),
+    import okay.one.std.{Reader as R, State as S, Writer as W, Throws as Th}
+    type R2 = Writer % String +: Throws % String +: Pure
+    type R1 = Throws % String +: Pure
+    assertEquals(Cont0.handle(Cont0.handle(Cont0.handle(counting)(S[Int, R2, Int](41)))(W.collect[String, R1, (Int, Int)]))(Th.either[String, Pure, (List[String], (Int, Int))]).run,
       Right((List("41"), (42, 42))))
-    assertEquals(Program.run(top)(Programs.state(41)(Programs.throws[String](Programs.writer[String](counting)))),
+    type R2b = State % Int +: Throws % String +: Pure
+    assertEquals(Cont0.handle(Cont0.handle(Cont0.handle(counting)(W.collect[String, R2b, Int]))(Th.either[String, State % Int +: Pure, (List[String], Int)]))(S[Int, Pure, Either[String, (List[String], Int)]](41)).run,
       (42, Right((List("41"), 42))))
-    assertEquals(Program.run(top)(Programs.writer[String](Programs.throws[String](Programs.state(41)(counting)))),
-      (List("41"), Right((42, 42))))
     // a failure under the state keeps it, over the state loses it
-    assertEquals(Program.run(top)(Programs.state(200)(Programs.writer[String](Programs.throws[String](counting)))), (201, (List("200"), Left("big"))))
-    assertEquals(Program.run(top)(Programs.writer[String](Programs.throws[String](Programs.state(200)(counting)))), (List("200"), Left("big")))
+    assertEquals(Cont0.handle(Cont0.handle(Cont0.handle(counting)(Th.either[String, State % Int +: Writer % String +: Pure, Int]))(W.collect[String, State % Int +: Pure, Either[String, Int]]))(S[Int, Pure, (List[String], Either[String, Int])](200)).run,
+      (201, (List("200"), Left("big"))))
+    assertEquals(Cont0.handle(Cont0.handle(Cont0.handle(counting)(S[Int, Writer % String +: Throws % String +: Pure, Int](200)))(Th.either[String, Writer % String +: Pure, (Int, Int)]))(W.collect[String, Pure, Either[String, (Int, Int)]]).run,
+      (List("200"), Left("big")))
 
-  test("a handler inside a body taken off by an outer one: paths translated through both"):
+  test("a handler inside a body taken off by an outer one: paths relocated through both"):
+    import okay.one.std.{Reader as R, State as S}
     type Inner = Reader % Int +: State % Int +: Pure
-    val body: Program[Inner, Int] = Programs.ask[Inner, Int].flatMap(a => Programs.get[Inner, Int].map(_ + a))
+    val body: Eff[Inner, Int] = ask[Int].at[Inner].flatMap(a => get[Int].at[Inner].map(_ + a))
     // the state outside, handled first though it is second in the row; the reader inside, after it
-    val p = Programs.reader(5)(Programs.state(10)(body).map(_._2))
-    assertEquals(Program.run(top)(p), 15)
+    val p = Cont0.handle(Cont0.handle(body)(S[Int, Reader % Int +: Pure, Int](10)).map(_._2))(R[Int, Pure, Int](5))
+    assertEquals(p.run, 15)
 
-  test("local and handleWith inside a body whose row was another's: the interceptor's path translated"):
+  test("local and handleWith inside a body whose row was another's: the interceptor's path relocated"):
+    import okay.one.std.{Reader as R, Throws as Th}
     type R2 = Throws % String +: Reader % Int +: Pure
-    val body: Program[R2, Int] = Programs.local[R2, Int, Int](_ * 10)(Programs.ask[R2, Int])
-      .flatMap(a => Programs.handleWith[R2, String, Int](Programs.raise[R2, String, Int]("x"))(e => Program.pure(e.length + a)))
-    assertEquals(Program.run(top)(Programs.throws[String](Programs.reader(4)(body))), Right(41))
+    val body: Eff[R2, Int] = local[Int, Int, R2](_ * 10)(ask[Int].perform)
+      .flatMap(a => handleWith[String, Int, R2](raise("x").perform)(e => pure(e.length + a)))
+    assertEquals(Cont0.handle(Cont0.handle(body)(R[Int, Throws % String +: Pure, Int](4)))(Th.either[String, Pure, Int]).run, Right(41))
 
-  // -- one's own effect written once, in context; its Program handler derived
-  enum Log[+A]:
+  // -- one's own effect written once, over any row outside; taken off wherever it is
+  enum Log[A]:
     case Line(s: String) extends Log[Unit]
-  def logging[A](using c: Effects)(body: c.Body[Log, (List[String], A), A]): c.Prog[(List[String], A)] =
-    Effects.handle(new Handler[c.Prog, Log, A, (List[String], A)]:
-      def ret(a: A): (List[String], A) = (Nil, a)
-      def apply[X](op: Log[X], k: X => c.Prog[(List[String], A)]): c.Prog[(List[String], A)] = op match
-        case Log.Line(l) => k(()).map((ls, a) => (l :: ls, a)))(body)
-  def loggingP[R <: Row, A](p: Program[R, A])(using rm: Removed[Log, R]) =
-    Program.handled[Log, R, A, (List[String], A)](p)(c => b => logging[A](using c)(b))
+  def logging[A, T <: Row]: Deep[Log, T, A, (List[String], A)] = new Deep[Log, T, A, (List[String], A)]:
+    def ret(a: A): Eff[T, (List[String], A)] = pure((Nil, a))
+    def apply[X](op: Log[X], k: X => Eff[T, (List[String], A)]): Eff[T, (List[String], A)] = op match
+      case Log.Line(l) => k(()).map((ls, a) => (l :: ls, a))
 
-  test("one's own effect written in context, its Program handler one line: taken off wherever it is"):
+  test("one's own effect written once, over any row outside: taken off wherever it is"):
+    import okay.one.std.Reader as R
     type R5 = Reader % Int +: Log +: Pure
-    val p: Program[R5, Int] = Programs.ask[R5, Int].flatMap(n => Program.perform[Log, R5, Unit](Log.Line(s"n=$n")).map(_ => n * 2))
-    assertEquals(Program.run(top)(Programs.reader(21)(loggingP(p))), (List("n=21"), 42))
+    val p: Eff[R5, Int] = ask[Int].at[R5].flatMap(n => perform(Log.Line(s"n=$n")).at[R5].map(_ => n * 2))
+    assertEquals(Cont0.handle(Cont0.handle(p)(logging[Int, Reader % Int +: Pure]))(R[Int, Pure, (List[String], Int)](21)).run, (List("n=21"), 42))
 
   test("100 000 operations of an effect deep in the row, its handler taken off from there"):
+    import okay.one.std.{Reader as R, State as S, Writer as W}
     type R4 = Writer % Int +: Reader % Int +: State % Int +: Pure
-    def loop(i: Int): Program[R4, Unit] =
-      if i == 0 then Program.pure(()) else Programs.get[R4, Int].flatMap(s => Programs.put[R4, Int](s + 1)).flatMap(_ => loop(i - 1))
-    assertEquals(Program.run(top)(Programs.reader(0)(Programs.writer[Int](Programs.state(0)(loop(100000)))))._1, Nil)
-    assertEquals(Program.run(top)(Programs.reader(0)(Programs.writer[Int](Programs.state(0)(loop(100000)))))._2._1, 100000)
-
-class TestAnywhere extends TestAnywhereOn(okay.cont.top)
-class TestAnywhereOnCont0 extends TestAnywhereOn(okay.zero.top)
-class TestAnywhereOnSpec extends TestAnywhereOn(okay.zero.Spec.top)
-/** the textbook CPS, not stack safe: on a thread of a large stack */
-class TestAnywhereOnCps0 extends TestAnywhereOn(Cps0.top, stackSafe = false)
+    def loop(i: Int): Eff[R4, Unit] =
+      if i == 0 then pure(()) else get[Int].at[R4].flatMap(s => put(s + 1).at[R4]).flatMap(_ => loop(i - 1))
+    val r = Cont0.handle(Cont0.handle(Cont0.handle(loop(100000))(S[Int, Writer % Int +: Reader % Int +: Pure, Unit](0)))(W.collect[Int, Reader % Int +: Pure, (Int, Unit)]))(R[Int, Pure, (List[Int], (Int, Unit))](0)).run
+    assertEquals(r._1, Nil)
+    assertEquals(r._2._1, 100000)

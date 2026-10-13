@@ -1,6 +1,7 @@
 package okay.std
 
 import okay.core.*
+import okay.one.handler.{Answering as OneAnswering, Deep}
 
 /** A STREAM OF ELEMENTS, NOT STARTED: a value — each consumption a run of its own, from the beginning. Pushed
  * (`foreach`, `fold`, `toList`: the whole of it), or pulled (`take`, `iterator`: as far as asked, the rest
@@ -81,17 +82,14 @@ object Stream:
         if inner != null then inner.nn.close()
         outer.close()
 
-/** A GENERATOR ON A MONAD'S TOP, NOT STARTED: `map` and `filter` fused — composed into what the generator's handler
- * does with an element, no object an element of their own. `start` runs it to its first element, a `Step` */
+/** A GENERATOR, NOT STARTED: `map` and `filter` fused — composed into what the generator's handler does with an
+ * element, no object an element of their own. `start` runs it to its first element, a `Step` */
 abstract class Generator[W] extends Stream[W]:
-  val top: Top
-  /** the generator run at its top, each element and the rest through `out`: a program there answering `G` */
-  def run[G](out: (W, top.M[G, G, G, G]) => top.M[G, G, G, G], done: G): G
+  /** the generator run, each element and the rest through `out` — a program of `G` over nothing, run in place */
+  def run[G](out: (W, Eff[Pure, G]) => Eff[Pure, G], done: G): G
 
   /** started: the first element and the rest, or done */
-  def start: Step[W] =
-    val c = top.at[Step[W]]
-    run[Step[W]]((w, rest) => c.pure(Step.Next(w, top, rest)), Step.Done())
+  def start: Step[W] = run[Step[W]]((w, rest) => pure(Step.Next(w, rest)), Step.Done())
 
   def iterator: Stream.Iter[W] = new Stream.Iter[W]:
     private val it = start.iterator
@@ -102,68 +100,59 @@ abstract class Generator[W] extends Stream[W]:
   override def take(n: Int): List[W] =
     val out = List.newBuilder[W]
     if n > 0 then
-      val c = top.at[Unit]
       var i = 0
-      run[Unit]((w, rest) => { out += w; i += 1; if i < n then rest else c.pure(()) }, ())
+      run[Unit]((w, rest) => { out += w; i += 1; if i < n then rest else pure(()) }, ())
     out.result()
 
   override def map[B](f: W => B): Generator[B] =
     val src = this
     new Generator[B]:
-      val top: src.top.type = src.top
-      def run[G](out: (B, top.M[G, G, G, G]) => top.M[G, G, G, G], done: G): G =
-        src.run[G]((w, rest) => out(f(w), rest), done)
+      def run[G](out: (B, Eff[Pure, G]) => Eff[Pure, G], done: G): G = src.run[G]((w, rest) => out(f(w), rest), done)
       def push(g: B => Unit): Unit = src.push(w => g(f(w)))
 
   /** the elements `p` keeps: a dropped one's rest run in its place */
   override def filter(p: W => Boolean): Generator[W] =
     val src = this
     new Generator[W]:
-      val top: src.top.type = src.top
-      def run[G](out: (W, top.M[G, G, G, G]) => top.M[G, G, G, G], done: G): G =
+      def run[G](out: (W, Eff[Pure, G]) => Eff[Pure, G], done: G): G =
         src.run[G]((w, rest) => if p(w) then out(w, rest) else rest, done)
       def push(g: W => Unit): Unit = src.push(w => if p(w) then g(w))
   override def withFilter(p: W => Boolean): Generator[W] = filter(p)
 
-/** `stream(t)(body)`: the source `body` as a `Generator` of its elements, on the monad of the top `t` — `okay.zero.top`,
- * `okay.cont.top`, a context's `c.top`. The body's effects are `Emit` and those it handles itself; under effects
- * still to be handled, `generate` */
-def stream[W](t: Top)(body: Source[W]): Generator[W] = new Generator[W]:
-  val top: t.type = t
-  def run[G](out: (W, t.M[G, G, G, G]) => t.M[G, G, G, G], done: G): G =
-    val c = t.at[G]
-    t.run(c.handle(new Handler[c.Prog, Emit % W, Unit, G]:
-      def ret(u: Unit): G = done
-      def apply[X](op: Emit[W, X], k: X => c.Prog[G]): c.Prog[G] = op match
-        case Emit.Yield(w) => out(w, k(())))(body))
+/** `stream(body)`: the source `body` as a `Generator` of its elements. The body's effects are `Emit` and those it
+ * handles itself; under effects still to be handled, `generate` */
+def stream[W](body: Source[W]): Generator[W] = new Generator[W]:
+  def run[G](out: (W, Eff[Pure, G]) => Eff[Pure, G], done: G): G =
+    handleIn(new Deep[Emit % W, Pure, Unit, G]:
+      def ret(u: Unit): Eff[Pure, G] = pure(done)
+      def apply[X](op: Emit[W, X], k: X => Eff[Pure, G]): Eff[Pure, G] = op match
+        case Emit.Yield(w) => out(w, k(())))(body).run
   /** answered in place, nothing captured: a whole run's fastest pass */
   def push(f: W => Unit): Unit =
-    val c = t.at[Unit]
-    t.run(c.handle(new Answering[c.Prog, Emit % W, Unit, Unit]:
-      def ret(u: Unit): Unit = ()
+    handleIn(new OneAnswering[Emit % W, Pure, Unit, Unit]:
+      def ret(u: Unit): Eff[Pure, Unit] = pure(())
       def value[X](op: Emit[W, X]): X = op match
-        case Emit.Yield(w) => f(w))(body))
+        case Emit.Yield(w) => f(w))(body).run
 
-/** WHERE A STARTED STREAM STANDS, WHATEVER THE MONAD: an element and the rest, or done (`Generator.start`). The
- * rest of a generator's element (`Next`) is a program of the monad of `top`, its type `top`'s — so the type `Step`
- * names no monad, and one object an element, no closure. The rest of a made one (`Later`: `map`, `flatMap`,
- * `Step.of`) is a function: a started rest is a program already made, its answer fixed. `pull()` runs
- * the rest, each call a run of its own (a program is a value, run as many times as asked). Every operation lazy, in
- * constant stack */
+/** WHERE A STARTED STREAM STANDS: an element and the rest, or done (`Generator.start`). The rest of a generator's
+ * element (`Next`) is a program of the kernel over nothing, its answer this type — one object an element, no
+ * closure. The rest of a made one (`Later`: `map`, `flatMap`, `Step.of`) is a function. `pull()` runs the rest,
+ * each call a run of its own (a program is a value, run as many times as asked). Every operation lazy, in constant
+ * stack */
 enum Step[W]:
-  case Next(w: W, top: Top, rest: top.M[Step[W], Step[W], Step[W], Step[W]])
+  case Next(w: W, rest: Eff[Pure, Step[W]])
   case Later(w: W, rest: () => Step[W])
   case Done()
 
   /** the stream after this element; done, done */
   def pull(): Step[W] = this match
-    case n: Next[W] => n.top.run(n.rest)
+    case Next(_, rest) => rest.run
     case Later(_, rest) => rest()
     case Done() => this
 
   /** this element: for a stream not done */
   private def head: W = this match
-    case Next(w, _, _) => w
+    case Next(w, _) => w
     case Later(w, _) => w
     case Done() => throw java.util.NoSuchElementException("Step.Done")
 

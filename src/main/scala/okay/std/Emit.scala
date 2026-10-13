@@ -1,36 +1,31 @@
 package okay.std
 
 import okay.core.*
+import okay.one.handler.{Deep, Stateful}
 
-/** EMIT: a body that yields. Two handlers: `collect` keeps every element in a buffer of its own, the body resumed
- * at once; `generate` is LAZY — each `yield` captures the rest of the body as the next step, a program over what
- * the handler leaves, run when the consumer asks */
-enum Emit[W, +A]:
+/** EMIT: a body that yields. Two handlers: `collect` keeps every element, a state of the kernel's — each path its
+ * own; `generate` is LAZY — each `yield` gives the rest of the body as the next step, `k` data, a program over the
+ * row outside, run when the consumer asks */
+enum Emit[W, X]:
   case Yield[W](w: W) extends Emit[W, Unit]
 
-def yield_[W](w: W)(using c: Effects, has: Emit % W :? c.Effs): c.Prog[Unit] = perform[Emit % W, Unit](Emit.Yield(w))
-/** `collect[W, A](body)`: every element yielded, in order, and the value. The elements go to a buffer, one per
- * RUN — made when the program is stepped, as `state`'s cell — and each `yield` resumes the body at once: nothing
- * waits for the body to end (a clause `k(()).map(w :: _)` left one frame an element, unwound at the end). A
- * resumption shares the buffer: a body resumed twice collects both paths' elements, in the order they ran */
-def collect[W, A](using c: Effects)(body: c.Body[Emit % W, (List[W], A), A])
-    : c.Prog[(List[W], A)] =
-  type Ans = (List[W], A)
-  c.delay:
-    Effects.handle(new Answering[c.Prog, Emit % W, A, Ans]:
-      private val out = List.newBuilder[W]
-      def ret(a: A): Ans = (out.result(), a)
-      def value[X](op: Emit[W, X]): X = op match
-        case Emit.Yield(w) => out += w; ())(body)
+def yield_[W](w: W): Op[Emit % W, Unit] = perform(Emit.Yield(w))
+/** `collect(body)`: every element yielded, in order, and the value */
+def collect[W, A, T <: Row](body: Under[Emit % W, T, A]): Eff[T, (List[W], A)] =
+  handleIn(new Stateful[Emit % W, T, List[W], A, (List[W], A)]:
+    def initial: List[W] = Nil
+    def ret(s: List[W], a: A): Eff[T, (List[W], A)] = pure((s.reverse, a))
+    def value[X](s: List[W], op: Emit[W, X]): X = op match { case Emit.Yield(_) => () }
+    def next[X](s: List[W], op: Emit[W, X]): List[W] = op match { case Emit.Yield(w) => w :: s })(body)
 
 /** A SOURCE: a program yielding `W`, under `Emit % W` alone — a stream's body, run by `stream` */
-type Source[W] = (c: Effects { type Effs = Emit % W +: Pure }) ?=> c.Prog[Unit]
+type Source[W] = Under[Emit % W, Pure, Unit]
 
-/** `generate[W, G](next, done)(body)`: the body as a lazy generator — nothing runs until the consumer pulls — of
- * the consumer's own type `G`: each element with the rest, a program here of `G`, by `next`; the end, `done`. Any
- * type will do. At the top, `stream` */
-def generate[W, G](using c: Effects)(next: (W, c.Prog[G]) => G, done: G)(body: c.Body[Emit % W, G, Unit]): c.Prog[G] =
-  c.handle(new Handler[c.Prog, Emit % W, Unit, G]:
-    def ret(u: Unit): G = done
-    def apply[X](op: Emit[W, X], k: X => c.Prog[G]): c.Prog[G] = op match
-      case Emit.Yield(w) => c.pure(next(w, k(()))))(body)
+/** `generate(next, done)(body)`: the body as a lazy generator — nothing runs until the consumer pulls — of the
+ * consumer's own type `G`: each element with the rest, a program over the row outside of `G`, by `next`; the end,
+ * `done`. Any type will do. At the top, `stream` */
+def generate[W, G, T <: Row](next: (W, Eff[T, G]) => G, done: G)(body: Under[Emit % W, T, Unit]): Eff[T, G] =
+  handleIn(new Deep[Emit % W, T, Unit, G]:
+    def ret(u: Unit): Eff[T, G] = pure(done)
+    def apply[X](op: Emit[W, X], k: X => Eff[T, G]): Eff[T, G] = op match
+      case Emit.Yield(w) => pure(next(w, k(()))))(body)

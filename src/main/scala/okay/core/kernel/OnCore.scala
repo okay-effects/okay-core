@@ -1,438 +1,296 @@
 package okay.core.kernel
 
-import okay.kernel.{Aborting, Answering, Answers, Computation, Control => KControl, Effects, Fn, General, Handler, Op, Prog, Program, Resume,
-  Key, Returning, Step, Thunk, Translating, Type}
+import okay.kernel.{Aborting, Answering, Answers, Computation, Control, Effects, Fn, General, Handler, Op, Prog, Program, Resume,
+  Returning, Step, Thunk, Translating, Type}
+import okay.one.{!, Cont0}
+import okay.one.Cont0.{defer, pure}
+import okay.one.handler.Deep
+import okay.one.row.{+:, Pure}
+import okay.one.step.Step as OStep
+import okay.one.step.Step.step
 import scala.util.control.NonFatal
 
 /**
- * OKAY-KERNEL'S `Effects`, NATIVE ON OKAY-CORE'S MACHINES (docs/kernel.md, "native"): `OnCore.zero` on Cont0's,
- * `OnCore.cont` on Cont's. A kernel program is the machine's own nodes — `Cont0` and `Cont` are `Prog`s — built
- * directly, nothing wrapped, nothing translated:
+ * OKAY-CORE AS AN IMPLEMENTATION OF THE KERNEL: okay-kernel's `Effects` and `Control` on the one monad's machine (`okay.one`) —
+ * written first as okay-kernel's `one/` module (OnOne), the same here. A kernel
+ * program (`Prog`) IS a program of okay-one (`P`, a `Cont0` in a box) over one row, `Req +: Pure`: `pure` a `Return`,
+ * `flatMap` a `Bind`, `delay` a `Defer`, a delimiter of the bridge a `Deep` handler of `Req`, an operation a `Perform`
+ * of it — nothing of the bridge's own runs a program, the machine's loop does, in constant stack, `k` data.
  *
- *  - `pure`, `flatMap`, `delay`: the machine's `Return`, `Bind`, `Delay` — a function of the program's guarded, its
- *    exception a failure where it was called;
- *  - `perform`: the machine's kernel operation (`KOp`), its handler found BY ITS EFFECT'S IDENTITY at run time —
- *    answered in place by the handlers in force (the machine's evidence, `Ev`), else routed to the delimiters, each
- *    taking it if it is its own (`KHandler.accepts`), passing it on otherwise;
- *  - `handle`: the machine's own handler node, its clauses a `KHandler` of the kernel handler's shape;
- *  - `shift0` / `$`: `$` a handler node whose return is `k`; `shift0` an operation to the nearest delimiter — a `$`
- *    or a kernel handler — its body in the delimiter's place, `k` the rest and the delimiter;
- *  - failures, aborts, cancellation: a kernel operation `Unwind` to the nearest handler taking it (`recover`,
- *    `ensuring`, an `uncancelable` region, an `Aborting` handler its own abort, the top); what an operation is
- *    answered can be a `Signal`, read where the operation was performed;
- *  - export: the program under a top handler (`Host`) on the machine's top; an operation no handler of which is in
- *    force — answered in place by the host if it answers, else handed out, the machine's `k` the protocol's
- *    `Resume`. Import: another's computation, offered in place what the handlers in force answer so (`Here`).
+ * HOW. The kernel finds a handler at RUN time, by the operation's key, where the operation runs — a `k` resumed under
+ * other handlers sees those. So every operation of the kernel is a REQUEST to the nearest delimiter of the bridge,
+ * `Req`, and every delimiter is a `Deep` handler of `Req` over the same row outside: it takes the requests it
+ * concerns and FORWARDS the rest outward — `perform(request).flatMap(k)`, its `k` the rest under it with itself put
+ * back (okay-one's `k` is data: the levels passed, put back when resumed).
  *
- * okay-core's typed programs (paths, `A ! E1 + E2`) are untouched: a kernel node is matched after every typed one,
- * and costs nothing where there is none.
+ *  - Handlers, by shape: `Answering` resumes `k` with `value(op)`; `Aborting` resumes it with an ABORT (a signal,
+ *    below) unwinding from where the operation was to the handler, its finalizers run on the way; `Translating` runs
+ *    its program in the handler's place, the rest resumed with its value; `General` runs the clause with `k` deep;
+ *    a return `Returning`'s `answer`, else `General`'s `ret`, else the value.
+ *  - `shift0`: a request only a handler's delimiter or a `$`'s takes — the bridge's others (`recover`, `ensuring`,
+ *    `uncancelable`) forward it. `$`: a delimiter whose return is `k`.
+ *  - FAILURES, ABORTS, CANCELLATION: requests too — `Unwind`, `k` dropped — to the nearest delimiter taking them:
+ *    `recover` (a failure), `ensuring` (any: the finalizer, then on), an `Aborting` handler (its own abort), a region
+ *    (a cancellation pending there turns any into a cancellation), the top (the step). An exception of the program's
+ *    functions is caught where the bridge calls it and unwinds from there — never a `Raise` of the machine's, which
+ *    the bridge's delimiters would not see. What an operation is answered can be a SIGNAL: the operation reads its
+ *    value and unwinds from where it was performed — `k.fail`, `k.cancel`, an abort through finalizers.
+ *  - EXPORT (`computation`): the program stepped (`Step`): a request come to the top is the host's in place if it
+ *    answers its effect, else `Step.Yield` with the rest as the `Resume` — multi-shot, from any thread. IMPORT
+ *    (`foreign`): the handlers in force asked for (`Env`), the computation started with them as its host in place,
+ *    its yields performed here as operations of this program.
+ *
+ * TRUSTED STEPS, two: `trust` (a value given where the program, built typed, expects it: the protocol is untyped by
+ * design) and `inside` (the row is phantom to the machine: a body of the bridge under one more delimiter of the
+ * bridge is the same program, its operations of the nearest delimiter — `Here` — as before).
  */
-final class OnCore private[okay] (name: String, m: Machine) extends Effects with KControl:
-  import OnCore.*
+object OnCore extends Effects with Control:
 
-  override def toString: String = s"OnCore.$name"
+  override def toString: String = "OnCore"
 
-  /** THE TRUSTED STEP of building: the machine's nodes, `Prog`s, of the value the program was built at — a cast of
-   * the type argument only, nothing checked at run time */
-  private inline def prog[A](p: Prog[Any]): Prog[A] = p.asInstanceOf[Prog[A]]
+  /** THE BRIDGE'S ONE EFFECT: a request to the nearest delimiter of the bridge. Its value `Any`: what the operation
+   * is answered, a value or a signal, read where it was performed */
+  sealed abstract class Req[X]
+  /** a kernel operation; `region`: performed inside a region a cancellation may wait for */
+  final class Perform(val op: Op[?], val region: Boolean) extends Req[Any]
+  final class Shift(val body: Fn[Fn[Any, Prog[Any]], Prog[Any]]) extends Req[Any]
+  /** to the nearest region: a cancellation pending there */
+  final class Mark extends Req[Any]
+  /** the handlers in force, innermost first: each adds itself on the way out; the top adds the host */
+  final class Env(val acc: List[Handler[?, ?]]) extends Req[Any]
+  /** an unwinding: the rest dropped, never answered */
+  final class Unwind(val s: Signal) extends Req[Any]
 
-  /** a program of this machine, or a failure saying it is not */
-  private inline def own(p: Any): AnyRef =
-    if m.owns(p) then p.asInstanceOf[AnyRef] else throw IllegalArgumentException(s"not a program of okay-core: $p")
+  /** the bridge's row, and its programs, untyped: every program of the bridge over it */
+  type KR = Req +: Pure
+  type U = Any ! KR
 
-  /** the user's code giving a program: its exception a failure where it is called */
-  private inline def guard(inline p: Any): AnyRef = try own(p) catch case NonFatal(e) => m.raise(FailSig(e))
+  /** A KERNEL PROGRAM ON OKAY-ONE'S MACHINE: okay-one's program itself, in a box */
+  final class P[A] private[kernel] (val c: U) extends Prog[A]
 
-  /** a `Program`, built when it runs, as the reference machine builds it */
-  private def in(p: Program[?]): AnyRef = guard(p.in(this))
+  // -- the trusted steps
 
-  /** `p` then `f`: an operation bound one node (the machine's `fuse`, as a typed operation is), else a bind */
-  private def bound(p: AnyRef, f: Any => AnyRef): Prog[Any] = m.fuse(p, f) match
-    case null => m.bind(p, f)
-    case n: Prog[Any] @unchecked => n
+  /** THE TRUSTED STEP of the values: a value given where the program, built typed, expects it */
+  private[kernel] def trust[T](v: Any): T = v.asInstanceOf[T]
 
-  def pure[A](a: A): Prog[A] = prog(m.pure(a))
-  // a bind's value read first: a handler's failing answer (a `Returning`'s) comes as a signal, raised at the next
-  // bind — no bind of its own a handler
-  def flatMap[A, B](p: Prog[A], f: Fn[A, Prog[B]]): Prog[B] =
-    val g = untyped(f)
-    prog(bound(own(p), a => a match
-      case s: Signal => m.raise(s)
-      case _ => guard(g.apply(a))))
-  // the machine's map: the function's failure a signal, raised at the next bind or handler's return as a failing
-  // answer is; a signal it is given passed on as it is
+  /** THE TRUSTED STEP of the row: a body of the bridge, over `KR`, under one more delimiter of the bridge — over
+   * `Req +: KR`. The row is phantom to the machine; every operation of the bridge is of the nearest delimiter, `Here`,
+   * in both */
+  private[kernel] def inside(u: U): Any ! (Req +: KR) = u.asInstanceOf[Any ! (Req +: KR)]
+
+  private[kernel] def unbox(p: Prog[?]): U = p match
+    case p: P[?] => p.c
+    case _ => throw IllegalArgumentException(s"not a program of okay-core's bridge: $p")
+
+  // -- the nodes
+
+  private[kernel] def request(r: Req[Any]): U = Cont0.perform[Req, KR, Any](r)
+  /** `body` under a delimiter of the bridge: the body's value to its `ret`, its requests to its clause */
+  private[kernel] def delimit(body: U, d: Delim): U = inside(body).handle(d)
+
+  /** a program the user's code gives: its exception a failure where it is run */
+  private[kernel] def guard(p: => Prog[?]): U =
+    try unbox(p) catch case NonFatal(e) => unwind(FailSig(e))
+  private def built(p: Program[?]): U = guard(p.in(this))
+
+  // -- Effects
+
+  def pure[A](a: A): Prog[A] = P(Cont0.pure(a))
+  def flatMap[A, B](p: Prog[A], f: Fn[A, Prog[B]]): Prog[B] = P(unbox(p).flatMap(v => guard(f.apply(trust[A](v)))))
   override def map[A, B](p: Prog[A], f: Fn[A, B]): Prog[B] =
-    val g: Any => Any = a => a match
-      case s: Signal => s
-      case _ => try f.apply(trust(a)) catch case NonFatal(e) => FailSig(e)
-    val q = own(p)
-    // over an operation: one node, as a bind over it is
-    prog(m.fuse(q, a => m.pure(g(a))) match
-      case null => m.map(q, g)
-      case n: Prog[Any] @unchecked => n)
-  def delay[A](p: Thunk[Prog[A]]): Prog[A] =
-    val t = p.asInstanceOf[Thunk[Any]]
-    prog(m.delay(() => guard(t.get())))
-  def perform[X](op: Op[X]): Prog[X] = prog(m.perform(op))
-  def handle[A, R](h: Handler[A, R], body: Program[A]): Prog[R] = prog(handled(h, body))
-  def shift0[A, I, O](body: Fn[Fn[A, Prog[I]], Prog[O]]): Prog[A] = prog(m.perform(Shift0Op(trust(body))))
+    P(unbox(p).flatMap(v => try Cont0.pure(f.apply(trust[A](v))) catch case NonFatal(e) => unwind(FailSig(e))))
+  def delay[A](p: Thunk[Prog[A]]): Prog[A] = P(defer(guard(p.get())))
+  def perform[X](op: Op[X]): Prog[X] = P(performU(op))
+  def handle[A, R](h: Handler[A, R], body: Program[A]): Prog[R] = P(defer(delimit(built(body), HandlerD(h))))
+  def shift0[A, I, O](body: Fn[Fn[A, Prog[I]], Prog[O]]): Prog[A] =
+    P(request(Shift(trust[Fn[Fn[Any, Prog[Any]], Prog[Any]]](body))).flatMap(check))
   def dollar[A, I, O](body: Program[A], k: Fn[A, Prog[I]]): Prog[O] =
-    prog(m.bind(m.handle(new Dollar(trust(k), body)), flatten))
-  def failed[A](e: Throwable): Prog[A] = prog(m.raise(FailSig(e)))
-  // its body's value read: a handler's failing answer, the body's last, is a failure of the body
-  def recover[A](body: Program[A], h: Fn[Throwable, Prog[A]]): Prog[A] =
-    val hh = trust[Fn[Throwable, Prog[Any]]](h)
-    prog(m.bind(m.handle(new Recover(hh, body)), v => v match
-      case f: FailSig => guard(hh.apply(f.e))
-      case _ => m.pure(v)))
+    P(defer(delimit(built(body), DollarD(trust[Fn[Any, Prog[Any]]](k)))))
+  def failed[A](e: Throwable): Prog[A] = P(defer(unwind(FailSig(e))))
+  def recover[A](body: Program[A], h: Fn[Throwable, Prog[A]]): Prog[A] = P(defer(delimit(built(body), RecoverD(h))))
   def ensuring[A](body: Program[A], finalizer: Program[Void]): Prog[A] =
-    prog(m.bind(m.handle(new Ensuring(finalizer, body)), v => m.bind(in(finalizer), _ => m.check(v))))
-  def uncancelable[A](body: Program[A]): Prog[A] =
-    prog(m.bind(m.handle(new Region(body)), v => v match
-      case e: Ended => m.raise(e.why)
-      case _ => m.check(v)))
+    P(defer(delimit(built(body), EnsuringD(finalizer))))
+  def uncancelable[A](body: Program[A]): Prog[A] = P(defer(delimit(built(body), RegionD())))
   def foreign[A](c: Computation[A]): Prog[A] =
-    prog(m.performThen(HereOp, here => drive(safely(c.start(trust[Answers](here))), null)))
+    P(request(Env(Nil)).flatMap(env => drive(safely(c.start(answersFrom(trust[EnvV](env)))), null)))
 
-  def computation[A](program: Program[A], row: java.util.Set[Type]): Computation[A] =
-    val fixed = java.util.Collections.unmodifiableSet(new java.util.HashSet[Type](row))
-    new Computation[A]:
-      def start(host: Answers): Step[A] = trust(runTop(m.handle(new Host(host, program))))
-      def effects(): java.util.Set[Type] = fixed
+  /** an operation: a request; its answer read — a signal unwinds from here */
+  private[kernel] def performU(op: Op[?]): U = request(Perform(op, region = false)).flatMap(check)
 
-  /** a run on the machine's top: the top handler's answer, a step */
-  private def runTop(p: AnyRef): Step[Any] =
-    try trust[Step[Any]](m.run(p)) catch case NonFatal(e) => new Step.Failed[Any](e)
+  // -- signals: what an operation can be answered, read where it was performed
 
-  // -- handlers: the kernel's shapes as the machine's own
+  private[kernel] sealed abstract class Signal
+  private[kernel] final class FailSig(val e: Throwable) extends Signal
+  private[kernel] object CancelSig extends Signal
+  /** an abort to the handler `to` (its delimiter, one a run of the handler), its answer */
+  private[kernel] final class AbortSig(val to: AnyRef, val answer: Any) extends Signal
+  /** a value given inside a region a cancellation waits for: the region marked, then the value */
+  private[kernel] final class PendingSig(val v: Any) extends Signal
 
-  private def handled(h: Handler[?, ?], body: Program[?]): Prog[Any] =
-    val clauses: Of = h match
-      case a: Answering[?, ?] => new KAnswering(h, body, trust(a))
-      case a: Aborting[?, ?] => new KAborting(h, body, trust(a))
-      case t: Translating[?, ?] => new KTranslating(h, body, trust(t))
-      case _ => new KGeneral(h, body)
-    val node = m.handle(clauses)
-    if clauses.flat then m.bind(node, flatten) else node
+  /** an operation's answer `v` read where it was performed: a signal unwinds from here, a value goes to `next` */
+  private[kernel] def answered(v: Any)(next: Any => U): U = v match
+    case p: PendingSig => request(Mark()).flatMap(_ => answered(p.v)(next))
+    case s: Signal => unwind(s)
+    case _ => next(v)
+  private val check: Any => U = v => answered(v)(Cont0.pure)
 
-  /** the rest `k` of a delimiter's body, as the kernel's: flattened as the delimiter's answer is */
-  private def resumed(k: Any => AnyRef, flat: Boolean): Fn[Any, Prog[Any]] =
-    v => prog(if flat then m.bind(k(v), flatten) else m.node(k(v)))
+  /** to the nearest delimiter taking it: `recover`, `ensuring`, a handler (its abort), a region, the top. Its answer
+   * never comes: the rest is dropped by whoever takes it */
+  private[kernel] def unwind(s: Signal): U = request(Unwind(s))
 
-  /** a clause's program as the machine handler's answer: itself, or — the answer a program — that program */
-  private def answered(flat: Boolean, p: AnyRef): AnyRef = if flat then m.pure(p) else p
+  /** the handlers in force where a foreign computation starts, and the host */
+  private[kernel] final class EnvV(val handlers: List[Handler[?, ?]], val host: Answers)
 
-  /** a `shift0` at its delimiter: the body in the delimiter's place, `k` the rest and the delimiter */
-  private def shift0At(s: Shift0Op, k: Any => AnyRef, flat: Boolean): AnyRef =
-    answered(flat, guard(untyped(s.body).apply(resumed(k, flat))))
+  // -- the delimiters: each a Deep handler of Req over the row outside, its body's value through `done`
 
-  /** a kernel handler of `h.effect()`: its operations, and `shift0`'s — a handler is a delimiter. Its body and its
-   * return its own, no closure each */
-  private abstract class Of(h: Handler[?, ?], body: Program[?], inPlace: Boolean) extends KHandler(h.effect(), inPlace, false):
-    private val t = key
-    protected final val g: General[Any, Any] | Null = h match
-      case g: General[?, ?] => trust[General[Any, Any]](g)
-      case _ => null
-    private val returning: Returning[Any, Any] | Null = h match
-      case r: Returning[?, ?] => trust[Returning[Any, Any]](r)
-      case _ => null
-    /** a return that is a program: the machine's handler answers it, run when the handler is left */
-    final val flat: Boolean = g != null && returning == null
-    def apply(): AnyRef = in(body)
-    // a signal its body came to — a failing answer of a handler inside, its last — passed on as it is
-    override def ret(v: Any): Any =
-      if returning != null then v match
-        case s: Signal => s
-        // its failure a signal, raised at the next bind or handler's return
-        case _ => try returning.answer(v) catch case NonFatal(e) => FailSig(e)
-      else if g != null then v match
-        case s: Signal => m.raise(s)
-        case _ => guard(g.ret(v, OnCore.this))
-      else v
-    def accepts(op: Op[?]): Boolean = (op.effect() eq t) || op.isInstanceOf[Shift0Op]
-    override def handles(e: Type): Boolean = e eq t
+  private[kernel] abstract class Delim extends Deep[Req, KR, Any, Any]:
+    def done(v: Any): U
+    final def ret(v: Any): U = done(v)
+    final def apply[X](r: Req[X], k: X => U): U = req(trust[Req[Any]](r), trust[Any => U](k))
+    def req(r: Req[Any], k: Any => U): U = forward(r, k)
+    /** a request this delimiter does not take, on outward: an unwinding as it is, `k` dropped; a request with `k`
+     * the rest up to here, this delimiter, the rest up to the next */
+    final def forward(r: Req[Any], k: Any => U): U = r match
+      case u: Unwind => request(u)
+      case p: Perform => request(Perform(p.op, p.region || this.isInstanceOf[RegionD])).flatMap(k)
+      case e: Env => request(this match
+        case h: HandlerD => Env(h.h :: e.acc)
+        case _ => e).flatMap(k)
+      case other => request(other).flatMap(k)
 
-  /** `Answering`: answered in place by the machine; its failure a signal */
-  private final class KAnswering(h: Handler[?, ?], body: Program[?], a: Answering[Any, Any]) extends Of(h, body, true):
-    override def answersInPlace(op: Op[?]): Boolean = !op.isInstanceOf[Shift0Op]
-    override def inPlaceFor(e: Type): Boolean = true
-    override def value[X](op: Dyn[X]): X = trust[X](try a.value(op) catch case NonFatal(e) => FailSig(e))
-    def clause(op: Op[?], k: Any => AnyRef, region: Boolean): AnyRef = op match
-      case s: Shift0Op => shift0At(s, k, flat)
-      case _ => k(value(op))
+  /** a run of a kernel handler */
+  private final class HandlerD(val h: Handler[?, ?]) extends Delim:
+    private val t: Type = h.effect()
+    def done(v: Any): U = h match
+      case r: Returning[?, ?] => try Cont0.pure(trust[Returning[Any, Any]](r).answer(v)) catch case NonFatal(e) => unwind(FailSig(e))
+      case g: General[?, ?] => guard(trust[General[Any, Any]](g).ret(v, OnCore))
+      case _ => Cont0.pure(v)
+    override def req(r: Req[Any], k: Any => U): U = r match
+      case p: Perform if p.op.effect() eq t => h match
+        case a: Answering[?, ?] => k(try a.value(trust[Op[Any]](p.op)) catch case NonFatal(e) => FailSig(e))
+        case a: Aborting[?, ?] =>
+          k(try AbortSig(this, trust[Aborting[Any, Any]](a).abort(trust[Op[Any]](p.op))) catch case NonFatal(e) => FailSig(e))
+        case tr: Translating[?, ?] =>
+          // its program in the handler's place, the rest then resumed with its value: no k given to code
+          built(trust[Translating[Any, Any]](tr).translate(trust[Op[Any]](p.op))).flatMap(v => k(v))
+        case g: General[?, ?] => guard(trust[General[Any, Any]](g).apply[Any](trust[Op[Any]](p.op), x => P(k(x)), OnCore))
+        case _ => k(FailSig(IllegalStateException(s"a handler of no shape: $h")))
+      case s: Shift => guard(s.body.apply(x => P(k(x))))
+      case u: Unwind => u.s match
+        case a: AbortSig if a.to.eq(this) => Cont0.pure(a.answer)
+        case _ => forward(u, k)
+      case _ => forward(r, k)
 
-  /** `Aborting`: answered in place by a signal that unwinds to it — itself the abort's mark */
-  private final class KAborting(h: Handler[?, ?], body: Program[?], a: Aborting[Any, Any]) extends Of(h, body, true):
-    override def accepts(op: Op[?]): Boolean = super.accepts(op) || (op match
-      case u: Unwind => u.why match
-        case s: AbortSig => s.to eq this
-        case _ => false
-      case _ => false)
-    override def answersInPlace(op: Op[?]): Boolean = op.effect() eq key
-    override def value[X](op: Dyn[X]): X = trust[X](try AbortSig(this, a.abort(op)) catch case NonFatal(e) => FailSig(e))
-    def clause(op: Op[?], k: Any => AnyRef, region: Boolean): AnyRef = op match
-      case s: Shift0Op => shift0At(s, k, flat)
-      case u: Unwind => u.why match
-        case s: AbortSig => m.pure(s.answer)
-        case _ => m.raise(u.why)
-      case _ => k(value(op))
+  /** `body $ k` */
+  private final class DollarD(kf: Fn[Any, Prog[Any]]) extends Delim:
+    def done(v: Any): U = guard(kf.apply(v))
+    override def req(r: Req[Any], k: Any => U): U = r match
+      case s: Shift => guard(s.body.apply(x => P(k(x))))
+      case _ => forward(r, k)
 
-  /** `Translating`: each operation a program outside the handler, the rest of the body then resumed with its value —
-   * the machine's `k` applied once, last, as okay-core's own `Effects.translate` does; nothing captured beyond the
-   * rest the machine hands a clause */
-  private final class KTranslating(h: Handler[?, ?], body: Program[?], t: Translating[Any, Any]) extends Of(h, body, false):
-    def clause(op: Op[?], k: Any => AnyRef, region: Boolean): AnyRef = op match
-      case s: Shift0Op => shift0At(s, k, flat)
-      case _ => m.bind(guard(t.translate(trust(op)).in(OnCore.this)), k)
+  private final class RecoverD[A](h: Fn[Throwable, Prog[A]]) extends Delim:
+    def done(v: Any): U = Cont0.pure(v)
+    override def req(r: Req[Any], k: Any => U): U = r match
+      case u: Unwind => u.s match
+        case f: FailSig => guard(h.apply(f.e))
+        case _ => forward(u, k)
+      case _ => forward(r, k)
 
-  /** `General` — or no clause at all (a `Returning` alone: its operation fails where it was performed) */
-  private final class KGeneral(h: Handler[?, ?], body: Program[?]) extends Of(h, body, false):
-    def clause(op: Op[?], k: Any => AnyRef, region: Boolean): AnyRef = op match
-      case s: Shift0Op => shift0At(s, k, flat)
-      case _ if g != null => answered(flat, guard(g.apply[Any](trust(op), resumed(k, flat), OnCore.this)))
-      case _ => k(FailSig(IllegalStateException(s"a handler of no shape for an operation: $op")))
+  private final class EnsuringD(fin: Program[Void]) extends Delim:
+    def done(v: Any): U = built(fin).flatMap(_ => Cont0.pure(v))
+    override def req(r: Req[Any], k: Any => U): U = r match
+      case u: Unwind => built(fin).flatMap(_ => request(u))
+      case _ => forward(r, k)
 
-  // -- control, failures, finalizers, regions
+  /** a region a cancellation waits for; `pending`, one waits — it cancels when the region ends, by a value or not.
+   * One a run of `uncancelable`; `k` resumed holds it, so the mark is its state */
+  private final class RegionD extends Delim:
+    private var pending = false
+    def done(v: Any): U = if pending then unwind(CancelSig) else Cont0.pure(v)
+    override def req(r: Req[Any], k: Any => U): U = r match
+      case _: Mark =>
+        pending = true
+        k(())
+      case u: Unwind if pending => unwind(CancelSig)
+      case _ => forward(r, k)
 
-  /** the bridge's own handlers: their body built when the machine enters them */
-  private abstract class Own(body: Program[?], isHost: Boolean) extends KHandler(null, false, isHost):
-    def apply(): AnyRef = in(body)
+  // -- the top: the program stepped, its requests the host's or the protocol's
 
-  private final class Dollar(k: Fn[Any, Prog[Any]], body: Program[?]) extends Own(body, false):
-    private val kk = untyped(k)
-    override def ret(v: Any): Any = v match
-      case s: Signal => m.raise(s)
-      case _ => guard(kk.apply(v))
-    def accepts(op: Op[?]): Boolean = op.isInstanceOf[Shift0Op]
-    def clause(op: Op[?], kk: Any => AnyRef, region: Boolean): AnyRef = shift0At(trust(op), kk, true)
+  /** a run of okay-one's machine to the protocol's step: a request come to the top — the host's in place if it
+   * answers its effect, else a yield; an unwinding its end; the bridge's own answered here */
+  private def loop(s: OStep[KR, Any], host: Answers): Step[Any] = s match
+    case OStep.Done(a) => new Step.Done[Any](a)
+    case OStep.Failed(e) => new Step.Failed[Any](e)
+    case y: OStep.Yield[KR, Any, e, x] =>
+      val resume = trust[OStep.Resume[Any, KR, Any]](y.resume)
+      trust[Req[Any]](y.op) match
+        case p: Perform =>
+          val answers = try host.answers(p.op.effect()) catch case NonFatal(_) => false
+          if answers then loop(resume(try host.value(trust[Op[Any]](p.op)) catch case NonFatal(e) => FailSig(e)), host)
+          else new Step.Yield[Any, Any](trust[Op[Any]](p.op), resumption(p, resume, host, pending = false))
+        case u: Unwind => u.s match
+          case f: FailSig => new Step.Failed[Any](f.e)
+          case CancelSig => new Step.Cancelled[Any]()
+          case _ => new Step.Failed[Any](IllegalStateException("an abort with its handler gone"))
+        case _: Shift => loop(resume(FailSig(IllegalStateException("shift0 with no delimiter around it"))), host)
+        case _: Mark => loop(resume(()), host)
+        case e: Env => loop(resume(EnvV(e.acc.reverse, host)), host)
 
-  private final class Recover(h: Fn[Throwable, Prog[Any]], body: Program[?]) extends Own(body, false):
-    def accepts(op: Op[?]): Boolean = op match
-      case u: Unwind => u.why.isInstanceOf[FailSig]
-      case _ => false
-    def clause(op: Op[?], k: Any => AnyRef, region: Boolean): AnyRef = guard(h.apply(trust[Unwind](op).why.asInstanceOf[FailSig].e))
-
-  private final class Ensuring(fin: Program[Void], body: Program[?]) extends Own(body, false):
-    def accepts(op: Op[?]): Boolean = op.isInstanceOf[Unwind]
-    def clause(op: Op[?], k: Any => AnyRef, region: Boolean): AnyRef = m.bind(in(fin), _ => m.raise(trust[Unwind](op).why))
-
-  /** a region a cancellation waits for: marked pending inside, it cancels from outside when it ends — with a value
-   * or unwound, an unwinding ending it as a value (`Ended`): so a mark's clause, the rest of the region resumed, sees
-   * the region end either way; the unwinding goes on outside it otherwise */
-  private final class Region(body: Program[?]) extends Own(body, false):
-    override def region: Boolean = true
-    def accepts(op: Op[?]): Boolean = (op eq Mark) || op.isInstanceOf[Unwind]
-    def clause(op: Op[?], k: Any => AnyRef, region: Boolean): AnyRef = op match
-      case u: Unwind => m.pure(Ended(u.why))
-      case _ => m.bind(k(()), _ => m.raise(CancelSig))
-
-  // -- export: the top
-
-  /** the top handler of a computation: an operation reaching it handed out; an unwinding ended there */
-  private final class Host(host: Answers, program: Program[?]) extends Own(program, true):
-    override def ret(v: Any): Any = v match
-      case f: FailSig => new Step.Failed[Any](f.e)
-      case _ => new Step.Done[Any](v)
-    def accepts(op: Op[?]): Boolean = true
-    override def handles(e: Type): Boolean = true
-    override def answersInPlace(op: Op[?]): Boolean = !op.isInstanceOf[Internal] && host.answers(op.effect())
-    override def inPlaceFor(e: Type): Boolean = host.answers(e)
-    override def hostAnswers(e: Type): Boolean = host.answers(e)
-    override def value[X](op: Dyn[X]): X = trust[X](try host.value(op) catch case NonFatal(e) => FailSig(e))
-    def clause(op: Op[?], k: Any => AnyRef, region: Boolean): AnyRef = op match
-      case u: Unwind => m.pure(u.why match
-        case f: FailSig => new Step.Failed[Any](f.e)
-        case CancelSig => new Step.Cancelled[Any]()
-        case _ => new Step.Failed[Any](IllegalStateException("an abort with its handler gone")))
-      case _: Shift0Op => k(FailSig(IllegalStateException("shift0 with no delimiter around it")))
-      case Mark => k(())
-      case HereOp => k(Answers.NONE)
-      case _ => m.pure(new Step.Yield[Any, Any](trust(op), resumption(k, op, region, pending = false)))
-
-  /** the machine's `k` of an operation handed out, as the protocol's: each call a run of it on the machine's top.
-   * Inside an `uncancelable` region a cancellation waits: the same operation again, the cancellation pending — each
-   * value given then marks it to its region, which cancels when it ends */
-  private def resumption(k: Any => AnyRef, op: Op[?], uncancelable: Boolean, pending: Boolean): Resume[Any, Any] =
+  /** `k` of an operation handed out, as the protocol's: each call a run of the machine from the rest. Inside a region
+   * a cancellation waits: the same operation again, the cancellation pending — each answer given then marks it */
+  private def resumption(p: Perform, r: OStep.Resume[Any, KR, Any], host: Answers, pending: Boolean): Resume[Any, Any] =
     new Resume[Any, Any]:
-      private def on(v: Any): Step[Any] = runTop(k(if pending then PendingSig(v) else v))
+      private def on(v: Any): Step[Any] = safely(loop(r(if pending then PendingSig(v) else v), host))
       def resume(x: Any): Step[Any] = on(x)
       def fail(e: Throwable): Step[Any] = on(FailSig(e))
       def cancel(): Step[Any] =
-        if uncancelable then new Step.Yield[Any, Any](trust(op), resumption(k, op, uncancelable, pending = true))
+        if p.region then new Step.Yield[Any, Any](trust[Op[Any]](p.op), resumption(p, r, host, pending = true))
         else on(CancelSig)
 
-  // -- import
+  private def safely(s: => Step[?]): Step[Any] = try trust[Step[Any]](s) catch case NonFatal(e) => new Step.Failed[Any](e)
 
-  /** a foreign computation's step, taken here: its operation performed here, its answer — a value, a failure — given
-   * to its `k`. `after`: a cancellation or an abort that crossed it — it is being cancelled, its finalizers'
-   * operations answered here as any; when it ends (however), `after` goes on */
-  private def drive(s: Step[?], after: Signal | Null): AnyRef = s match
+  // -- the protocol
+
+  /** EXPORT: the program stepped on okay-one's machine */
+  def computation[A](program: Program[A], row: java.util.Set[Type]): Computation[A] =
+    val fixed = java.util.Collections.unmodifiableSet(new java.util.HashSet[Type](row))
+    new Computation[A]:
+      def start(host: Answers): Step[A] = trust[Step[A]](safely(loop(built(program).step, host)))
+      def effects(): java.util.Set[Type] = fixed
+
+  /** what a foreign computation's operation is answered in place by here: the nearest handler of its effect, if it
+   * answers in place; none, the host */
+  private def answersFrom(env: EnvV): Answers = new Answers:
+    private def nearest(t: Type): Handler[?, ?] | Null = env.handlers.find(_.effect() eq t).orNull
+    def answers(t: Type): Boolean = nearest(t) match
+      case null => env.host.answers(t)
+      case h => h.isInstanceOf[Answering[?, ?]]
+    def value[X](op: Op[X]): X = nearest(op.effect()) match
+      case null => env.host.value(op)
+      case a: Answering[?, ?] => trust[X](a.value(op))
+      case _ => throw IllegalStateException(s"not answered in place: $op")
+
+  /** IMPORT: a foreign computation's steps, taken here — its operation performed here, the answer (a value, a
+   * failure) given to its `k`; an abort or a cancellation crossing it cancels it, its finalizers' operations answered
+   * here, then goes on. `after`: the signal it is being cancelled for — its last step, whatever it is, gives way to it */
+  private def drive(s: Step[?], after: Signal | Null): U = s match
     case y: Step.Yield[?, ?] =>
       val k = trust[Resume[Any, Any]](y.k())
-      m.performThen(y.op(), v => answerForeign(k, v, after))
-    case _ if after != null => m.raise(after)
-    case d: Step.Done[?] => m.pure(d.value())
-    case f: Step.Failed[?] => m.raise(FailSig(f.error()))
-    case _ => m.raise(CancelSig)
+      request(Perform(y.op(), region = false)).flatMap(v => answerForeign(k, v, after))
+    case _ if after != null => unwind(after)
+    case d: Step.Done[?] => Cont0.pure(d.value())
+    case f: Step.Failed[?] => unwind(FailSig(f.error()))
+    case _: Step.Cancelled[?] => unwind(CancelSig)
 
-  private def answerForeign(k: Resume[Any, Any], v: Any, after: Signal | Null): AnyRef = v match
+  private def answerForeign(k: Resume[Any, Any], v: Any, after: Signal | Null): U = v match
     case f: FailSig => drive(safely(k.fail(f.e)), after)
-    case p: PendingSig => m.performThen(Mark, _ => answerForeign(k, p.v, after))
-    case s: Signal => drive(safely(k.cancel()), s)
+    case p: PendingSig => request(Mark()).flatMap(_ => answerForeign(k, p.v, after))
+    case s: Signal => drive(safely(k.cancel()), if after != null then after else s)
     case _ => drive(safely(k.resume(v)), after)
 
-object OnCore:
-  /** okay-core's Cont0, its machine */
-  val zero: Effects = OnCore("zero", okay.zero.ZeroMachine)
-  /** okay-core's Cont, its loop */
-  val cont: Effects = OnCore("cont", okay.cont.ContMachine)
-
-  /** THE TRUSTED STEP of running: a value given where the program, built typed, expects it — the reference
-   * machine's `trust` */
-  private[okay] def trust[T](v: Any): T = v.asInstanceOf[T]
-
-  private val flatten: Any => AnyRef = p => p.asInstanceOf[AnyRef]
-
-  /** a function of the user's, its result untyped: the program it gives checked by the machine's class (`own`), not
-   * cast to the kernel's interface on the way */
-  private inline def untyped(f: Fn[?, ?]): Fn[Any, Any] = f.asInstanceOf[Fn[Any, Any]]
-
-  private def safely(s: => Step[?]): Step[?] = try s catch case NonFatal(e) => new Step.Failed[Any](e)
-
-/** the kernel's operations, every one, as one effect of okay-core's: its handlers the machines' handler nodes, their
- * clauses `KHandler`s */
-type Dyn[X] = Op[X]
-
-/** WHAT AN OPERATION CAN BE ANSWERED BESIDES A VALUE, read where it was performed: a failure (`k.fail`, a throwing
- * `Answering`), a cancellation (`k.cancel`), an abort (to its handler, its finalizers run), a value given inside a
- * region a cancellation waits for (the region marked, then the value) */
-private[okay] sealed abstract class Signal
-private[okay] final class FailSig(val e: Throwable) extends Signal
-private[okay] object CancelSig extends Signal
-private[okay] final class AbortSig(val to: AnyRef, val answer: Any) extends Signal
-private[okay] final class PendingSig(val v: Any) extends Signal
-/** a region ended by an unwinding: its answer, read where it is left */
-private[okay] final class Ended(val why: Signal)
-
-/** the operations of the native layer itself, of an effect no handler of the user's has */
-private[okay] sealed abstract class Internal extends Op[Any]:
-  def key(): Key[?] = Internal.key
-  override def effect(): Type = Internal.tpe
-private[okay] object Internal:
-  val key: Key[Internal] = Key.of(Type.of("okay.core.kernel.Internal"))
-  val tpe: Type = key.`type`()
-/** an unwinding, to the nearest handler taking it */
-private[okay] final class Unwind(val why: Signal) extends Internal
-/** `shift0`, to the nearest delimiter */
-private[okay] final class Shift0Op(val body: Fn[Fn[Any, Prog[Any]], Prog[Any]]) extends Internal
-/** a cancellation pending, to the nearest region */
-private[okay] object Mark extends Internal
-/** what the handlers in force answer in place, as the protocol's `Answers`: what a foreign computation is offered */
-private[okay] object HereOp extends Internal
-
-/**
- * A HANDLER OF THE KERNEL'S, AS THE MACHINES' OWN: the clauses of a machine's handler node (Cont0's `Handle`, Cont's
- * `Fold`). An okay-core `Answering`, so the machines keep it among the handlers in force (`Ev`) whatever it is — its
- * `value` asked by the kernel's operations only, when it answers in place (`answersInPlace`); okay-core's typed
- * operations never reach it (their paths go to their own handlers). The machine routes a kernel operation by
- * `accepts` — the nearest handler that takes it — and runs `clause` with its `k`, the rest under the handler again
- */
-private[okay] abstract class KHandler(
-    /** the effect it handles, a kernel handler's; its operations it answers in place, if `answersOwn` */
-    val key: Type | Null, val answersOwn: Boolean,
-    /** the top: every operation reaching it its own */
-    val isHost: Boolean) extends okay.core.Answering[[X] =>> Any, Dyn, Any, Any] with (() => AnyRef) with (Any => Any):
-  /** the body, built when the machine enters the handler (its node's thunk) */
-  def apply(): AnyRef
-  /** its return as a function (Cont's `Fold` takes one) */
-  final def apply(a: Any): Any = ret(a)
-  def ret(a: Any): Any = a
-  def value[X](op: Dyn[X]): X = throw IllegalStateException(s"not answered in place: $op")
-  /** whether the operation is this handler's */
-  def accepts(op: Op[?]): Boolean
-  /** whether it answers the operation, its own, in place: `value` */
-  def answersInPlace(op: Op[?]): Boolean = false
-  /** its clause: the program outside it, `k` the rest under it again; `region`, a region crossed on the way */
-  def clause(op: Op[?], k: Any => AnyRef, region: Boolean): AnyRef
-  /** a region a cancellation waits for: what crosses it is marked so */
-  def region: Boolean = false
-  /** for a foreign computation's offer: whether operations of `e` are its, and answered in place */
-  def handles(e: Type): Boolean = false
-  def inPlaceFor(e: Type): Boolean = false
-  def hostAnswers(e: Type): Boolean = false
-
-  /** for the machines' walk of the handlers in force, an operation `op` of the effect `t`: 0 not this handler's, 1
-   * answered in place by it, 2 its own, not in place. An operation of the user's by fields (its effect compared to
-   * the handler's, no call); one of the native layer's (`internal`) by `accepts` */
-  final def decide(op: Op[?], t: Type, internal: Boolean): Int =
-    if internal then (if accepts(op) then (if answersInPlace(op) then 1 else 2) else 0)
-    else if key eq t then (if answersOwn then 1 else 2)
-    else if isHost then (if hostAnswers(t) then 1 else 2)
-    else 0
-
-/**
- * A MACHINE, AS THE KERNEL'S `Effects` NEEDS IT: its nodes made — untyped here, the kernel's programs carry no row or
- * answer types; okay-core's are phantom at run time — and run. Each machine's loop takes `perform`'s and
- * `performThen`'s nodes itself (`KOp`, `KOpK`; `KInject`, `KSuspend`): the nearest handler in force that `accepts`
- * the operation answers it in place if it can, else the operation is routed to the delimiters
- */
-private[okay] abstract class Machine:
-  // its nodes typed as `Prog`s, which they are: no cast to the kernel's interface where `OnCore` hands them out
-  def pure(a: Any): Prog[Any]
-  def bind(p: AnyRef, f: Any => AnyRef): Prog[Any]
-  def map(p: AnyRef, f: Any => Any): Prog[Any]
-  def delay(p: () => AnyRef): Prog[Any]
-  /** a kernel operation, its value read for a signal where it was performed */
-  def perform(op: Op[?]): Prog[Any]
-  /** a kernel operation, its value as it is — a signal too — to `k` */
-  def performThen(op: Op[?], k: Any => AnyRef): Prog[Any]
-  /** a handler node of `h`, its body `h()` built when entered */
-  def handle(h: KHandler): Prog[Any]
-  def run(p: AnyRef): Any
-  def owns(p: Any): Boolean
-  /** `p` bound to `k` as one node, if `p` is a kernel operation (`perform`'s): its value read for a signal, then `k`
-   * — no bind, no frame; else `null` */
-  def fuse(p: AnyRef, k: Any => AnyRef): Prog[Any] | Null
-  /** one of its nodes, as a `Prog`: a check of its class, not of the kernel's interface */
-  def node(p: AnyRef): Prog[Any]
-
-  /** an operation's value read, then the rest `k`: a signal raised there instead */
-  final def checkThen(v: Any, k: Any => AnyRef): AnyRef = v match
-    case p: PendingSig => performThen(Mark, _ => checkThen(p.v, k))
-    case s: Signal => performThen(Unwind(s), check)
-    case _ => k(v)
-
-  /** `k` with its value read first, as a function: for a fused operation leaving the loop */
-  final def checked(k: Any => AnyRef): Any => AnyRef = v => checkThen(v, k)
-
-  /** the walk's start: whether the operation is one of the native layer's */
-  final def internal(t: Type): Boolean = t eq Internal.tpe
-
-  /** a signal raised where the program is */
-  final def raise(s: Signal): Prog[Any] = s match
-    case p: PendingSig => performThen(Mark, _ => check(p.v))
-    case _ => performThen(Unwind(s), check)
-
-  /** an operation's value read: a signal raised there, a value the program's */
-  final val check: Any => AnyRef = v => v match
-    case s: Signal => raise(s)
-    case _ => pure(v)
-
-private[okay] object Machine:
-  /** `HereOp` answered in place: the offer to a foreign computation, made of the handlers in force — those the
-   * machine knows, innermost first */
-  def here(hs: List[KHandler]): KHandler = Here(hs)
-
-  /** the offer to a foreign computation: the nearest handler of each effect, if it answers in place */
-  private final class Here(hs: List[KHandler]) extends KHandler(null, false, false):
-    def apply(): AnyRef = throw IllegalStateException("not a handler node")
-    def accepts(op: Op[?]): Boolean = true
-    def clause(op: Op[?], k: Any => AnyRef, region: Boolean): AnyRef = k(this)
-    override def value[X](op: Dyn[X]): X = OnCore.trust[X](answers)
-    private val answers: Answers = new Answers:
-      def answers(e: Type): Boolean = hs.find(_.handles(e)).exists(_.inPlaceFor(e))
-      def value[X](op: Op[X]): X = hs.find(_.handles(op.effect())) match
-        case Some(h) => h.value(op) match
-          case f: FailSig => throw f.e
-          case v => OnCore.trust[X](v)
-        case None => throw IllegalStateException(s"not answered in place: $op")
+  /** run a program with nothing left to perform: its value, or its failure thrown */
+  def runValue[A](p: Program[A]): A = computation(p, java.util.Collections.emptySet[Type]()).start(Answers.NONE) match
+    case d: Step.Done[A @unchecked] => d.value()
+    case f: Step.Failed[A @unchecked] => throw f.error()
+    case _: Step.Cancelled[A @unchecked] => throw IllegalStateException("cancelled")
+    case y: Step.Yield[?, ?] => throw IllegalStateException(s"an operation with no handler: ${y.op()}")
