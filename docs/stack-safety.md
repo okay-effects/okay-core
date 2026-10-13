@@ -1,46 +1,23 @@
 # Stack safety
 
 okay's rule, which okay-core keeps: no unbounded recursion on the JVM's stack — a recursive method is tail
-(`@tailrec`), trampolined (deferred into a program's node: `Delay`, `Bind`, a lazy rest), or bounded by a limit
-written beside it. Checked by okay's scanner over the compiled classes:
+(`@tailrec`), trampolined (deferred into a program's node), or bounded by a limit written beside it. Checked by
+okay's scanner over the compiled classes:
 
 ```sh
 sbt compile && python3 ../okay/scripts/recscan.py . scala2
 ```
 
-It finds every cycle in the call graph left after tail calls; a cycle through a node it knows defers its body is
-dropped — it knows okay's, not okay-core's, so a cycle through `Cont.Delay`, `Cont0.Bind` or a stream's lazy rest is
-reported and is not stack recursion. The inventory, 2026-10-09 (30 rows):
+On the one monad the account is short:
 
-| Where | What | Why it is safe — or not |
+| Where | What | Why it is safe |
 |---|---|---|
-| `cont/Cont.scala` `intercepted` | lambda through `Cont.Delay` | trampolined: the rest re-intercepted when the loop gets to it |
-| `zero/Eff.scala` `atTop`, `read`, `readHand`, `readIntercept`, `passAll`, `again`, `inside` | lambdas through `Cont0.Bind`, `flatMap` | trampolined: the kernel's nodes, run by its loop |
-| `std/Stream.scala` `map`, `flatMap`, `filter`, `from`, `concat` | lambdas through `Step.Later` | lazy: each a function of the rest, run when pulled; their loops (`flatMap`, `filter` skipping) are `while` |
-| `core/Program.scala` `flatMap`, `map` | the composed bind | bounded: `Program.Fused`, 64 binds composed, then a bind on the bind, its left built by `delay` |
-| `zero/Machine.scala` `masked` | direct | bounded: the path's length, the row's at most |
-| `zero/Machine.scala` `deliver` ↔ `shiftAtReset`, `shiftAtHandler` | mutual | bounded: a resumption run nested in a shift's body up to `Deep`, 32 (the one depth counter), then out and back |
-| `cont/Cont.scala` `run` | — | one loop with a metacontinuation (`Meta`): a reset, a handler (`Fold`), an interceptor pushed (was `loop` ↔ `delimited` and a fold made at once, not bounded) |
-| `zero/Cont0.scala` `step` → `go` | — | the kernel's metacontinuation (`KMeta`): a `$` pushed, not entered by a call (was `delimit`, not bounded) |
-| `zero/Machine.scala` `deliver` ↔ `enter`, `enterNode` | mutual | bounded: entered nested up to `Deep`, 32; past it pushed on the machine's metacontinuation (`Meta`) |
+| `okay.one.machine.Machine` `eval` | one loop | `@tailrec`; the levels it is inside — handlers, views, `$`s — are its `Meta`, on the heap, never a JVM frame: handlers nested to any depth, resets, resumptions, in constant stack (`TestNesting`: 100 000 handlers installed by a recursive call, 100 000 resets) |
+| `okay.one` `Cont0.Defer` | a program built when the run gets to it | a tail call: `defer(p)` in a loop of programs costs no frame |
+| `okay.core.handleIn` | a handler's body | `defer`red: built when the run enters the handler — a function installing a handler and calling itself inside it recurses in the machine, not on the stack |
+| `okay.std.Stream`, `Step` | `map`, `flatMap`, `filter`, `from`, `concat` | lazy: each a function of the rest, run when pulled; their loops (`flatMap`, `filter` skipping) are `while`s |
+| a generator's rest (`generate`, `stream`) | `k` as data | each pull a run of the rest on the machine, a run of its own |
+| `okay.core.kernel.OnCore` | the bridge's delimiters | `Deep` handlers of the kernel's, their forwarding a `perform` and a `flatMap` — the machine's |
 
-## Delimiters nested deep
-
-Done on every monad — `Cont0`'s machine and kernel, `Spec`, `Cont` — the metacontinuation below,
-`changelog.d/metacontinuation.md`; `TestNestingOn` runs 100 000 nested handlers and resets on each. What follows is
-the account of how it was.
-
-The rows marked not bounded are one thing: a delimiter — a handler, a reset, an interceptor — at the head of
-another's body is entered by a call, a few frames a level. A program nesting delimiters by recursion — a function
-that installs a handler and calls itself inside it — runs a thousand deep and overflows at about ten thousand, on
-both monads and on `Spec` (`TestNestingOn` pins it: 1 000 run; 100 000 overflow, asserted, so the test says when it
-is gone). Operations, binds, tail calls, resumptions, handlers one after another and handlers nested as deep as a
-program's text are all constant in stack; only nesting by recursion is not.
-
-The way out is a METACONTINUATION: the loop keeps the delimiters it is inside as a stack of its own — each with
-its frames — instead of a JVM frame each; entering a delimiter pushes, its value pops and goes on with the frames
-under it, an operation walks the stack to its handler (as `Ev` already walks the handlers in force). It is Materzok
-and Biernacki's abstract machine for shift0/$ (a "trail" of contexts), and Effekt's and Koka's runtime stacks of
-handlers. For `Cont0` it replaces `deliver`'s nesting (and the kernel's `delimit`) by one loop over the
-metacontinuation; for `Cont` it means a handler a node the loop enters, not a fold made at once — which `Cont`
-was by design. Not done yet: it changes both monads' cores.
+okay-one's own suites run on a 512k stack, forked (its `build.sbt`): a regression in the machine fails loudly there
+before it is imported here.

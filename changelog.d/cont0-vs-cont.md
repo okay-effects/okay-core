@@ -1,4 +1,4 @@
-# What `Cont0` does better than `Cont`
+# What `Cont0` did better than `Cont` — the record, before the one monad (moved from docs/ at the landing)
 
 Both monads implement the same interface; a program written once runs on either and, but for one case below, gives
 the same answer. They differ in what they are built on, in what they can express beyond the interface, and in
