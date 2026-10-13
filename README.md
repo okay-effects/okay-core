@@ -49,9 +49,9 @@ the machine are the library's own (`okay.core`, `okay.one`). These examples are 
 | `okay.core` | THE FACADE over it: `A ! E1 + E2` (`!`, `+`, `%`: all a program's type needs) — a program fitted to the place it runs at (`Needs`, `Place`, `Path`); `Eff[R, A]`, the kernel's program over a row named, `E :? R`, `Has[E]`; `Op`, an operation bound where it is used; `Handler`, `Answering`; `handle`, `handleIn`, `translate`, `intercept`, `run`; `Control`: `reset`/`shift`/`shift0` over `Shifts[S, T]`, `cont`/`lower` for `Control[R]`; `RowEffects`, okay's `Effects[M]` over `Eff` ([docs/okay.md](docs/okay.md)) |
 | `okay.std` | the effects by their names, the kernel's std re-exported (one std): `reader` (`local`), `state` (each path its own), `cell`, `writer`, `throws` (`handleWith`), `choose`, `first`, `Emit` (`collect`, `generate`, `stream`, `Stream`, `Step`) |
 | `okay.core.kernel` | `OnCore`: okay-kernel's `Effects` and `Control` on the one monad — every delimiter of the bridge a `Deep` handler of one request effect, export through `Step` ([docs/kernel.md](docs/kernel.md)); okay-kernel's TCK in the module `kernel/` |
-| `okay.async` (module `async/`) | `async`, `await`, `Async.run`, asynchronous streams — not yet re-based on the one monad (docs/one.md §5, step 5) |
-| `okay.interop` (modules `interop/cats`, `interop/tofu`) | cats' monad, tofu's `WithLocal` and `Errors` — not yet re-based (step 6) |
-| `okay.scala2` (modules `scala2/*`) | for Scala 2.13 — not yet re-based (step 7) |
+| `okay.async` (module `async/`) | `async`, `await`, `Async.run`, asynchronous streams — the program stepped (`Step`), the driver outside; `Ref`, `Mailbox`: the core has no thread in it |
+| `okay.interop` (modules `interop/cats`, `interop/tofu`) | cats' monad over `Eff[R, *]` (every platform); tofu's `WithLocal` and `Errors` from an effect anywhere in the row, by `Intercept.at` (the JVM's) |
+| `okay.scala2` (modules `scala2/*`) | for Scala 2.13: short names of effects and rows, the same cats and tofu instances compiled by scalac 2.13; `okay.core.Ops` — the kernel's words Scala 2 can read (no inline, no extension): `perform`, `handle`, `run`, the paths as implicits |
 
 ## The one monad
 
@@ -92,8 +92,10 @@ the mixed program, and the kernel bridge (`OnCore`, the first cut).
 
 `sbt coreJVM/test`: okay-one's suites as imported (66), the facade's (TestEffects, TestContext, TestControl,
 TestDynamic, TestIntercept, TestNesting, TestTogether, TestStream, TestAnywhere, TestFacade), the guide's text
-compiled and checked (`TestGuide`, `TestGuideDoc`), the kernel bridge's (`TestNative`); `sbt kernel/test`:
-okay-kernel's TCK on `OnCore` and the bridge's own.
+compiled and checked (`TestGuide`, `TestGuideDoc`), the kernel bridge's (`TestNative`) — 208; `sbt kernel/test`:
+okay-kernel's TCK on `OnCore` and the bridge's own — 30; `asyncJVM/test` 19, `interopCatsJVM/test` 2,
+`interopTofu/test` 9 (docs/interop.md compiled), `scala2/test` 6 (from Scala 2.13). Scala Native: the core, async
+and cats compile and test; Scala.js: they compile, the test bridge does not link (on master too — the toolchain's).
 
 ## Build
 

@@ -205,3 +205,15 @@ Three things cost a line each now and a rewrite later:
 Who does what: 1–3 in okay-one, by its author, now; `Guard`/`cancel` in okay-core at step 4 by whoever holds the
 sprint item `one-monad` then; the facade and `RowEffects` at step 2 likewise. Read §4 before writing a test, §5
 before starting a step.
+
+## 8. Where the landing stands (branch `one-monad`, 2026-10-13)
+
+Steps 1–3, 5, 6 and 7's Scala 2 are done on the branch (changelog.d/one-monad-*.md): `okay.one` imported by
+`scripts/import-one.sh` (its HEAD, re-run per commit); `okay.core` over it — `A ! E1 + E2` by `Needs`/`Place`, `Path`
+found from the place first, `Op`, the handler sugar, control's two faces, `RowEffects[Eff]`; one std; `OnCore` the
+kernel's `one/` bridge; the suites re-written (JVM 208, kernel 30, async 19, cats 2, tofu 9, Scala 2 6); the guide,
+the docs. Not passed: §4 H — forwarded16 3×, captures 2×, generate +46%, the mixed program +25% against
+okay-core-zero's last, the kernel's items (changelog.d/one-monad-step2-3.md). Deferred: `PState` (okay-one's, in
+control, to be imported), Scala.js tests (the bridge does not link on master either), `Removed.Again` — an
+interceptor's relocation in the kernel, so `Intercept.at` (tofu's `local`, `handleWith` on an effect anywhere in a
+row) runs in the machine, not by stepping.

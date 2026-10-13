@@ -1,12 +1,14 @@
 package okay.scala2
 
 import cats.StackSafeMonad
-import okay.core._
+import okay.one.Cont0
+import okay.one.row.Row
 
-/** cats over `Program[R, *]` for Scala 2, against cats' 2.13 artifacts: `import okay.scala2.CatsProgram._` */
+/** CATS OVER `Of[R]#L` FROM SCALA 2: the same instance as `okay.interop.CatsProgram`'s, compiled by scalac 2.13 against
+ * cats' 2.13 artifact. `import okay.scala2.CatsProgram._` */
 object CatsProgram {
   implicit def monad[R <: Row]: StackSafeMonad[Of[R]#L] = new StackSafeMonad[Of[R]#L] {
-    def pure[A](a: A): Program[R, A] = Program.pure(a)
-    def flatMap[A, B](fa: Program[R, A])(f: A => Program[R, B]): Program[R, B] = fa.flatMap(f)
+    def pure[A](a: A): Cont0[R, Nothing, Nothing, A] = Cont0.pure(a)
+    def flatMap[A, B](fa: Cont0[R, Nothing, Nothing, A])(f: A => Cont0[R, Nothing, Nothing, B]): Cont0[R, Nothing, Nothing, B] = fa.flatMap[Nothing, B](f)
   }
 }

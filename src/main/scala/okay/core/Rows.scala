@@ -2,11 +2,31 @@ package okay.core
 
 import okay.one.row.{+:, In, Pure, Row}
 
-/** THE KERNEL'S ROWS, as they are: `Pure`, `E +: T`; an effect's place `In[E, R]`; `Removed[E, R, T]` */
-export okay.one.row.{Row, +:, Pure, In, Removed}
+/** THE KERNEL'S ROWS, as they are: `Pure`, `E +: T`; an effect's place `In[E, R]`; `Removed[E, R, T]` — aliases,
+ * not exports: scalac 2.13's TASTy reader cannot read an export of a sealed trait (`addChild inapplicable`) */
+type Row = okay.one.row.Row
+type Pure = okay.one.row.Pure
+infix type +:[E[_], T <: Row] = okay.one.row.+:[E, T]
+type In[E[_], R <: Row] = okay.one.row.In[E, R]
+val In: okay.one.row.In.type = okay.one.row.In
+type Removed[E[_], R <: Row, T <: Row] = okay.one.row.Removed[E, R, T]
+val Removed: okay.one.row.Removed.type = okay.one.row.Removed
 /** the kernel's program of effects over the row `R` — `okay.one`'s `A ! R`, named the other way round here, the row
  * first, as a monad is: `Eff[R, A]`. `A ! Es` (below) is the facade's: the effects named, the row the handlers' */
-type Eff[R <: Row, +A] = okay.one.![A, R]
+type Eff[R <: Row, +A] = okay.one.Cont0[R, Nothing, Nothing, A]   // `okay.one`'s `A ! R`, written out: Scala 2 sees no top-level alias
+
+/** THE KERNEL'S WORDS FOR SCALA 2, which cannot read an inline definition (the kernel's `perform`, its `In.here`):
+ * `perform` by a path given, and the paths as implicits — `import okay.core.Ops._` */
+object Ops:
+  def perform[E[_], R <: Row, X](op: E[X])(using in: In[E, R]): Eff[R, X] = okay.one.Cont0.perform[E, R, X](op)
+  /** `p` with its effect `E` handled by `h`, `E` taken off wherever it is in the row (the kernel's `handle`, an
+   * extension Scala 2 cannot read) */
+  def handle[E[_], R <: Row, T <: Row, A, B](p: Eff[R, A])(h: okay.one.handler.Handler[E, T, A, B])(using rm: Removed[E, R, T]): Eff[T, B] =
+    okay.one.Cont0.handle(p)(h)
+  /** a program with nothing left to handle, run */
+  def run[A](p: Eff[Pure, A]): A = okay.one.Cont0.run(p)
+  given here[E[_], T <: Row]: In[E, E +: T] = okay.one.row.In.Here()
+  given there[E[_], F[_], T <: Row](using in: In[E, T]): In[E, F +: T] = okay.one.row.In.There(in)
 
 /** an effect of two parameters, its first given: `Reader % Int` is the effect `[X] =>> Reader[Int, X]` */
 infix type %[F[_, _], S] = okay.one.std.%[F, S]

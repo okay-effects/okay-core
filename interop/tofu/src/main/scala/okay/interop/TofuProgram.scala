@@ -5,20 +5,28 @@ import okay.core.*
 import okay.std.*
 import tofu.{Errors, WithLocal}
 
-/** TOFU'S TYPECLASSES OVER `Program[R, *]`: code written over `F[_]` with tofu runs on okay's effects, on any monad.
- * The context a `Reader` in the row, `local` its interceptor; the errors a `Throws`, `handleWith` its interceptor —
- * each `fa` built again under it, which a `Program` is for. With `CatsProgram`'s monad:
+/** TOFU'S TYPECLASSES OVER `Eff[R, *]`: code written over `F[_]` with tofu runs on okay's effects. The context a
+ * `Reader` anywhere in the row, `local` its interceptor; the errors a `Throws`, `handleWith` its interceptor — each by
+ * `Intercept.at`, the effect handled again where it is in the row, the row kept. With `CatsProgram`'s monad:
  * `import okay.interop.CatsProgram.given, okay.interop.TofuProgram.given` */
 object TofuProgram:
-  given withLocal[R <: Row, C](using in: Reader % C :? R): WithLocal[Program.Of[R], C] = new WithLocal[Program.Of[R], C]:
-    def functor: Functor[Program.Of[R]] = CatsProgram.monad[R]
-    def context: Program[R, C] = Programs.ask[R, C]
-    def local[A](fa: Program[R, A])(project: C => C): Program[R, A] = Programs.local(project)(fa)
+  import CatsProgram.Of
 
-  given errors[R <: Row, E](using in: Throws % E :? R): Errors[Program.Of[R], E] = new Errors[Program.Of[R], E]:
-    def raise[A](err: E): Program[R, A] = Programs.raise(err)
-    def tryHandleWith[A](fa: Program[R, A])(f: E => Option[Program[R, A]]): Program[R, A] =
-      Programs.handleWith[R, E, A](fa)(e => f(e).getOrElse(Programs.raise(e)))
-    def restore[A](fa: Program[R, A]): Program[R, Option[A]] =
-      Programs.handleWith[R, E, Option[A]](fa.map(Some(_)))(_ => Program.pure(None))
-    def lift[A](fa: Program[R, A]): Program[R, A] = fa
+  given withLocal[R <: Row, C](using p: Reader % C :? R): WithLocal[Of[R], C] = new WithLocal[Of[R], C]:
+    def functor: Functor[Of[R]] = CatsProgram.monad[R]
+    def context: Eff[R, C] = okay.std.ask[C].at[R]
+    /** the value outside asked once, every `ask` of `fa` answered `project` of it */
+    def local[A](fa: Eff[R, A])(project: C => C): Eff[R, A] =
+      okay.std.ask[C].at[R].flatMap(c => Intercept.at(p.in)(fa)([X] => (op: Reader[C, X], k: X => Eff[R, A]) => op match
+        case Reader.Ask() => k(project(c))))
+
+  given errors[R <: Row, E](using p: Throws % E :? R): Errors[Of[R], E] = new Errors[Of[R], E]:
+    def raise[A](err: E): Eff[R, A] = okay.std.raise(err).at[R]
+    /** a `raise` of `fa` answered `f` of the error, the rest dropped; `f`'s program outside the interceptor */
+    def tryHandleWith[A](fa: Eff[R, A])(f: E => Option[Eff[R, A]]): Eff[R, A] =
+      Intercept.at(p.in)(fa)([X] => (op: Throws[E, X], k: X => Eff[R, A]) => op match
+        case Throws.Raise(e) => f(e).getOrElse(raise(e)))
+    def restore[A](fa: Eff[R, A]): Eff[R, Option[A]] =
+      Intercept.at(p.in)(fa.map(Some(_)))([X] => (op: Throws[E, X], k: X => Eff[R, Option[A]]) => op match
+        case Throws.Raise(_) => pure(None))
+    def lift[A](fa: Eff[R, A]): Eff[R, A] = fa

@@ -28,16 +28,11 @@ object Service:
   def both[F[_]: Monad](using ctx: WithContext[F, Cfg], err: Errors[F, String]): F[Int] =
     ctx.context.flatMap(c => if c.user.isEmpty then err.raise("no user") else Monad[F].pure(c.depth))
 
-/** tofu over okay, on a monad's top: `Program` built there and run */
-abstract class TestTofuOn(top: Top, stackSafe: Boolean = true) extends munit.FunSuite:
-  override def munitTestTransforms: List[TestTransform] = super.munitTestTransforms :+ TestTransform("stack", t =>
-    if stackSafe then t else t.withBody(() => okay.core.BackendSuite.onLargeStack(t.body())))
-
+/** tofu over okay: a program over `App` run, the reader inside, the throws outside */
+class TestTofu extends munit.FunSuite:
   type App = Reader % Cfg +: Throws % String +: Pure
-  type F[A] = Program[App, A]
-  /** a program over `App` run: the reader inside, the throws outside */
-  def run[A](cfg: Cfg)(p: F[A]): Either[String, A] =
-    Program.run(top)(Programs.throws[String](Programs.reader(cfg)(p)))
+  type F[A] = Eff[App, A]
+  def run[A](cfg: Cfg)(p: F[A]): Either[String, A] = okay.core.run(throws[String, A, Pure](reader(cfg)(p)))
 
   test("tofu: WithContext and WithLocal — the context, local, nested locals composed"):
     assertEquals(run(Cfg("ann", 1))(Service.describe[F]), Right("ann@1 ann@2 20"))
@@ -77,8 +72,9 @@ abstract class TestTofuOn(top: Top, stackSafe: Boolean = true) extends munit.Fun
     val p = (1 to 100000).foldLeft(m.pure(0))((acc, i) => acc.flatMap(a => m.pure(a + i)))
     assertEquals(run(Cfg("a", 0))(p), Right(5000050000L.toInt))
 
-class TestTofu extends TestTofuOn(okay.cont.top)
-class TestTofuOnCont0 extends TestTofuOn(okay.zero.top)
-class TestTofuOnSpec extends TestTofuOn(okay.zero.Spec.top)
-/** the textbook CPS, not stack safe: on a thread of a large stack */
-class TestTofuOnCps0 extends TestTofuOn(okay.core.Cps0.top, stackSafe = false)
+  test("tofu: 100 000 operations under a local and under a handleWith, each stepped, in constant stack"):
+    val ctx = summon[WithLocal[F, Cfg]]
+    val err = summon[Errors[F, String]]
+    def asks(i: Int, acc: Int): F[Int] = if i == 0 then pure(acc) else ctx.context.flatMap(c => asks(i - 1, acc + c.depth))
+    assertEquals(run(Cfg("a", 1))(ctx.local(asks(100000, 0))(_.copy(depth = 2))), Right(200000))
+    assertEquals(run(Cfg("a", 1))(err.handleWith(asks(100000, 0))(_ => pure(-1))), Right(100000))
