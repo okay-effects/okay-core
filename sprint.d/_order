@@ -7,7 +7,9 @@ optional-modules
 cont-faster
 guard-at-answers
 recover-fixed-shift0
+capture-fixed-cost
 mixed-abort-road
+queens-deep-road
 generator-levels
 kernel-bridge-deep
 linear-sugar
