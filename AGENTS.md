@@ -59,6 +59,12 @@ are compiled and checked by `TestGuide`).
   has no answers to be at, so `pure`/`ask` in it would not type. `Hole[X, A]`, `Fixed[A]` name the two shapes.
 - Scala 2 reads this artifact through TASTy (`scala2/`): no inline, no opaque types in what it reads — `Ops`.
 
+## `onokay/`
+
+- okay's `Effects[M]` on the one monad over okay's rows (docs/okay.md): its jars are built in the okay repository
+  (`sbt okayJVM/package okayContJVM/package`) and copied to `onokay/lib` (ignored by git) — not published: the
+  coordinates `dev.okay::okay-cont` belong to another library in the local repository. `sbt onokay/test`.
+
 ## Benchmarks, commits
 
 - `sbt "bench -prof gc"` the lanes and a table; `sbt "bench save -prof gc"` keeps the run in `bench.d`; the bar is

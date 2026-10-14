@@ -53,3 +53,30 @@ itself: `E.perform` is the kernel's `perform`, `E.flatMap` its `flatMap`.
 
 okay names this instance beside its own (the machine, the tree) when it chooses to; okay's repository is not changed
 by okay-core.
+
+## okay's `Effects[M]` over okay's own rows: `onokay/` (2026-10-14)
+
+The other way in, tried as asked: okay keeps its vocabulary — `okay.cont.Row`, `Member`, `Removed`, `Handler` — and
+okay-core gives the instance `okay.Effects[[R, A] =>> Eff[ToOne[R], A]]` by a MAPPING of rows (`okay.core.onokay.OnOkay`,
+a module of tests: okay's jars as built from its repository in `onokay/lib`, not published — the coordinates
+`dev.okay::okay-cont` are another library's in the local repository). `ToOne` is a match type, okay's list to the
+kernel's; `Member` walks to `In`. okay's program over `Effects[M]`, generic in `M`, runs on the one monad and its
+operations are answered by the kernel's handlers at the mapped row (`TestOnOkay`). What it found:
+
+1. **Match types do not reduce under a GADT bound.** `ToOne[R]` with `R` known to be `E +: T` only by a match on
+   the `Member` stays stuck, so the walk from `Member` to `In` — typed on each concrete shape — is given to the
+   abstract row by ONE TRUSTED STEP (`OnOkay.trust`, the only cast, named), as okay-kernel's bridge has `trust` for
+   the protocol's values. A mapping without it needs okay's rows to be the kernel's rows.
+2. **okay's `Removed[E, R]` names no place.** Its `Out` is a type member and its witness of `E`'s place is `route`,
+   a function on an operation with its path — nothing a type reads; the kernel's handler at a place wants
+   `Removed[E, ToOne[R], ToOne[Out]]`, a value by the place (`Head`, `Next`). So `handle` cannot be given from
+   okay's `rm` without a cast at every handler. okay's `Removed` carrying the place — `Member[E, R]` with `Out` by
+   it, the kernel's `Removed` enum in okay's vocabulary — mends it: one trait in okay-cont, its two givens.
+3. **okay's `Handler` clauses are okay-cont's `Cont` programs** (`k: X => Cont[o.Here, o.Here, Ans]`): a machine of
+   the one monad cannot run them; only an `Answering` (`value(op)`, no continuation) is expressible. The clauses
+   written over `Effects[M]`'s `M` — `apply[R <: Row, X](op: E[X], k: X => M[R, Ans]): M[R, Ans]`, the facade's
+   `Handler` here — is the change that lets okay's handlers (okay-std's) run on any encoding; it is the real
+   migration, whichever way in is taken.
+
+So the mapping stands for programs and operations, with one trusted step; handlers need the two changes in okay (2,
+3) either way — and with them, the vocabulary question is only which rows a signature names.
