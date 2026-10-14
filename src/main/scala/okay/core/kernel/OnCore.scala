@@ -221,6 +221,7 @@ object OnCore extends Effects with Control:
   private def loop(s: OStep[KR, Any], host: Answers): Step[Any] = s match
     case OStep.Done(a) => new Step.Done[Any](a)
     case OStep.Failed(e) => new Step.Failed[Any](e)
+    case OStep.Cancelled() => new Step.Cancelled[Any]()
     case y: OStep.Yield[KR, Any, e, x] =>
       val resume = trust[OStep.Resume[Any, KR, Any]](y.resume)
       trust[Req[Any]](y.op) match
