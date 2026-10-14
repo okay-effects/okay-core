@@ -43,6 +43,10 @@ are compiled and checked by `TestGuide`).
 - `A ! Es` is `(c: Needs[Es]) ?=> Eff[c.R, A]`: a program fitted where it runs (`Place`, `Needs`, `Paths`); `Path`
   is found from the place first (docs/architecture.md). Two `@unchecked` matches, named there — no others.
 - Handler bodies are deferred (`handleIn`): a handler installed by a recursive call costs no stack (`TestNesting`).
+- The kernel's `flatMap` and `handle` are inline and decide the answers met (`Lifts`) and the handler's kind where
+  they are written: never call them from a facade body whose answers or handler type are abstract — resolved there,
+  only `Lifts.Up` fits and every bind gets a `Lift` (8333bf3: the mixed program 222 → 353 µs). Forward the evidence
+  as an `inline` using parameter instead (`Op.flatMap`).
 - The answer moved with no row named: `Atm[A, X, Y, Es]` is `(c: Delimited[Es]) ?=> Cont[c.R, Eff[c.T, X], Eff[c.T, Y[c.T]], A]`
   — one context parameter (a function type may not have one parameter depend on another), `Delimited` a `Needs`
   with the row outside the nearest `$`, `T`; `Needs.delimited` is below `Needs.under` (both apply at a place with a
