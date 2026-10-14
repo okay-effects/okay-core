@@ -25,11 +25,12 @@ final class PState[R <: Row, Q, F]:
       Shift0[Delim[R], R, Q, Q, At[S2], P[S], Unit](Nearest.Here(), k => Return((_: S) => Bind(k(()), (f: At[S2]) => f(s2))))
 
 object PState:
-  /** `pstate(s0)(st => body)`: the body run from the state `s0`, of type `S0`, to one of type `S1`, under its `$` over
-   * the row `R`: the last state and the value, a program over `R` at any answer `Q` */
-  def pstate[R <: Row, Q, S0, S1, W](s0: S0)(body: (st: PState[R, Q, (S1, W)]) =>
+  /** `pstate(s0)(body)`: the body run from the state `s0`, of type `S0`, to one of type `S1`, under its `$` over the
+   * row `R`: the last state and the value, a program over `R` at any answer `Q`. The state given to the body — its
+   * steps take it `using`, none named: `def open[F](using st: PState[R, Q, F]) = st.get[Closed]…` */
+  def pstate[R <: Row, Q, S0, S1, W](s0: S0)(body: (st: PState[R, Q, (S1, W)]) ?=>
       Cont[Delim[R], st.P[S1], st.P[S0], W]): Cont[R, Q, Q, (S1, W)] =
     val st = PState[R, Q, (S1, W)]()
-    Bind(Dollar[R, st.P[S1], Q, Q, st.At[S0], W](body(st),
+    Bind(Dollar[R, st.P[S1], Q, Q, st.At[S0], W](body(using st),
       (w: W) => Return[R, Q, st.At[S1]]((s1: S1) => Return[R, Q, (S1, W)]((s1, w)))),
       (f: st.At[S0]) => f(s0))
