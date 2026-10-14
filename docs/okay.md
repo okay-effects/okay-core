@@ -67,16 +67,24 @@ operations are answered by the kernel's handlers at the mapped row (`TestOnOkay`
    the `Member` stays stuck, so the walk from `Member` to `In` — typed on each concrete shape — is given to the
    abstract row by ONE TRUSTED STEP (`OnOkay.trust`, the only cast, named), as okay-kernel's bridge has `trust` for
    the protocol's values. A mapping without it needs okay's rows to be the kernel's rows.
-2. **okay's `Removed[E, R]` names no place.** Its `Out` is a type member and its witness of `E`'s place is `route`,
-   a function on an operation with its path — nothing a type reads; the kernel's handler at a place wants
-   `Removed[E, ToOne[R], ToOne[Out]]`, a value by the place (`Head`, `Next`). So `handle` cannot be given from
-   okay's `rm` without a cast at every handler. okay's `Removed` carrying the place — `Member[E, R]` with `Out` by
-   it, the kernel's `Removed` enum in okay's vocabulary — mends it: one trait in okay-cont, its two givens.
+2. **okay's `Removed[E, R]` named no place** — its `Out` a type member, its witness of `E`'s place `route`, a
+   function on an operation with its path, nothing a type reads. Mended in okay (branch `on-core`, 4abfcada2, one
+   trait in okay-cont and its two givens): `Removed` carries `pos: Pos[E, R, Out]` — at the head, or past an effect
+   — and the instance walks it to the kernel's `Removed[E, ToOne[R], ToOne[Out]]` as it walks `Member` (the same
+   trusted step). A handler ANSWERING IN PLACE runs at any place in the row through okay's own `handle` now
+   (`TestOnOkay`, the third).
 3. **okay's `Handler` clauses are okay-cont's `Cont` programs** (`k: X => Cont[o.Here, o.Here, Ans]`): a machine of
    the one monad cannot run them; only an `Answering` (`value(op)`, no continuation) is expressible. The clauses
    written over `Effects[M]`'s `M` — `apply[R <: Row, X](op: E[X], k: X => M[R, Ans]): M[R, Ans]`, the facade's
    `Handler` here — is the change that lets okay's handlers (okay-std's) run on any encoding; it is the real
    migration, whichever way in is taken.
 
-So the mapping stands for programs and operations, with one trusted step; handlers need the two changes in okay (2,
-3) either way — and with them, the vocabulary question is only which rows a signature names.
+So the mapping stands for programs, operations and handlers answering in place, with one trusted step. What is
+left is 3 — and 3 is not a tweak: okay-cont's `Free` is a function of a context into `Cont`, a clause's `k` is a
+continuation of that context's stack, and a `Free` cannot wrap it losslessly (the context is its own). So clauses
+over `Effects[M]` cannot run on okay-cont's machine either: writing okay's `Handler` over `M` means okay's programs
+run on the one monad and okay-cont's machine is kept for its own tests, if at all — the switch of the platform's
+kernel, not a step before it. Its size: 16 files define handlers in okay's own code (okay-cont 9, okay-std 4,
+okay-async 2, okay-freer 1; three clause bodies use okay-cont's own words), plus okay's control interface
+(`shift`/`reset` over `M[A, S, R]`, `Shift`, `replay`) and okay-cont's `Dialogue`, `Bang` to be given on `Shift % S`,
+`Atm` and `Step`; the gate, okay's suites (1603 test files, every platform).

@@ -15,14 +15,12 @@ import okay.one.row.In
  * WHAT THE MAPPING COSTS: one trusted step (`trust`, below) — match types do not reduce under a GADT bound, so the
  * walk from `Member` to `In`, typed on each concrete shape, is given to the abstract row by hand.
  *
- * WHAT STOPS HERE (2026-10-14), to be given by okay itself: `handle`. okay's `Removed[E, R]` is a trait whose
- * `Out` is a type member and whose witness of `E`'s place is `route`, a function on an operation with its path —
- * nothing a type can read; the kernel's handler at a place wants `Removed[E, ToOne[R], ToOne[Out]]`, a value by the
- * place (`Head`, `Next`), which cannot be built from `route` without a cast. And a `Handler`'s clauses are
+ * `handle`: okay's `Removed[E, R]` carries its place as a value since okay 4abfcada2 (`Pos`, `rm.pos`) — the
+ * kernel's `Removed[E, ToOne[R], ToOne[Out]]` by the same walk (`removed`) — so a handler ANSWERING IN PLACE runs
+ * here at any place in the row. WHAT STOPS HERE (2026-10-14), to be given by okay itself: a `Handler`'s clauses are
  * programs of okay-cont's own `Cont` (`k: X => Cont[o.Here, o.Here, Ans]`): a machine of the one monad cannot run
- * them; only an `Answering` (`value(op)`, no continuation) is expressible. So: okay's `Removed` to carry the place
- * (`Member[E, R]` with `Out` by it — the kernel's `Removed` enum, in okay's vocabulary), and okay's `Handler` to
- * write its clauses over `Effects[M]`'s `M` — the two changes in okay that make this instance whole.
+ * them; only an `Answering` (`value(op)`, no continuation) is expressible. okay's `Handler` writing its clauses over
+ * `Effects[M]`'s `M` is the change in okay that makes this instance whole — the platform's switch itself.
  */
 object OnOkay:
   /** okay's row as the kernel's: the same list */
@@ -49,6 +47,17 @@ object OnOkay:
       val there: In[e, ToOne[okay.cont.+:[e2, t]]] = In.There[e, e2, ToOne[t]](in(tl.m))
       trust[In[E, ToOne[R]]](there)
 
+  /** okay's place of a handler, the kernel's: `Pos.Head` to `Removed.Head`, `Tail` to `Next` — the same walk, the
+   * same one trusted step for the abstract rows */
+  def removed[E[+_], R <: OkayRow, O <: OkayRow](p: okay.cont.Pos[E, R, O]): okay.one.row.Removed[E, ToOne[R], ToOne[O]] = p match
+    case _: okay.cont.Pos.Head[e, t] =>
+      val head: okay.one.row.Removed[e, ToOne[okay.cont.+:[e, t]], ToOne[t]] = okay.one.row.Removed.Head[e, ToOne[t]]()
+      trust[okay.one.row.Removed[E, ToOne[R], ToOne[O]]](head)
+    case tl: okay.cont.Pos.Tail[e, h, t, o] =>
+      val next: okay.one.row.Removed[e, ToOne[okay.cont.+:[h, t]], ToOne[okay.cont.+:[h, o]]] =
+        okay.one.row.Removed.Next[e, h, ToOne[t], ToOne[o]](removed(tl.p))
+      trust[okay.one.row.Removed[E, ToOne[R], ToOne[O]]](next)
+
   given effects: okay.Effects[P] with
     def pure[R <: OkayRow, A](a: A): P[R, A] = Cont.pure(a)
     def perform[E[+_], R <: OkayRow, X](op: E[X])(using m: Member[E, R]): P[R, X] =
@@ -56,8 +65,16 @@ object OnOkay:
     def defer[R <: OkayRow, A, B](thunk: () => P[R, A])(f: A => P[R, B]): P[R, B] = Cont.defer(thunk()).flatMap(f)
     extension [R <: OkayRow, A](m: P[R, A])
       def flatMap[B](f: A => P[R, B]): P[R, B] = m.flatMap(f)
+    /** a handler ANSWERING IN PLACE, at its place (`rm.pos`, okay's `Removed` carrying it since okay 4abfcada2): the
+     * kernel's `Answering` over the row outside, `E` taken from where it is. Any other handler: its clauses are
+     * okay-cont's `Cont` programs, not this machine's — until okay's `Handler` writes them over `Effects[M]` */
     def handle[E[+_], A, Ans, R <: OkayRow](h: okay.cont.Handler[E, A, Ans])(m: P[R, A])(using rm: okay.cont.Removed[E, R])
-        : P[rm.Out, Ans] =
-      throw UnsupportedOperationException(
-        "okay's handle on the one monad: okay's Removed names no place and a Handler's clauses are okay-cont's Cont — see OnOkay")
+        : P[rm.Out, Ans] = h.inPlace match
+      case Some(a) =>
+        val answering = new okay.one.handler.Answering[E, ToOne[rm.Out], A, Ans]:
+          def ret(x: A): Eff[ToOne[rm.Out], Ans] = Cont.pure(h.ret(x))
+          def value[X](op: E[X]): X = a.value(op)
+        Cont.handle(m)(answering)(using removed(rm.pos))
+      case None => throw UnsupportedOperationException(
+        "okay's handle on the one monad: a Handler's clauses are okay-cont's Cont programs — only an Answering runs here (OnOkay)")
     def run[A](m: P[OkayPure, A]): A = m.run

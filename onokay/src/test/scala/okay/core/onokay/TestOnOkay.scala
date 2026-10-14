@@ -36,3 +36,18 @@ class TestOnOkay extends munit.FunSuite:
       def next[X](s: List[String], op: Say[X]) = op match { case Say.Line(l) => l :: s }
     assertEquals(p.handle(asking).handle(saying).run, (List("got 41"), 42))
   }
+
+  test("okay's handle: an Answering handler at any place in the row, by okay's own Removed — its place as a value") {
+    val E = OnOkay.effects
+    val p: OnOkay.P[Ask +: Say +: Pure, Int] = program[OnOkay.P](using E)
+    val quiet = new okay.cont.Answering[Say, Int, Int]:
+      def ret(a: Int) = a * 10
+      def value[X](op: Say[X]): X = op match { case Say.Line(_) => () }
+    val asking = new okay.cont.Answering[Ask, Int, Int]:
+      def ret(a: Int) = a
+      def value[X](op: Ask[X]): X = op match { case Ask.Number => 41 }
+    // Say taken from past the head first, then Ask at the head: the rows okay's, the places okay's Removed's
+    val said: OnOkay.P[Ask +: Pure, Int] = E.handle[Say, Int, Int, Ask +: Say +: Pure](quiet)(p)
+    val done: OnOkay.P[Pure, Int] = E.handle[Ask, Int, Int, Ask +: Pure](asking)(said)
+    assertEquals(E.run(done), 420)
+  }
