@@ -10,8 +10,7 @@ def platformDirs(config: String, names: String*) = Def.setting(
 /**
  * THE CORE, CROSS-BUILT: the JVM, Scala.js, Scala Native — one source tree, `src/`, shared; a platform's own beside
  * it (`src/test/scala-jvm`, `-js`, `-jvm-native`). The JVM's alone: the benchmarks (JMH), docs/guide.md's checked
- * blocks, the JVM's options. On JS no suite of the textbook CPS (`Cps0`):
- * not stack safe, it needs a thread of a large stack, which JS has not. Its one dependency, okay-kernel's API
+ * blocks, the JVM's options. Its one dependency, okay-kernel's API
  * (docs/kernel.md): its Java jar on the JVM, its Scala mirror on JS and Native — the machines run the kernel's
  * programs natively
  */
@@ -44,8 +43,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .jsSettings(
     libraryDependencies += "dev.okay" %%% "okay-kernel-scala" % kernelVersion,
-    Test / unmanagedSourceDirectories ++= platformDirs("test", "js").value,
-    Test / testOptions += Tests.Filter(!_.endsWith("Cps0"))
+    Test / unmanagedSourceDirectories ++= platformDirs("test", "js").value
   )
   .nativeSettings(
     libraryDependencies += "dev.okay" %%% "okay-kernel-scala" % kernelVersion,
@@ -165,7 +163,7 @@ lazy val interopTofu = (project in file("interop/tofu"))
 
 /**
  * OKAY-KERNEL'S CHECKS ON OKAY-CORE (docs/kernel.md): the kernel's `Effects`, native in the core
- * (`okay.core.kernel.OnCore.zero`, `.cont`), checked by okay-kernel's TCK and against its reference machine — the
+ * (`okay.core.kernel.OnCore`), checked by okay-kernel's TCK and against its reference machine — the
  * JVM's, as they are. Tests only: nothing of its own to publish
  */
 lazy val kernel = (project in file("kernel"))

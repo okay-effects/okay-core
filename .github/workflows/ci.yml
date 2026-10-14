@@ -1,4 +1,4 @@
-# the tests on every push and pull request: every suite on Cont, Cont0 and the references, TestAgree, the guide;
+# the tests on every push and pull request: every suite, the kernel bridge, the guide;
 # the benchmarks compiled, not run — their numbers are a quiet machine's, not CI's
 name: ci
 on:
