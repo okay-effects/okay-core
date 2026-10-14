@@ -1,6 +1,6 @@
 package okay.core
 
-import okay.one.Cont0
+import okay.one.Cont
 import okay.one.std.{Shift, Shifts}
 
 /**
@@ -13,7 +13,7 @@ import okay.one.std.{Shift, Shifts}
  *  - THE ANSWER MOVED, under a `$`: `shift0` and `$` with the answer type modified (Materzok–Biernacki, Asai–
  *    Kameyama's typing), the kernel's own nodes — `Control[T]` the effect of a `$` in the row, `Delim[T]` the row
  *    under it; a program of effects enters it by `cont`, a closed one under a `$` is one of effects again by `lower`
- *    (`Cont0.reset`). For printf, `pstate`.
+ *    (`Cont.reset`). For printf, `pstate`.
  */
 object Control:
   /** `reset[S](body)`: the shifts in the body up to here, each with the rest as `k`; the body's value the answer,
@@ -29,9 +29,9 @@ object Control:
   def shift0[S, T <: Row, X](f: (X => Eff[T, S]) => Eff[T, S]): Op[Shifts[S, T], X] = Op(Shift.Up0(f))
 
   /** a program of effects at any answer: under a `$`, among shift0s */
-  export Cont0.cont
+  export Cont.cont
   /** the row under a `$` over `T`: `Control[T] +: T` */
   type Delim[T <: Row] = okay.one.Delim[T]
   /** `lower(c)`: a closed program of control under a `$` — its value its initial answer, the rest the identity — a
    * program of effects over `R`: its operations go out past the `$` to the handlers around */
-  def lower[R <: Row, S, O](c: Cont0[Delim[R], S, O, S]): Eff[R, O] = Cont0.reset(c)
+  def lower[R <: Row, S, O](c: Cont[Delim[R], S, O, S]): Eff[R, O] = Cont.reset(c)

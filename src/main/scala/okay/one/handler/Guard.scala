@@ -1,6 +1,6 @@
 package okay.one.handler
 
-import okay.one.{!, Cont0}
+import okay.one.{!, Cont}
 import okay.one.row.*
 
 /** A GUARD: a level with no effect of its own around a program of `A` over `T`, answering `B` — its `ret`, a
@@ -21,10 +21,10 @@ object Guard:
 
   /** an error thrown in the program given to `f`, its program in the program's place */
   def recover[T <: Row, A](f: Throwable => A ! T): Guard[T, A, A] = new Guard[T, A, A]:
-    def ret(a: A) = Cont0.Return(a)
+    def ret(a: A) = Cont.Return(a)
     override def recover(e: Throwable) = f(e)
 
   /** a cancel kept for when the program is left */
   def uncancelable[T <: Row, A]: Guard[T, A, A] = new Guard[T, A, A]:
-    def ret(a: A) = Cont0.Return(a)
+    def ret(a: A) = Cont.Return(a)
     override def masked = true

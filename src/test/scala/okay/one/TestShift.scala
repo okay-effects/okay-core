@@ -1,6 +1,6 @@
 package okay.one
 
-import okay.one.Cont0.{perform, pure, rows}
+import okay.one.Cont.{perform, pure, rows}
 import okay.one.Handlers.*
 import okay.one.row.*
 import okay.one.std.{Shift, Shifts}
@@ -45,7 +45,7 @@ class TestShift extends munit.FunSuite:
   test("100 000 resets and shifts in constant stack") {
     def many(n: Int, acc: Int): Int ! Pure =
       if n == 0 then pure(acc)
-      else shift[Int, Pure, Int, R[Int]](k => k(1)).map(_ + 1).handle(reset).flatMap(x => Cont0.defer(many(n - 1, acc + x)))
+      else shift[Int, Pure, Int, R[Int]](k => k(1)).map(_ + 1).handle(reset).flatMap(x => Cont.defer(many(n - 1, acc + x)))
     assertEquals(many(100000, 0).run, 200000)
   }
 

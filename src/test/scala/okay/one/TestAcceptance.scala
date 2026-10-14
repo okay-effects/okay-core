@@ -1,6 +1,6 @@
 package okay.one
 
-import okay.one.Cont0.{perform, pure, rows}
+import okay.one.Cont.{perform, pure, rows}
 import okay.one.handler.*
 import okay.one.row.*
 import okay.one.std.*

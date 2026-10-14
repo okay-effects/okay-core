@@ -1,7 +1,7 @@
 package okay.one.std
 
 import okay.one.*
-import okay.one.Cont0.{perform, pure, widen}
+import okay.one.Cont.{perform, pure, widen}
 import okay.one.handler.Deep
 import okay.one.machine.Machine
 import okay.one.row.*
@@ -35,4 +35,4 @@ object Shift:
         // k seen under the body's reset: the view's two parts made once, not at each k
         val rm = Removed.Absent[Shifts[S, T], T]()
         val end = Machine.Frame.End[T, S, Nothing]()
-        body((x: X) => Cont0.View[Shifts[S, T], T, T, S, Nothing, S, Nothing, Nothing](rm, end, k(x))).handle(this)
+        body((x: X) => Cont.View[Shifts[S, T], T, T, S, Nothing, S, Nothing, Nothing](rm, end, k(x))).handle(this)

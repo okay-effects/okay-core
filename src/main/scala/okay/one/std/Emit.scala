@@ -1,7 +1,7 @@
 package okay.one.std
 
 import okay.one.*
-import okay.one.Cont0.{perform, pure}
+import okay.one.Cont.{perform, pure}
 import okay.one.handler.*
 import okay.one.row.*
 

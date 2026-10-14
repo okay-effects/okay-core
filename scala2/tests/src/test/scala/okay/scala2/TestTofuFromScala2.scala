@@ -2,7 +2,7 @@ package okay.scala2
 
 import cats.Monad
 import cats.syntax.all._
-import okay.one.Cont0
+import okay.one.Cont
 import okay.core.Ops._
 import okay.one.row._
 import okay.one.std.{Reader, State, Throws, Writer}
@@ -30,7 +30,7 @@ object Service {
 /** okay-core from Scala 2 with tofu: the same service */
 class TestTofuFromScala2 extends munit.FunSuite {
   type App = +:[ReaderOf[Cfg]#L, +:[ThrowsOf[String]#L, Pure]]
-  type F[A] = Cont0[App, Nothing, Nothing, A]
+  type F[A] = Cont[App, Nothing, Nothing, A]
   type T1 = +:[ThrowsOf[String]#L, Pure]
 
   def run[A](cfg: Cfg)(p: F[A]): Either[String, A] =
@@ -55,7 +55,7 @@ class TestTofuFromScala2 extends munit.FunSuite {
   test("Scala 2: a program over a row of its own, the kernel's standard effects and handlers") {
     type R = +:[StateOf[Int]#L, +:[WriterOf[String]#L, Pure]]
     type W = +:[WriterOf[String]#L, Pure]
-    val p: Cont0[R, Nothing, Nothing, Int] =
+    val p: Cont[R, Nothing, Nothing, Int] =
       okay.core.Ops.flatMap(okay.core.Ops.perform[StateOf[Int]#L, R, Int](State.Get[Int]()))(s =>
         okay.core.Ops.flatMap(okay.core.Ops.perform[StateOf[Int]#L, R, Unit](State.Put[Int](s + 1)))(_ =>
           okay.core.Ops.map(okay.core.Ops.perform[WriterOf[String]#L, R, Unit](Writer.Tell(s"was $s")))(_ => s)))

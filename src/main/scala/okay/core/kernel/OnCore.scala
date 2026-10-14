@@ -2,8 +2,8 @@ package okay.core.kernel
 
 import okay.kernel.{Aborting, Answering, Answers, Computation, Control, Effects, Fn, General, Handler, Op, Prog, Program, Resume,
   Returning, Step, Thunk, Translating, Type}
-import okay.one.{!, Cont0}
-import okay.one.Cont0.{defer, pure}
+import okay.one.{!, Cont}
+import okay.one.Cont.{defer, pure}
 import okay.one.handler.Deep
 import okay.one.row.{+:, Pure}
 import okay.one.step.Step as OStep
@@ -13,7 +13,7 @@ import scala.util.control.NonFatal
 /**
  * OKAY-CORE AS AN IMPLEMENTATION OF THE KERNEL: okay-kernel's `Effects` and `Control` on the one monad's machine (`okay.one`) —
  * written first as okay-kernel's `one/` module (OnOne), the same here. A kernel
- * program (`Prog`) IS a program of okay-one (`P`, a `Cont0` in a box) over one row, `Req +: Pure`: `pure` a `Return`,
+ * program (`Prog`) IS a program of okay-one (`P`, a `Cont` in a box) over one row, `Req +: Pure`: `pure` a `Return`,
  * `flatMap` a `Bind`, `delay` a `Defer`, a delimiter of the bridge a `Deep` handler of `Req`, an operation a `Perform`
  * of it — nothing of the bridge's own runs a program, the machine's loop does, in constant stack, `k` data.
  *
@@ -84,7 +84,7 @@ object OnCore extends Effects with Control:
 
   // -- the nodes
 
-  private[kernel] def request(r: Req[Any]): U = Cont0.perform[Req, KR, Any](r)
+  private[kernel] def request(r: Req[Any]): U = Cont.perform[Req, KR, Any](r)
   /** `body` under a delimiter of the bridge: the body's value to its `ret`, its requests to its clause */
   private[kernel] def delimit(body: U, d: Delim): U = inside(body).handle(d)
 
@@ -95,10 +95,10 @@ object OnCore extends Effects with Control:
 
   // -- Effects
 
-  def pure[A](a: A): Prog[A] = P(Cont0.pure(a))
+  def pure[A](a: A): Prog[A] = P(Cont.pure(a))
   def flatMap[A, B](p: Prog[A], f: Fn[A, Prog[B]]): Prog[B] = P(unbox(p).flatMap(v => guard(f.apply(trust[A](v)))))
   override def map[A, B](p: Prog[A], f: Fn[A, B]): Prog[B] =
-    P(unbox(p).flatMap(v => try Cont0.pure(f.apply(trust[A](v))) catch case NonFatal(e) => unwind(FailSig(e))))
+    P(unbox(p).flatMap(v => try Cont.pure(f.apply(trust[A](v))) catch case NonFatal(e) => unwind(FailSig(e))))
   def delay[A](p: Thunk[Prog[A]]): Prog[A] = P(defer(guard(p.get())))
   def perform[X](op: Op[X]): Prog[X] = P(performU(op))
   def handle[A, R](h: Handler[A, R], body: Program[A]): Prog[R] = P(defer(delimit(built(body), HandlerD(h))))
@@ -132,7 +132,7 @@ object OnCore extends Effects with Control:
     case p: PendingSig => request(Mark()).flatMap(_ => answered(p.v)(next))
     case s: Signal => unwind(s)
     case _ => next(v)
-  private val check: Any => U = v => answered(v)(Cont0.pure)
+  private val check: Any => U = v => answered(v)(Cont.pure)
 
   /** to the nearest delimiter taking it: `recover`, `ensuring`, a handler (its abort), a region, the top. Its answer
    * never comes: the rest is dropped by whoever takes it */
@@ -162,9 +162,9 @@ object OnCore extends Effects with Control:
   private final class HandlerD(val h: Handler[?, ?]) extends Delim:
     private val t: Type = h.effect()
     def done(v: Any): U = h match
-      case r: Returning[?, ?] => try Cont0.pure(trust[Returning[Any, Any]](r).answer(v)) catch case NonFatal(e) => unwind(FailSig(e))
+      case r: Returning[?, ?] => try Cont.pure(trust[Returning[Any, Any]](r).answer(v)) catch case NonFatal(e) => unwind(FailSig(e))
       case g: General[?, ?] => guard(trust[General[Any, Any]](g).ret(v, OnCore))
-      case _ => Cont0.pure(v)
+      case _ => Cont.pure(v)
     override def req(r: Req[Any], k: Any => U): U = r match
       case p: Perform if p.op.effect() eq t => h match
         case a: Answering[?, ?] => k(try a.value(trust[Op[Any]](p.op)) catch case NonFatal(e) => FailSig(e))
@@ -177,7 +177,7 @@ object OnCore extends Effects with Control:
         case _ => k(FailSig(IllegalStateException(s"a handler of no shape: $h")))
       case s: Shift => guard(s.body.apply(x => P(k(x))))
       case u: Unwind => u.s match
-        case a: AbortSig if a.to.eq(this) => Cont0.pure(a.answer)
+        case a: AbortSig if a.to.eq(this) => Cont.pure(a.answer)
         case _ => forward(u, k)
       case _ => forward(r, k)
 
@@ -189,7 +189,7 @@ object OnCore extends Effects with Control:
       case _ => forward(r, k)
 
   private final class RecoverD[A](h: Fn[Throwable, Prog[A]]) extends Delim:
-    def done(v: Any): U = Cont0.pure(v)
+    def done(v: Any): U = Cont.pure(v)
     override def req(r: Req[Any], k: Any => U): U = r match
       case u: Unwind => u.s match
         case f: FailSig => guard(h.apply(f.e))
@@ -197,7 +197,7 @@ object OnCore extends Effects with Control:
       case _ => forward(r, k)
 
   private final class EnsuringD(fin: Program[Void]) extends Delim:
-    def done(v: Any): U = built(fin).flatMap(_ => Cont0.pure(v))
+    def done(v: Any): U = built(fin).flatMap(_ => Cont.pure(v))
     override def req(r: Req[Any], k: Any => U): U = r match
       case u: Unwind => built(fin).flatMap(_ => request(u))
       case _ => forward(r, k)
@@ -206,7 +206,7 @@ object OnCore extends Effects with Control:
    * One a run of `uncancelable`; `k` resumed holds it, so the mark is its state */
   private final class RegionD extends Delim:
     private var pending = false
-    def done(v: Any): U = if pending then unwind(CancelSig) else Cont0.pure(v)
+    def done(v: Any): U = if pending then unwind(CancelSig) else Cont.pure(v)
     override def req(r: Req[Any], k: Any => U): U = r match
       case _: Mark =>
         pending = true
@@ -278,7 +278,7 @@ object OnCore extends Effects with Control:
       val k = trust[Resume[Any, Any]](y.k())
       request(Perform(y.op(), region = false)).flatMap(v => answerForeign(k, v, after))
     case _ if after != null => unwind(after)
-    case d: Step.Done[?] => Cont0.pure(d.value())
+    case d: Step.Done[?] => Cont.pure(d.value())
     case f: Step.Failed[?] => unwind(FailSig(f.error()))
     case _: Step.Cancelled[?] => unwind(CancelSig)
 

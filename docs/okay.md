@@ -45,7 +45,7 @@ val counting: Int ! (State % Int +: Say +: Pure) =
     n <- effect[State % Int, Int](State.Get())
     _ <- Say.Line(s"$n").perform
   yield n
-Cont0.handle(counting)(State[Int, Say +: Pure, Int](41)).handle(writer[(Int, Int)]).value   // (List("41"), (41, 41))
+Cont.handle(counting)(State[Int, Say +: Pure, Int](41)).handle(writer[(Int, Int)]).value   // (List("41"), (41, 41))
 ```
 
 okay's TestEffectsRows runs as it is written there (`TestAnywhere`). The interface costs nothing over the program

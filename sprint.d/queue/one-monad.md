@@ -1,6 +1,6 @@
 # one-monad
 
-okay-core on one monad: the kernel written in okay-one (okay-cont's `Cont0[R, I, O, A]`, okay-eff's machine with
+okay-core on one monad: the kernel written in okay-one (okay-cont's `Cont[R, I, O, A]`, okay-eff's machine with
 `k` as data) landed here in the order of docs/one.md §5 — step 1 the package `okay.one` with its suites, step 2
 `okay.core` re-written over it (the facade, `RowEffects`, std, `Stream`, `pstate`), step 3 the two monads deleted
 and the benchmarks over the one. Steps 4–7 (kernel bridge through `Step`, async, interop, platforms, Scala 2) are

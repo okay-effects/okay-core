@@ -1,6 +1,6 @@
 package okay.one
 
-import okay.one.Cont0.{perform, pure}
+import okay.one.Cont.{perform, pure}
 import okay.one.Handlers.*
 import okay.one.row.*
 
@@ -29,17 +29,17 @@ class TestGuarantees extends munit.FunSuite:
 
   test("shift0: only under a $ in its row — the nearest, never past one") {
     assert(compileErrors(
-      "val c: Cont0[Delim[Pure], Int ! Pure, Int ! Pure, Int] = Cont0.shift0(k => k(1))").isEmpty)
+      "val c: Cont[Delim[Pure], Int ! Pure, Int ! Pure, Int] = Cont.shift0(k => k(1))").isEmpty)
     assert(compileErrors(
-      "val p: Int ! Ask +: Pure = Cont0.shift0[Pure, Nothing, Nothing, Int, Int ! Pure, Int, Ask +: Pure](k => k(1))").nonEmpty)
+      "val p: Int ! Ask +: Pure = Cont.shift0[Pure, Nothing, Nothing, Int, Int ! Pure, Int, Ask +: Pure](k => k(1))").nonEmpty)
     assert(compileErrors(
-      "perform[Ask, Ask +: Pure, Int](Ask.Get).flatMap(n => Cont0.shift0[Pure, Nothing, Nothing, Int, Int ! Pure, Int, Ask +: Pure](k => k(n)))").nonEmpty)
+      "perform[Ask, Ask +: Pure, Int](Ask.Get).flatMap(n => Cont.shift0[Pure, Nothing, Nothing, Int, Int ! Pure, Int, Ask +: Pure](k => k(n)))").nonEmpty)
     assert(compileErrors(
-      "Cont0.shift0[Pure, Nothing, Nothing, Int, Int ! Pure, Int, Delim[Delim[Pure]]](k => k(1))").contains("Nearest"))
+      "Cont.shift0[Pure, Nothing, Nothing, Int, Int ! Pure, Int, Delim[Delim[Pure]]](k => k(1))").contains("Nearest"))
   }
 
   test("a program of effects under a $: at any answer by cont; back by reset, its effects handled around it") {
-    assert(compileErrors("Cont0.reset(perform[Ask, Delim[Ask +: Pure], Int](Ask.Get).cont[Int]).handle(reader(1)).run").isEmpty)
+    assert(compileErrors("Cont.reset(perform[Ask, Delim[Ask +: Pure], Int](Ask.Get).cont[Int]).handle(reader(1)).run").isEmpty)
     assert(compileErrors("perform[Ask, Delim[Ask +: Pure], Int](Ask.Get).cont[Int].run(identity)").nonEmpty)
   }
 
@@ -48,8 +48,8 @@ class TestGuarantees extends munit.FunSuite:
     assert(compileErrors("perform[Throws, Throws +: Delim[Pure], Nothing](Throws.Raise(\"\")).cont[Int].handle(attempt)").nonEmpty)
     assert(compileErrors("perform[Ask, Ask +: Delim[Pure], Int](Ask.Get).cont[Int].handle(reader(1))").isEmpty)
     assert(compileErrors("perform[St, St +: Delim[Pure], Int](St.Get).cont[Int].handle(state(1))").isEmpty)
-    assert(compileErrors("Cont0.reset(perform[Choose, Delim[Choose +: Pure], Boolean](Choose.Flip).cont[Boolean]).handle(choose).run").isEmpty)
-    assert(compileErrors("Cont0.reset(perform[Choose, Choose +: Delim[Pure], Boolean](Choose.Flip).handle(choose).cont[List[Boolean]]).run").isEmpty)
+    assert(compileErrors("Cont.reset(perform[Choose, Delim[Choose +: Pure], Boolean](Choose.Flip).cont[Boolean]).handle(choose).run").isEmpty)
+    assert(compileErrors("Cont.reset(perform[Choose, Choose +: Delim[Pure], Boolean](Choose.Flip).handle(choose).cont[List[Boolean]]).run").isEmpty)
   }
 
   test("a clause: a program over the row outside, not of its own effect") {

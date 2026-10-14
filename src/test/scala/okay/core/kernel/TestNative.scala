@@ -26,7 +26,7 @@ abstract class NativeSuite(name: String, e: Effects) extends FunSuite:
   }
 
   test(s"$name: a kernel program is the machine's own nodes") {
-    assert(e.pure(int(1)) match { case p: OnCore.P[?] => p.c.isInstanceOf[okay.one.Cont0[?, ?, ?, ?]]; case _ => false })
+    assert(e.pure(int(1)) match { case p: OnCore.P[?] => p.c.isInstanceOf[okay.one.Cont[?, ?, ?, ?]]; case _ => false })
   }
 
   test(s"$name: state 100 000 operations in constant stack, answered in place") {

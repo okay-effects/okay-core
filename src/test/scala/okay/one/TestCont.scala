@@ -1,6 +1,6 @@
 package okay.one
 
-import okay.one.Cont0.{perform, pure}
+import okay.one.Cont.{perform, pure}
 import okay.one.Handlers.*
 import okay.one.row.*
 
@@ -70,15 +70,15 @@ class TestCont extends munit.FunSuite:
     assertEquals(c.run, (1, 0))
   }
 
-  test("answer type modification in Cont0, around compiled programs: a shift0 turning String into Int => String, its k a compiled program, resumed twice") {
+  test("answer type modification in Cont, around compiled programs: a shift0 turning String into Int => String, its k a compiled program, resumed twice") {
     type S = Int => String
-    type C = Cont[String, String]
-    val body: Cont0[Delim[Pure], String ! Pure, S ! Pure, String] =
-      Cont0.Shift0[Delim[Pure], Pure, Nothing, Nothing, String, S ! Pure, Int](Nearest.Here(), k =>
-        Cont0.Return((x: Int) => k(x).run + " / " + k(x + 1).run))
+    type C = Cps[String, String]
+    val body: Cont[Delim[Pure], String ! Pure, S ! Pure, String] =
+      Cont.Shift0[Delim[Pure], Pure, Nothing, Nothing, String, S ! Pure, Int](Nearest.Here(), k =>
+        Cont.Return((x: Int) => k(x).run + " / " + k(x + 1).run))
       .flatMap((x: Int) => asked[Ask +: Log +: Delim[Pure]].handle(reader(x)).handle(log).cont[String ! Pure].map(_.toString))
-    val p: S ! Pure = Cont0.Dollar[Pure, String ! Pure, Nothing, Nothing, S, String](body,
-      (s: String) => Cont0.Return[Pure, Nothing, String]("got " + s))
+    val p: S ! Pure = Cont.Dollar[Pure, String ! Pure, Nothing, Nothing, S, String](body,
+      (s: String) => Cont.Return[Pure, Nothing, String]("got " + s))
     assertEquals(p.run(41), "got (List(got 41),42) / got (List(got 42),43)")
   }
 
@@ -149,6 +149,6 @@ class TestCont extends munit.FunSuite:
   }
 
   test("stack safe: a recursion under maps, deferred") {
-    def down(n: Int): Int ! Pure = if n == 0 then pure(0) else Cont0.defer(down(n - 1)).map(_ + 1)
+    def down(n: Int): Int ! Pure = if n == 0 then pure(0) else Cont.defer(down(n - 1)).map(_ + 1)
     assertEquals(down(N).run, N)
   }

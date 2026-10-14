@@ -1,7 +1,7 @@
 package okay.one
 
 import scala.util.Random
-import okay.one.Cont0.*
+import okay.one.Cont.*
 import okay.one.Handlers.*
 import okay.one.handler.*
 import okay.one.row.*
@@ -28,10 +28,10 @@ class TestReference extends munit.FunSuite:
 
   /** a program of effects to its normal form, each node by its rule — a handler the textbook's: its body's normal
    * form, an operation of its own given to it with the rest under it again, one of another's going out past it */
-  def norm[R <: Row, I, O, A](p: Cont0[R, I, O, A]): Norm[R, A] = p match
+  def norm[R <: Row, I, O, A](p: Cont[R, I, O, A]): Norm[R, A] = p match
     case Return(a) => Norm.Done(a)
     case b: Bind[r, i, t, o, x, a] => bind(norm(b.m), (x: x) => norm(b.f(x)))
-    case mp: Cont0.Map[r, i, o, x, a] => bind(norm(mp.m), (x: x) => Norm.Done(mp.f(x)))
+    case mp: Cont.Map[r, i, o, x, a] => bind(norm(mp.m), (x: x) => Norm.Done(mp.f(x)))
     case df: Defer[r, i, o, a] => norm(df.c())
     case pf: Perform[r, e, s, x] => Norm.Op(pf.op, pf.in, (x: x) => Norm.Done(x))
     case ph: PerformHere[e, t, s, x] => Norm.Op(ph.op, In.Here[e, t](), (x: x) => Norm.Done(x))
@@ -43,7 +43,7 @@ class TestReference extends munit.FunSuite:
     case v: View[e, r, t, x, i, a, j, o] => viewed(v.rm, frames(norm(v.body), v.k))
     case l: Lower[r, s, o] => control(l.c)((x: s) => Norm.Done(x))
     case d: Dollar[t, i, i2, o2, b, a] =>
-      bind(control(d.body)((x: a) => Norm.Done(d.ret(x))), (p: Cont0[t, i2, o2, b]) => norm(p))
+      bind(control(d.body)((x: a) => Norm.Done(d.ret(x))), (p: Cont[t, i2, o2, b]) => norm(p))
     case l: Lift[r, s, a] => norm(l.p)
     case _ => throw IllegalStateException("not a node of a program written")
 
@@ -90,17 +90,17 @@ class TestReference extends munit.FunSuite:
   /** a program under a `$` over `R`, none of the row's handlers in it: `(A => I) => O` over the normal forms of
    * effects over `R` — its operations out past the `$` to the handlers around; a shift0's `k` the rest as a program
    * over `R`, its effects in it; a `$` in it the same a row deeper, its answer run here */
-  def control[R <: Row, I, O, A](c: Cont0[Delim[R], I, O, A])(k: A => Norm[R, I]): Norm[R, O] = c match
+  def control[R <: Row, I, O, A](c: Cont[Delim[R], I, O, A])(k: A => Norm[R, I]): Norm[R, O] = c match
     case Return(a) => k(a)
     case b: Bind[w, i, t, o, x, a] => control(b.m)((x: x) => control(b.f(x))(k))
-    case mp: Cont0.Map[w, i, o, x, a] => control(mp.m)((x: x) => k(mp.f(x)))
+    case mp: Cont.Map[w, i, o, x, a] => control(mp.m)((x: x) => k(mp.f(x)))
     case df: Defer[w, i, o, a] => control(df.c())(k)
     case s: Shift0[r, t, i1, o1, x1, o, a] => s.at match
       case _: Nearest.Here[t2] =>
-        Norm.Done(s.f((x: a) => reify(k(x)).cont[o1].flatMap((p: Cont0[R, i1, o1, x1]) => p)))
+        Norm.Done(s.f((x: a) => reify(k(x)).cont[o1].flatMap((p: Cont[R, i1, o1, x1]) => p)))
       case Nearest.There(_) => throw IllegalStateException("a handler under the $: not written")
     case d: Dollar[t, i, i2, o2, b, a] =>
-      bind(lower(control(d.body)((a: a) => Norm.Done(d.ret(a)))), (p: Cont0[Delim[R], i2, o2, b]) => control(p)(k))
+      bind(lower(control(d.body)((a: a) => Norm.Done(d.ret(a)))), (p: Cont[Delim[R], i2, o2, b]) => control(p)(k))
     case l: Lift[r, s, a] => bind(lower(norm(l.p)), k)
     case _ => throw IllegalStateException("not a node of control written")
 
@@ -155,7 +155,7 @@ class TestReference extends munit.FunSuite:
         l.flatMap(x => if x % 2 == 0 then rr.map(_ + x) else pure(x - c))
       case 7 =>
         val inner = gen[R](r, depth - 1)
-        Cont0.defer(inner).map(_ + c)
+        Cont.defer(inner).map(_ + c)
       case 8 => gen[Ask +: R](r, depth - 1).handle(reader(c))
       case 9 => gen[St +: R](r, depth - 1).handle(state(c)).map((s, a) => s + a)
       case 10 => gen[Choose +: R](r, depth - 1).handle(choose).map(_.sum)
@@ -242,7 +242,7 @@ class TestReference extends munit.FunSuite:
   /** the rest of a shift0 under the `$` over `R`: a program of effects over `R` */
   type L[R <: Row] = Int ! R
   /** a program under the `$` over `R`, its answers `L[R]` */
-  type B[R <: Row] = Cont0[Delim[R], L[R], L[R], Int]
+  type B[R <: Row] = Cont[Delim[R], L[R], L[R], Int]
 
   def body[R <: Row](r: Random, depth: Int)(using In[Ask, R], In[Choose, R]): B[R] =
     val c = r.nextInt(5)
@@ -267,7 +267,7 @@ class TestReference extends munit.FunSuite:
           case _ => shift0(k => dollar(inner).flatMap(k)).map(_ + c)
       /** a `$` inside, its body a row deeper, a shift0 of its own up to it: its `k` a program under the outer `$` */
       case 4 =>
-        val inner: Cont0[Delim[Delim[R]], B[R], B[R], Int] = r.nextInt(3) match
+        val inner: Cont[Delim[Delim[R]], B[R], B[R], Int] = r.nextInt(3) match
           case 0 => Return(c)
           case 1 => Shift0[Delim[Delim[R]], Delim[R], L[R], L[R], Int, B[R], Int](Nearest.Here(), k => k(c).flatMap(k)).map(_ + 1)
           case _ => Shift0[Delim[Delim[R]], Delim[R], L[R], L[R], Int, B[R], Int](Nearest.Here(), k => k(c).flatMap(a => k(a * 2)))
@@ -327,7 +327,7 @@ class TestReference extends munit.FunSuite:
         val (l, rr) = (body0(r, depth - 1), body0(r, depth - 1))
         l.flatMap(x => rr.map(_ + x))
       case _ =>
-        val inner: Cont0[Delim[Delim[Pure]], B[Pure], B[Pure], Int] =
+        val inner: Cont[Delim[Delim[Pure]], B[Pure], B[Pure], Int] =
           Shift0[Delim[Delim[Pure]], Delim[Pure], L[Pure], L[Pure], Int, B[Pure], Int](Nearest.Here(), k => k(c).flatMap(a => k(a * 2)))
         val after = body0(r, depth - 1)
         Dollar[Delim[Pure], B[Pure], L[Pure], L[Pure], Int, Int](inner, a => Return(a + c)).flatMap(x => after.map(_ + x))

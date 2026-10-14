@@ -1,6 +1,6 @@
 package okay.one
 
-import okay.one.Cont0.pure
+import okay.one.Cont.pure
 import okay.one.row.*
 import okay.one.std.*
 import scala.concurrent.{Await as Wait, Promise}

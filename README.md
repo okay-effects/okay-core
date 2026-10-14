@@ -1,7 +1,7 @@
 # okay-core
 
 Algebraic effects and handlers for Scala 3 — on the JVM, Scala.js and Scala Native, and from Scala 2.13 — with
-delimited control, on **one monad**: `Cont0[R, I, O, A]`, effects with rows in the monad of shift0 and `$`
+delimited control, on **one monad**: `Cont[R, I, O, A]`, effects with rows in the monad of shift0 and `$`
 (`okay.one`), a CEK machine with `k` as data; and over it the facade, `A ! E1 + E2`.
 
 No macros, no runtime tests of an operation's class, no cast: an operation carries a path to its effect in the row,
@@ -45,7 +45,7 @@ the machine are the library's own (`okay.core`, `okay.one`). These examples are 
 
 | Package | What is in it |
 |---|---|
-| `okay.one` | THE KERNEL, imported as it is from okay-one (`scripts/import-one.sh`, `docs/one-imported.txt`): `Cont0[R, I, O, A]`, the rows (`row`: `Row`, `+:`, `Pure`, `In`, `Removed`), the handler forms (`handler`: `Answering`, `Stateful`, `Translating`, `Aborting`, `Deep`), the machine of one `Meta` (`machine`), `Step`, its std (`Reader`, `State`, `Writer`, `Throws`, `Choose`, `Shift % S`, `Async`) and its suites (`TestReference`, the meaning in CPS) |
+| `okay.one` | THE KERNEL, imported as it is from okay-one (`scripts/import-one.sh`, `docs/one-imported.txt`): `Cont[R, I, O, A]`, the rows (`row`: `Row`, `+:`, `Pure`, `In`, `Removed`), the handler forms (`handler`: `Answering`, `Stateful`, `Translating`, `Aborting`, `Deep`), the machine of one `Meta` (`machine`), `Step`, its std (`Reader`, `State`, `Writer`, `Throws`, `Choose`, `Shift % S`, `Async`) and its suites (`TestReference`, the meaning in CPS) |
 | `okay.core` | THE FACADE over it: `A ! E1 + E2` (`!`, `+`, `%`: all a program's type needs) — a program fitted to the place it runs at (`Needs`, `Place`, `Path`); `Eff[R, A]`, the kernel's program over a row named, `E :? R`, `Has[E]`; `Op`, an operation bound where it is used; `Handler`, `Answering`; `handle`, `handleIn`, `translate`, `intercept`, `run`; `Control`: `reset`/`shift`/`shift0` over `Shifts[S, T]`, `cont`/`lower` for `Control[R]`; `RowEffects`, okay's `Effects[M]` over `Eff` ([docs/okay.md](docs/okay.md)) |
 | `okay.std` | the effects by their names, the kernel's std re-exported (one std): `reader` (`local`), `state` (each path its own), `cell`, `writer`, `throws` (`handleWith`), `choose`, `first`, `Emit` (`collect`, `generate`, `stream`, `Stream`, `Step`), `pstate` (the kernel's `PState`, lowered) |
 | `okay.core.kernel` | `OnCore`: okay-kernel's `Effects` and `Control` on the one monad — every delimiter of the bridge a `Deep` handler of one request effect, export through `Step` ([docs/kernel.md](docs/kernel.md)); okay-kernel's TCK in the module `kernel/` |
@@ -55,7 +55,7 @@ the machine are the library's own (`okay.core`, `okay.one`). These examples are 
 
 ## The one monad
 
-`Cont0[R, I, O, A]`: a program of `A` over `R`; `R` a row of effects — then `I = O = Nothing`, a program of effects
+`Cont[R, I, O, A]`: a program of `A` over `R`; `R` a row of effects — then `I = O = Nothing`, a program of effects
 carries no answer types, which is what lets it run under any handlers — or `Control[R]`, delimited control with the
 answer type modified (Materzok–Biernacki's shift0 and `$`, typed as Asai–Kameyama's), its effects answered in
 place. One machine, `eval(c, k, m)`: the node, the frames of its level, the levels outside — a handler each, or a

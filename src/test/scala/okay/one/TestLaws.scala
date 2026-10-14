@@ -1,6 +1,6 @@
 package okay.one
 
-import okay.one.Cont0.*
+import okay.one.Cont.*
 import okay.one.row.*
 import okay.one.std.*
 
@@ -47,11 +47,11 @@ class TestLaws extends munit.FunSuite:
     type S = Int => String
     type C[A] = A ! Pure
     type P = Delim[Pure]
-    val shift: Cont0[P, C[String], C[S], Int] =
+    val shift: Cont[P, C[String], C[S], Int] =
       Shift0[P, Pure, Nothing, Nothing, String, C[S], Int](Nearest.Here(), k => Return((x: Int) => k(x).run))
-    def show(n: Int): Cont0[P, C[String], C[String], String] = Return(n.toString)
-    def twice(s: String): Cont0[P, C[String], C[String], String] = Return(s + s)
-    def printf(body: Cont0[P, C[String], C[S], String]): S =
+    def show(n: Int): Cont[P, C[String], C[String], String] = Return(n.toString)
+    def twice(s: String): Cont[P, C[String], C[String], String] = Return(s + s)
+    def printf(body: Cont[P, C[String], C[S], String]): S =
       Dollar[Pure, C[String], Nothing, Nothing, S, String](body, (s: String) => Return[Pure, Nothing, String]("<" + s + ">")).run
     val left = printf(shift.flatMap(show).flatMap(twice))
     val right = printf(shift.flatMap(n => show(n).flatMap(twice)))

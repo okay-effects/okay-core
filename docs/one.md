@@ -20,21 +20,21 @@ prove before it moves in (§4), the order of the landing with its gates (§5), a
 | | found | kept |
 |---|---|---|
 | okay-core (`okay.cont`, `okay.zero`) | one interface over two monads keeps the interface honest, and costs a context-function language (`Context`, `Effects`, `Handled ?=>`) no second monad will ever need again | the facade `!`/`+`/`%`, the std's names, `Stream`, `RowEffects`, the kernel bridge, the suites written once |
-| okay-zero | `Cont0` as a kernel of four rules, effects as an extension above it (`Inject`, `ContVM`) — fast captures, but two loops, two sets of registers | `MonadsBenchmark`'s programs as the common gauge; the three state programs (§4 D) |
+| okay-zero | `Cont` as a kernel of four rules, effects as an extension above it (`Inject`, `ContVM`) — fast captures, but two loops, two sets of registers | `MonadsBenchmark`'s programs as the common gauge; the three state programs (§4 D) |
 | okay-free | the answer types `I, O` in the effects' monad poison every frame and handler; handlers split into those a `shift0` may pass and those it may not | nothing of the encoding; `TestLaws`, `TestEffGuarantees` as the shape of a guarantees suite |
 | okay-eff | `Eff[R, A]` with no answers; `k` as data (`Cont`: the levels passed, outermost first, around the rest); a CEK machine with the handlers in force a typed stack (`Meta`), an operation dispatched by its path through it. The fastest on the lanes where `k` works hardest: choose 12.9 µs, state 11.4, general 8.8. The lab: effects as levels of the CPS hierarchy — the wrong unit (a handler must be a thing the machine knows; a row a thing the types carry for the program) | the machine, the handler kinds, `k` |
-| okay-cont | rows *inside* `Cont0[R, I, O, A]`: `R` a row of effects or `Control[R]`; a program of effects has no answers of its own, answer types move only in control; `TestReference`, the whole monad's meaning in CPS checked on random programs | the type; control in the same monad; the reference as the specification |
-| okay-one | the framework and the kernel with their boundary **data**: `Cont0` nodes, handler forms as values, the machine an interpreter of them; `Step` (a program run to its value or its first operation of the row, given back with its rest); `Translating` | the layout; `Step`; the five handler forms |
+| okay-cont | rows *inside* `Cont[R, I, O, A]`: `R` a row of effects or `Control[R]`; a program of effects has no answers of its own, answer types move only in control; `TestReference`, the whole monad's meaning in CPS checked on random programs | the type; control in the same monad; the reference as the specification |
+| okay-one | the framework and the kernel with their boundary **data**: `Cont` nodes, handler forms as values, the machine an interpreter of them; `Step` (a program run to its value or its first operation of the row, given back with its rest); `Translating` | the layout; `Step`; the five handler forms |
 
 okay-one is where the kernel is being written now, with okay-eff's machine under okay-cont's type: `Deep.apply[X](op: E[X], k: X => B ! T)`, `Cont` the levels as data, `Meta` the handlers in force.
 
 ## 2. The one monad
 
 ```scala
-enum Cont0[R, I, +O, +A]:                    // a program of A over R; I the answer of its rest, O what it answers
+enum Cont[R, I, +O, +A]:                    // a program of A over R; I the answer of its rest, O what it answers
   // the monad, over any R
   case Return(a) / Bind(m, f) / Map(m, f) / Defer(c)
-  // effects, over a row R <: Row: answers unmoved (A ! R = Cont0[R, Nothing, Nothing, A])
+  // effects, over a row R <: Row: answers unmoved (A ! R = Cont[R, Nothing, Nothing, A])
   case Perform(op, in) / PerformHere(op)     // an operation, its place in R (none carried at the head)
   case Handle(h, p, rm)                      // p with E handled by h, E taken from any place in R (Removed)
   // delimited control, over Control[R]: the answer type modified (Materzok–Biernacki; Asai–Kameyama's typing)
@@ -60,7 +60,7 @@ sealed abstract class Handler[E[_], T <: Row, A, B]     // E handled; T the row 
   order — is `Shift % S`: an effect with a fixed answer `S`, `reset` its `Deep` handler, `shift` its operation with
   `k`. `shift(identity)` is `pure(k)` with `S` holding it. `Control[R]` is for the answer *moved* (printf,
   `PState`). Two faces of control, each where its typing is free.
-- **`Lower`, the way back from control to effects**: `reset[S, O](body: Cont0[Control[R], S, O, S]): O ! R` — a
+- **`Lower`, the way back from control to effects**: `reset[S, O](body: Cont[Control[R], S, O, S]): O ! R` — a
   closed program of control (its value its initial answer, the rest the identity) is a program of effects over `R`.
   Inside it, an operation of `R` not answered in place goes **out**, to the handlers of effects around the reset;
   a `Deep` handler's `k` taken past the reset holds the `$` as a level and puts it back when resumed. So
@@ -84,7 +84,7 @@ sealed abstract class Handler[E[_], T <: Row, A, B]     // E handled; T the row 
 - **The machine** is one `@tailrec` CEK loop, `eval(c, k, m)`: `c` the node, `k` the frames of the level, `m` the
   levels outside — a handler each (its state, if `Stateful`, a register there), or a `$`. An operation answered in
   place goes straight into the frame on top, the levels between untouched; else out past each level, each put
-  around its rest in a `Cont`; `k(y)` a `Resume` node, the levels put back on **the `Meta` in force where it is
+  around its rest in a `Rest`; `k(y)` a `Resume` node, the levels put back on **the `Meta` in force where it is
   resumed**, outermost first, then the rest. No cast; no exception at run time for a program that type checks;
   constant stack at any depth of handlers, binds, resets.
 - **`Step[R, A]`** = `Done(a) | Yield(op, in, resume) | Failed(e)`, `resume` with `apply(x)`, `fail(e)`,
@@ -130,7 +130,7 @@ suites already and are named by them.
 - **B. `Shift % S`, control as an effect.** `TestControl`'s six (abort, multi-shot, a shift in a shift's body
   captures to the same reset, nearest reset only, `k` runs nothing until stepped, 100 000 resets in constant
   stack). `TestShiftAtHandler`'s seven: a shift directly under a handler, no reset between — `k` holds the handler
-  (`Cont0`'s semantics, the one okay keeps): `k(a) = (3 + a) * 10`; tells in the body, in `k`, after the shift seen
+  (`Cont`'s semantics, the one okay keeps): `k(a) = (3 + a) * 10`; tells in the body, in `k`, after the shift seen
   in order by the writer outside. `TestMonads` 80: an answer moved and moved back directly under a handler.
 - **C. `Control[R]`, the answer moved.** `TestPState`'s four — `get` after `put` the type unchanged; an `Int` in, a
   `String` put, read back a `String`; a `get` of the wrong type does not compile; an operation of the row between
@@ -181,7 +181,7 @@ is touched before 3 is green.
   the other way round: a `Deep` handler's `k` crossing a `$` (`Lower`), and `Shift % S` for control under
   handlers with the answer fixed.
 - **`Needs`/`Place`'s object a run**: measured in step 2 (`stateRows` against the kernel's own: okay-core's 4 % on
-  `Cont0`); if it costs more than that over the one monad, the facade is the place to pay it, not the kernel.
+  `Cont`); if it costs more than that over the one monad, the facade is the place to pay it, not the kernel.
 - **okay-free, okay-eff, okay-cont**: experiments concluded, their READMEs the record; frozen once their authors
   are done writing them up.
 
@@ -190,8 +190,8 @@ is touched before 3 is green.
 Three things cost a line each now and a rewrite later:
 
 1. **One `Meta`, the `$` a kind of level in it** — not `Delimited.eval` beside `Effects.eval`. A `Deep` handler's
-   `k` (`Cont`) must be able to hold a `$` as a level, so a `reset` can sit under `choose`. Node: `Lower[R, S, O]
-   (c: Cont0[Control[R], S, O, S]) extends Cont0[R, Nothing, Nothing, O]`; surface `reset(body)`; an operation of
+   `k` (`Rest`) must be able to hold a `$` as a level, so a `reset` can sit under `choose`. Node: `Lower[R, S, O]
+   (c: Cont[Control[R], S, O, S]) extends Cont[R, Nothing, Nothing, O]`; surface `reset(body)`; an operation of
    `R` inside the reset not answered in place by a `HandleIn` goes out past the `$`-level to its handler-level.
    Acceptance §4 I.
 2. **`Raise(e)` as a node; the `try` at each call of user code** (`Bind`/`Map` frames, `value`, `next`, a clause),
@@ -218,7 +218,7 @@ okay-core-zero's last (forwarded16 met since okay-one 0ff6e5e: 5.7), the kernel'
 **The mixed program's regression, pinned (2026-10-14).** `MixedBenchmark.orders` (state), the facade at 2ef1dd5 on
 each kernel, one machine, back to back: okay-one c7af924 158.8 µs, ee7812a 173, cec1b6a 221.5, 0ff6e5e 218.6,
 feb703d 218.6; the facade at HEAD on c95137d 227–232. So the step is cec1b6a (a `k` failed or cancelled: `Fail`/`FailC`
-nodes, `fails` on every `Cont`, `guardsTo` walked at every abort, the `none` evidence in `clausing`); the look-up kept
+nodes, `fails` on every `Rest`, `guardsTo` walked at every abort, the `none` evidence in `clausing`); the look-up kept
 on the path (0ff6e5e) and the reset's view (feb703d) cost nothing here; 2742dfe's inline `flatMap` (`Lifts.down` and
 `<:<` plumbing at every bind of user code) the last +5%. Allocation moved +3% only (1.39 → 1.43 MB a run): code
 shape, not objects. By `-XX:+LogCompilation`, C2's inline budget for `eval` (its own 4420 bytes plus callees, 8000)

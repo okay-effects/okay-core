@@ -1,6 +1,6 @@
 package okay.scala2
 
-import okay.one.Cont0
+import okay.one.Cont
 import okay.core.Ops._
 import okay.one.handler.Deep
 import okay.one.row._
@@ -15,12 +15,12 @@ case object Peek extends Counter[Int] { def answer(n: Int): Int = n }
 
 class TestOwnHandlerFromScala2 extends munit.FunSuite {
   type Log[X] = Writer[String, X]
-  type P[R <: Row, A] = Cont0[R, Nothing, Nothing, A]
+  type P[R <: Row, A] = Cont[R, Nothing, Nothing, A]
 
   /** counts the ticks; a peek answers the count so far */
   def counting[T <: Row, A](start: Int): Deep[Counter, T, A, (Int, A)] = new Deep[Counter, T, A, (Int, A)] {
     private var n = start
-    def ret(a: A): P[T, (Int, A)] = Cont0.pure((n, a))
+    def ret(a: A): P[T, (Int, A)] = Cont.pure((n, a))
     def apply[X](op: Counter[X], k: X => P[T, (Int, A)]): P[T, (Int, A)] = {
       if (op == Tick) n += 1
       k(op.answer(n))
@@ -39,7 +39,7 @@ class TestOwnHandlerFromScala2 extends munit.FunSuite {
     type O = +:[Log, Pure]
     // a handler over the row outside it, `O`: its clause performs the writer there, by its path in `O`
     val logging = new Deep[Counter, O, Int, Int] {
-      def ret(a: Int): P[O, Int] = Cont0.pure(a)
+      def ret(a: Int): P[O, Int] = Cont.pure(a)
       def apply[X](op: Counter[X], k: X => P[O, Int]): P[O, Int] =
         if (op == Peek) okay.core.Ops.flatMap(okay.core.Ops.perform[Log, O, Unit](Writer.Tell("peeked")))(_ => k(op.answer(7)))
         else k(op.answer(0))

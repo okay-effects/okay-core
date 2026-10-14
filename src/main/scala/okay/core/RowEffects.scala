@@ -51,12 +51,12 @@ object RowEffects:
   /** okay's interface over the kernel's program itself */
   given eff: RowEffects[Eff] with
     def pure[R <: Row, A](a: A): Eff[R, A] = okay.core.pure(a)
-    def perform[E[_], R <: Row, X](op: E[X])(using in: In[E, R]): Eff[R, X] = okay.one.Cont0.perform[E, R, X](op)
+    def perform[E[_], R <: Row, X](op: E[X])(using in: In[E, R]): Eff[R, X] = okay.one.Cont.perform[E, R, X](op)
     def defer[R <: Row, A, B](thunk: () => Eff[R, A])(f: A => Eff[R, B]): Eff[R, B] = okay.core.defer(thunk()).flatMap(f)
     override def tailcall[R <: Row, A](thunk: => Eff[R, A]): Eff[R, A] = okay.core.defer(thunk)
     extension [R <: Row, A](m: Eff[R, A])
       def flatMap[B](f: A => Eff[R, B]): Eff[R, B] = m.flatMap(f)
       override def map[B](f: A => B): Eff[R, B] = m.map(f)
     def handle[E[_], A, Ans, R <: Row, O <: Row](h: Handler[E, A, Ans])(m: Eff[R, A])(using rm: Removed[E, R, O]): Eff[O, Ans] =
-      okay.one.Cont0.handle(m)(h.at[O])
+      okay.one.Cont.handle(m)(h.at[O])
     def run[A](m: Eff[Pure, A]): A = m.run

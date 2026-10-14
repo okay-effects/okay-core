@@ -1,6 +1,6 @@
 package okay.one
 
-import Cont0.*
+import Cont.*
 import okay.one.row.*
 
 class TestCont0 extends munit.FunSuite:
@@ -21,7 +21,7 @@ class TestCont0 extends munit.FunSuite:
     type S = Int => String
     // `$ ("Hello " + shift0(k => x => k(x)))`: the body's rest answers a String, the body a function — each a program
     // over the row outside the `$`, Pure: run as any program of effects
-    val body: Cont0[Delim[Pure], String ! Pure, S ! Pure, Int] =
+    val body: Cont[Delim[Pure], String ! Pure, S ! Pure, Int] =
       Shift0[Delim[Pure], Pure, Nothing, Nothing, String, S ! Pure, Int](Nearest.Here(), k => Return((x: Int) => k(x).run))
     val p: S ! Pure = Dollar[Pure, String ! Pure, Nothing, Nothing, S, String](
       Bind(body, (n: Int) => Return[Delim[Pure], String ! Pure, String](n.toString)),

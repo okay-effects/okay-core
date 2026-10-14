@@ -1,6 +1,6 @@
 package okay.one.handler
 
-import okay.one.{!, Cont0}
+import okay.one.{!, Cont}
 import okay.one.row.*
 
 /** A HANDLER of `E` over a program of `A`, answering `B`; `T` the row outside it — its `ret` and its clauses programs
@@ -30,11 +30,11 @@ abstract class Translating[E[_], T <: Row, A, B] extends Passing[E, T, A, B]:
 /** a clause given `k`, the rest — ONCE, at any answers: `k` the only way to the answer `O`, so the types have it
  * resumed once, not dropped, not twice; before it and after it anything over `T` */
 abstract class Linear[E[_], T <: Row, A, B] extends Passing[E, T, A, B]:
-  def apply[I, O, X](op: E[X], k: X => Cont0[T, I, O, B]): Cont0[T, I, O, B]
+  def apply[I, O, X](op: E[X], k: X => Cont[T, I, O, B]): Cont[T, I, O, B]
 
 /** translating, the value through it unchanged */
 abstract class Translate[E[_], T <: Row, A] extends Translating[E, T, A, A]:
-  def ret(a: A): A ! T = Cont0.Return(a)
+  def ret(a: A): A ! T = Cont.Return(a)
 
 /** the rest TAKEN: dropped, or `k` — a program of effects only */
 sealed abstract class Taking[E[_], T <: Row, A, B] extends Stateless[E, T, A, B]

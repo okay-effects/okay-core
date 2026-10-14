@@ -25,19 +25,19 @@ enum Throws[A]:
 object Handlers:
   /** each `Get` answered `n` in place */
   def reader[T <: Row, A](n: Int) = new Answering[Ask, T, A, A]:
-    def ret(a: A) = Cont0.pure(a)
+    def ret(a: A) = Cont.pure(a)
     def value[X](op: Ask[X]): X = op match { case Ask.Get => n }
 
   /** the told, a list: a state */
   def log[T <: Row, A] = new Stateful[Log, T, List[String], A, (List[String], A)]:
     def initial = Nil
-    def ret(s: List[String], a: A) = Cont0.pure(s.reverse -> a)
+    def ret(s: List[String], a: A) = Cont.pure(s.reverse -> a)
     def value[X](s: List[String], op: Log[X]): X = op match { case Log.Tell(_) => () }
     def next[X](s: List[String], op: Log[X]) = op match { case Log.Tell(m) => m :: s }
 
   def state[T <: Row, A](s0: Int) = new Stateful[St, T, Int, A, (Int, A)]:
     def initial = s0
-    def ret(s: Int, a: A) = Cont0.pure(s -> a)
+    def ret(s: Int, a: A) = Cont.pure(s -> a)
     def value[X](s: Int, op: St[X]): X = op match
       case St.Get => s
       case St.Put(_) => ()
@@ -46,26 +46,26 @@ object Handlers:
       case St.Put(s1) => s1
 
   def attempt[T <: Row, A] = new Aborting[Throws, T, A, Either[String, A]]:
-    def ret(a: A) = Cont0.pure(Right(a))
-    def abort[X](op: Throws[X]) = op match { case Throws.Raise(e) => Cont0.pure(Left(e)) }
+    def ret(a: A) = Cont.pure(Right(a))
+    def abort[X](op: Throws[X]) = op match { case Throws.Raise(e) => Cont.pure(Left(e)) }
 
   /** each path, all of their values */
   def choose[T <: Row, A] = new Deep[Choose, T, A, List[A]]:
-    def ret(a: A) = Cont0.pure(List(a))
+    def ret(a: A) = Cont.pure(List(a))
     def apply[X](op: Choose[X], k: X => List[A] ! T) = op match
       case Choose.Flip => for a <- k(true); b <- k(false) yield a ++ b
-      case Choose.Fail => Cont0.pure(Nil)
+      case Choose.Fail => Cont.pure(Nil)
 
   /** each `Get` answered `n`, told first: an operation of the row outside in its clause */
   def askLogged[T <: Row, A](n: Int)(using In[Log, T]) = new Deep[Ask, T, A, A]:
-    def ret(a: A) = Cont0.pure(a)
+    def ret(a: A) = Cont.pure(a)
     def apply[X](op: Ask[X], k: X => A ! T) = op match
-      case Ask.Get => Cont0.perform[Log, T, Unit](Log.Tell(s"asked $n")).flatMap(_ => k(n))
+      case Ask.Get => Cont.perform[Log, T, Unit](Log.Tell(s"asked $n")).flatMap(_ => k(n))
 
   /** each `Get` answered from a state, told: a program of effects of the row outside in its clause */
   def askState[T <: Row, A](using In[St, T], In[Log, T]) = new Deep[Ask, T, A, A]:
-    def ret(a: A) = Cont0.pure(a)
+    def ret(a: A) = Cont.pure(a)
     def apply[X](op: Ask[X], k: X => A ! T) = op match
       case Ask.Get =>
-        val r = Cont0.rows[T]
+        val r = Cont.rows[T]
         for s <- r.perform(St.Get); _ <- r.perform(Log.Tell(s"state $s")); a <- k(s) yield a

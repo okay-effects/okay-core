@@ -1,6 +1,6 @@
 package okay.core
 
-import okay.one.Cont0
+import okay.one.Cont
 import okay.one.step.Step
 import okay.one.step.Step.step
 
@@ -46,5 +46,5 @@ object Intercept:
         val rest: x => Eff[R, A] = v => defer(go(y.resume(v)))
         same(y.in, in) match
           case Some(proof) => clause[x](proof(y.op), rest)
-          case None => Cont0.perform[f, R, x](y.op)(using y.in).flatMap(rest)
+          case None => Cont.perform[f, R, x](y.op)(using y.in).flatMap(rest)
     defer(go(fa.step))

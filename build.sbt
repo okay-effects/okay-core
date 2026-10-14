@@ -135,7 +135,7 @@ lazy val scala2Tofu = (project in file("scala2/tofu"))
   .settings(scala2Settings, name := "okay-core-scala2-tofu", libraryDependencies += "tf.tofu" %% "tofu-kernel" % "0.14.3")
 
 /** THE PROOF that the core and its modules stay readable from Scala 2: suites in Scala 2.13 — one's own effects and
- * handlers, tofu over `Program` — on Cont0 and Cont */
+ * handlers, tofu over `Program` — on the one monad */
 lazy val scala2 = (project in file("scala2/tests"))
   .dependsOn(scala2Tofu)
   .settings(scala2Settings, name := "okay-core-scala2-tests", publish / skip := true,

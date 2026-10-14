@@ -248,7 +248,7 @@ run(reader(3)(twice[Reader % Int +: Pure].flatMap(x => ask[Int].at[Reader % Int 
 - Effects and control compose: a `reset` passes every operation on; a shift's body and `k` may perform.
 
 **The answer moved, `Control[R]`** — `shift0` and `$` with the answer type modified (Materzok–Biernacki, typed as
-Asai–Kameyama): the kernel's own nodes, `okay.one.Cont0.{Shift0, Dollar}`, for printf and the like; a program of
+Asai–Kameyama): the kernel's own nodes, `okay.one.Cont.{Shift0, Dollar}`, for printf and the like; a program of
 effects enters control by `cont`, a closed program of control is one of effects again by `lower`. See
 `TestControl`.
 

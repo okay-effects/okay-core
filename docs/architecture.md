@@ -6,7 +6,7 @@ cast in the kernel; the facade has two `@unchecked` matches, named below.
 
 ```
 okay.one        THE KERNEL (imported: scripts/import-one.sh, docs/one-imported.txt)
-  Cont0         the monad: Cont0[R, I, O, A] — R a row of effects (A ! R: no answers) or Control[R] (the answer moved)
+  Cont         the monad: Cont[R, I, O, A] — R a row of effects (A ! R: no answers) or Control[R] (the answer moved)
   row           Row, Pure, E +: T; In[E, R] the path to an effect; Removed[E, R, T] a handler's place in a row
   handler       the forms, values: Answering, Stateful, Translating, Aborting, Deep (k: X => B ! T, data)
   machine       Machine: one CEK loop over one Meta — handlers' levels and $'s; Step
@@ -26,7 +26,7 @@ async/, interop/, scala2/   not yet re-based on the one monad (docs/one.md §5, 
 
 The whole account is okay-one's README; what the facade relies on:
 
-- **A program of effects has no answer types**: `A ! R` is `Cont0[R, Nothing, Nothing, A]`. That is what lets one
+- **A program of effects has no answer types**: `A ! R` is `Cont[R, Nothing, Nothing, A]`. That is what lets one
   program run under any handlers. Answer types move only in `Control[R]` (shift0 and `$`, Materzok–Biernacki, typed
   as Asai–Kameyama), where the effects of `R` are answered in place; a program of effects enters control by `cont`,
   a closed program of control is one of effects again by `reset` (`Lower`).
@@ -38,7 +38,7 @@ The whole account is okay-one's README; what the facade relies on:
   `k`, a program over `T` — data: dropped, resumed, resumed again, kept, resumed anywhere `T` is handled.
 - **The machine** is one `@tailrec eval(c, k, m)`: `c` the node, `k` the frames of its level, `m` the levels
   outside — one `Meta`, a handler's level (`Under`, `UnderState`), a view's, a `$`'s. An operation answered in place
-  goes straight into the frame on top; else out past each level, each put around its rest in a `Cont`; `k(y)` a
+  goes straight into the frame on top; else out past each level, each put around its rest in a `Rest`; `k(y)` a
   `Resume`, the levels put back on the `Meta` in force where it is resumed. A `Raise` is a node: user code throwing
   is caught at its call, the levels unwound, the top answers `Step.Failed`. Everything in constant stack: the levels
   are on the heap, never JVM frames.

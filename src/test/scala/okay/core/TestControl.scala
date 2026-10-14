@@ -1,7 +1,7 @@
 package okay.core
 
-import okay.one.{Cont0, Delim}
-import okay.one.Cont0.Shift0
+import okay.one.{Cont, Delim}
+import okay.one.Cont.Shift0
 import okay.one.row.Nearest
 import okay.std.*
 import okay.core.Control.{reset, shift, shift0}
@@ -59,14 +59,14 @@ class TestControl extends munit.FunSuite:
     type K = Eff[R, String]
     type F = Int => K
     // `$ (ask >>= n => s"$n:" + shift0(k => pure(x => k(x))))`: the answer `String` turned `Int => K`
-    val body: Cont0[Delim[R], K, Eff[R, F], Int] =
-      Shift0[Delim[R], R, Nothing, Nothing, String, Eff[R, F], Int](Nearest.Here(), k => Cont0.Return((x: Int) => k(x)))
-    val p: Eff[R, F] = Cont0.dollar[R, K, Nothing, Nothing, F, String](
-      ask[Int].at[Delim[R]].cont[Eff[R, F]].flatMap(n => body.map(x => s"$n:$x")))((s: String) => Cont0.Return("got " + s))
+    val body: Cont[Delim[R], K, Eff[R, F], Int] =
+      Shift0[Delim[R], R, Nothing, Nothing, String, Eff[R, F], Int](Nearest.Here(), k => Cont.Return((x: Int) => k(x)))
+    val p: Eff[R, F] = Cont.dollar[R, K, Nothing, Nothing, F, String](
+      ask[Int].at[Delim[R]].cont[Eff[R, F]].flatMap(n => body.map(x => s"$n:$x")))((s: String) => Cont.Return("got " + s))
     assertEquals(run(run(reader(1)(p))(42).handle(okay.one.std.Reader[Int, Pure, String](7))), "got 1:42")
 
   test("a handler over a $: its k taken past the $, the $ put back each time it is resumed"):
     type R = Choose +: Pure
-    val p: Eff[R, Int] = Cont0.dollar[R, Eff[R, Int], Nothing, Nothing, Int, Int](
-      among(Seq(1, 2)).at[Delim[R]].cont[Eff[R, Int]].map(_ * 10))((a: Int) => Cont0.Return(a + 1))
+    val p: Eff[R, Int] = Cont.dollar[R, Eff[R, Int], Nothing, Nothing, Int, Int](
+      among(Seq(1, 2)).at[Delim[R]].cont[Eff[R, Int]].map(_ * 10))((a: Int) => Cont.Return(a + 1))
     assertEquals(run(choose(p)), Seq(11, 21))

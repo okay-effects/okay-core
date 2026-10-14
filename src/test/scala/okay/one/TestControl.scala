@@ -1,6 +1,6 @@
 package okay.one
 
-import okay.one.Cont0.*
+import okay.one.Cont.*
 import okay.one.Handlers.*
 import okay.one.handler.*
 import okay.one.row.*
@@ -9,9 +9,9 @@ import okay.one.row.*
  * row outside going out past the `$` to their handlers; handlers inside the `$`, in the `k` of a shift0 past them */
 class TestControl extends munit.FunSuite:
   /** a program under a `$` over `R`, its answers `L` unmoved */
-  type C[R <: Row, L, A] = Cont0[Delim[R], L, L, A]
+  type C[R <: Row, L, A] = Cont[Delim[R], L, L, A]
   /** a shift0 under the `$` over `R`, its rest a program of effects over `R` */
-  def sh[R <: Row, X, O](f: (X => Int ! R) => O): Cont0[Delim[R], Int ! R, O, X] =
+  def sh[R <: Row, X, O](f: (X => Int ! R) => O): Cont[Delim[R], Int ! R, O, X] =
     Shift0[Delim[R], R, Nothing, Nothing, Int, O, X](Nearest.Here(), f)
 
   def ask[R <: Row, L](using In[Ask, R]): C[R, L, Int] = perform[Ask, Delim[R], Int](Ask.Get).cont[L]
@@ -31,7 +31,7 @@ class TestControl extends munit.FunSuite:
     type L = Int ! R
     type M = C[R, L, Int]
     // `$ ($ (flip >>= b => shift0(k => k(b ? 1 : 2) + k(10))) * 100)`: the inner `$` under the outer, a row deeper
-    val inner: Cont0[Delim[Delim[R]], M, M, Int] = Bind(flip[Delim[R], M], (b: Boolean) =>
+    val inner: Cont[Delim[Delim[R]], M, M, Int] = Bind(flip[Delim[R], M], (b: Boolean) =>
       Shift0[Delim[Delim[R]], Delim[R], L, L, Int, M, Int](Nearest.Here(),
         k => Bind(k(if b then 1 else 2), (a: Int) => Map(k(10), (c: Int) => a + c))))
     val outer: M = Dollar[Delim[R], M, L, L, Int, Int](inner, (a: Int) => Return(a * 100))
@@ -44,7 +44,7 @@ class TestControl extends munit.FunSuite:
     type K = String ! R
     type S = Int => K
     // `$ (flip >>= b => "got " + b + shift0(k => pure(x => k(x))))`: the answer `String` turned `Int => K`
-    val body: Cont0[Delim[R], K, S ! R, Int] =
+    val body: Cont[Delim[R], K, S ! R, Int] =
       Shift0[Delim[R], R, Nothing, Nothing, String, S ! R, Int](Nearest.Here(), k => Return((x: Int) => k(x)))
     val p: S ! R = Dollar[R, K, Nothing, Nothing, S, String](
       Bind(flip[R, S ! R], (b: Boolean) => Map(body, (n: Int) => s"$b $n")),
@@ -80,7 +80,7 @@ class TestControl extends munit.FunSuite:
   /** a cell counting its reads: a state, each `Get` the count so far */
   def counter[T <: Row, A](s0: Int) = new Stateful[St, T, Int, A, A]:
     def initial = s0
-    def ret(s: Int, a: A) = Cont0.pure(a)
+    def ret(s: Int, a: A) = Cont.pure(a)
     def value[X](s: Int, op: St[X]): X = op match
       case St.Get => s
       case St.Put(_) => ()
@@ -92,7 +92,7 @@ class TestControl extends munit.FunSuite:
     type S = Int => String
     type Q = St +: Delim[Pure]
     // `$ (handle_counter(get ; x <- shift0(k => pure(x => k(x))) ; get ; s"$n $x $m"))`
-    val body: Cont0[Q, String ! Pure, S ! Pure, String] =
+    val body: Cont[Q, String ! Pure, S ! Pure, String] =
       perform[St, Q, Int](St.Get).cont[S ! Pure].flatMap(n =>
         Shift0[Q, Pure, Nothing, Nothing, String, S ! Pure, Int](summon, k => Return((x: Int) => k(x).run)).flatMap(x =>
           perform[St, Q, Int](St.Get).cont[String ! Pure].map(m => s"$n $x $m")))
@@ -105,7 +105,7 @@ class TestControl extends munit.FunSuite:
     type T = Ask +: Pure
     type Q = Delim[T]
     type S = Int => String
-    val body: Cont0[Q, String ! T, S ! T, String] = for
+    val body: Cont[Q, String ! T, S ! T, String] = for
       n <- perform[Ask, Q, Int](Ask.Get)                                 // lifted to the answers of the rest, S ! T
       x <- rows[Q].shift0[String, Int](k => pure((x: Int) => k(x).handle(reader(n)).run))
       m <- perform[Ask, Q, Int](Ask.Get)                                 // lifted to the shift0's rest's, String ! T
@@ -118,7 +118,7 @@ class TestControl extends munit.FunSuite:
     type R = Ask +: Delim[Pure]
     def p[R <: Row](using In[Ask, R]): Int ! R = for n <- perform[Ask, R, Int](Ask.Get) yield n + 1
     val under: Int ! R = p[R]
-    val body: Cont0[R, Int ! Pure, Int ! Pure, Int] = for
+    val body: Cont[R, Int ! Pure, Int ! Pure, Int] = for
       a <- under
       x <- rows[R].shift0[Int, Int](k => k(a).flatMap(b => k(b)))
     yield a + x
@@ -128,7 +128,7 @@ class TestControl extends munit.FunSuite:
 
   test("an Answering handler inside the $, under a shift0 resumed twice: in k both times") {
     type R = Ask +: Delim[Pure]
-    val body: Cont0[R, Int ! Pure, Int ! Pure, Int] =
+    val body: Cont[R, Int ! Pure, Int ! Pure, Int] =
       Shift0[R, Pure, Nothing, Nothing, Int, Int ! Pure, Int](summon, k => Bind(k(1), (a: Int) => Map(k(2), (b: Int) => a + b)))
         .flatMap(x => perform[Ask, R, Int](Ask.Get).cont[Int ! Pure].map(_ + x))
     assertEquals(dollar(body.handle(reader(10)))((a: Int) => Return(a)).run, 23)
@@ -139,7 +139,7 @@ class TestControl extends munit.FunSuite:
     val tell = new Translate[Log, Delim[Ask +: Pure], Int]:
       def apply[X](op: Log[X]) = op match
         case Log.Tell(s) => perform[Ask, Delim[Ask +: Pure], Int](Ask.Get).map(n => if n > 0 then () else ())
-    val body: Cont0[R, Int ! (Ask +: Pure), Int ! (Ask +: Pure), Int] =
+    val body: Cont[R, Int ! (Ask +: Pure), Int ! (Ask +: Pure), Int] =
       perform[Log, R, Unit](Log.Tell("a")).cont[Int ! (Ask +: Pure)].flatMap(_ =>
         Shift0[R, Ask +: Pure, Nothing, Nothing, Int, Int ! (Ask +: Pure), Int](summon, k => k(1)).map(_ + 1))
     assertEquals(dollar(body.handle(tell))((a: Int) => Return(a)).handle(reader(5)).run, 2)
@@ -151,11 +151,11 @@ class TestControl extends munit.FunSuite:
     var log = List.empty[String]
     val once = new Linear[Log, Delim[Pure], String, String]:
       def ret(a: String) = pure(a)
-      def apply[I, O, X](op: Log[X], k: X => Cont0[Delim[Pure], I, O, String]) = op match
+      def apply[I, O, X](op: Log[X], k: X => Cont[Delim[Pure], I, O, String]) = op match
         case Log.Tell(s) =>
           log = s :: log
           k(()).map(r => { log = ("after " + s) :: log; r })
-    val body: Cont0[Q, String ! Pure, S ! Pure, String] =
+    val body: Cont[Q, String ! Pure, S ! Pure, String] =
       perform[Log, Q, Unit](Log.Tell("x")).cont[S ! Pure].flatMap(_ =>
         Shift0[Q, Pure, Nothing, Nothing, String, S ! Pure, Int](summon, k => Return((x: Int) => k(x).run)).map(_.toString))
     val f: S = dollar(body.handle(once))((s: String) => Return("<" + s + ">")).run

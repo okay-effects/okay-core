@@ -1,6 +1,6 @@
 package okay.one
 
-import okay.one.Cont0.{pure, rows}
+import okay.one.Cont.{pure, rows}
 import okay.one.handler.*
 import okay.one.row.*
 import okay.one.std.*
@@ -24,7 +24,7 @@ class TestStream extends munit.FunSuite:
         case Gen.Next(w, rest) => go(rest, n - 1, w :: acc)
     go(g, n, Nil)
 
-  def from[R <: Row](i: Int)(using In[E, R]): Unit ! R = Emit.emit[Int, R](i).flatMap(_ => Cont0.defer(from[R](i + 1)))
+  def from[R <: Row](i: Int)(using In[E, R]): Unit ! R = Emit.emit[Int, R](i).flatMap(_ => Cont.defer(from[R](i + 1)))
 
   test("the elements in order, an infinite body pulled as far as asked") {
     assertEquals(take(stream(from(0)), 5), List(0, 1, 2, 3, 4))
@@ -36,7 +36,7 @@ class TestStream extends munit.FunSuite:
 
   test("lazy: the body runs as far as pulled; a rest pulled again, run again, the same elements") {
     var ran = 0
-    def counted(i: Int): Unit ! E +: Pure = Cont0.defer { ran += 1; Emit.emit[Int, E +: Pure](i).flatMap(_ => counted(i + 1)) }
+    def counted(i: Int): Unit ! E +: Pure = Cont.defer { ran += 1; Emit.emit[Int, E +: Pure](i).flatMap(_ => counted(i + 1)) }
     val first = stream(counted(0)).run
     assertEquals(ran, 1)
     first match
@@ -57,7 +57,7 @@ class TestStream extends munit.FunSuite:
 
   /** a counter in the body under `h`, its state the stream's */
   def counter[R <: Row](using In[State % Int, R], In[E, R]): Unit ! R =
-    State.get[Int, R].flatMap(n => State.put[Int, R](n + 1).flatMap(_ => Emit.emit[Int, R](n))).flatMap(_ => Cont0.defer(counter[R]))
+    State.get[Int, R].flatMap(n => State.put[Int, R](n + 1).flatMap(_ => Emit.emit[Int, R](n))).flatMap(_ => Cont.defer(counter[R]))
 
   test("a cell handled in the body lives in the stream: one every pull shares") {
     type R = State % Int +: E +: Pure
@@ -67,7 +67,7 @@ class TestStream extends munit.FunSuite:
       def value[X](op: State[Int, X]): X = op match
         case _: State.Get[s] => s
         case p: State.Put[s] => s = p.s
-    val src = stream(Cont0.defer(counter[R].handle(cell(0))))
+    val src = stream(Cont.defer(counter[R].handle(cell(0))))
     src.run match
       case Gen.Next(w, rest) =>
         assertEquals(w :: take(rest, 3), List(0, 1, 2, 3))

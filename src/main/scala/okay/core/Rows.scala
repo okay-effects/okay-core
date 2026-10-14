@@ -13,18 +13,18 @@ type Removed[E[_], R <: Row, T <: Row] = okay.one.row.Removed[E, R, T]
 val Removed: okay.one.row.Removed.type = okay.one.row.Removed
 /** the kernel's program of effects over the row `R` — `okay.one`'s `A ! R`, named the other way round here, the row
  * first, as a monad is: `Eff[R, A]`. `A ! Es` (below) is the facade's: the effects named, the row the handlers' */
-type Eff[R <: Row, +A] = okay.one.Cont0[R, Nothing, Nothing, A]   // `okay.one`'s `A ! R`, written out: Scala 2 sees no top-level alias
+type Eff[R <: Row, +A] = okay.one.Cont[R, Nothing, Nothing, A]   // `okay.one`'s `A ! R`, written out: Scala 2 sees no top-level alias
 
 /** THE KERNEL'S WORDS FOR SCALA 2, which cannot read an inline definition (the kernel's `perform`, its `In.here`):
  * `perform` by a path given, and the paths as implicits — `import okay.core.Ops._` */
 object Ops:
-  def perform[E[_], R <: Row, X](op: E[X])(using in: In[E, R]): Eff[R, X] = okay.one.Cont0.perform[E, R, X](op)
+  def perform[E[_], R <: Row, X](op: E[X])(using in: In[E, R]): Eff[R, X] = okay.one.Cont.perform[E, R, X](op)
   /** `p` with its effect `E` handled by `h`, `E` taken off wherever it is in the row (the kernel's `handle`, an
    * extension Scala 2 cannot read) */
   def handle[E[_], R <: Row, T <: Row, A, B](p: Eff[R, A])(h: okay.one.handler.Handler[E, T, A, B])(using rm: Removed[E, R, T]): Eff[T, B] =
-    okay.one.Cont0.handle(p)(h)
+    okay.one.Cont.handle(p)(h)
   /** a program with nothing left to handle, run */
-  def run[A](p: Eff[Pure, A]): A = okay.one.Cont0.run(p)
+  def run[A](p: Eff[Pure, A]): A = okay.one.Cont.run(p)
   /** the binds, which the kernel inlines */
   def flatMap[R <: Row, A, B](p: Eff[R, A])(f: A => Eff[R, B]): Eff[R, B] = p.flatMap(f)
   def map[R <: Row, A, B](p: Eff[R, A])(f: A => B): Eff[R, B] = p.map(f)

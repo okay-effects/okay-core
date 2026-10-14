@@ -1,7 +1,7 @@
 package okay.async
 
 import okay.core.*
-import okay.one.Cont0
+import okay.one.Cont
 import okay.one.handler.Deep
 import okay.one.step.Step
 import okay.one.step.Step.step
@@ -45,7 +45,7 @@ object Async:
    * loop, not a frame */
   def runAsync[A](body: Body[A])(done: Either[Throwable, A] => Unit): Unit =
     val p: Eff[Async +: Pure, Either[Throwable, A]] =
-      Cont0.handle(body(using Place.head))(okay.one.std.Throws.either[Throwable, Async +: Pure, A])
+      Cont.handle(body(using Place.head))(okay.one.std.Throws.either[Throwable, Async +: Pure, A])
     drive(p.step, done)
 
   private def drive[A](s0: Step[Async +: Pure, Either[Throwable, A]], done: Either[Throwable, A] => Unit): Unit =

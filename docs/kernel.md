@@ -16,7 +16,7 @@ OnCore.foreign(otherComputation)               // import: another implementation
 
 ## How
 
-**A kernel program is a program of the one monad** over one row, `Req +: Pure` — `P`, a `Cont0` in a box: `pure` a
+**A kernel program is a program of the one monad** over one row, `Req +: Pure` — `P`, a `Cont` in a box: `pure` a
 `Return`, `flatMap` a `Bind`, `delay` a `Defer`. Nothing of the bridge's own runs a program; the machine's loop does,
 in constant stack, `k` data.
 

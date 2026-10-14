@@ -1,6 +1,6 @@
 package okay.core
 
-import okay.one.Cont0
+import okay.one.Cont
 import okay.one.handler.Deep
 import okay.std.*
 
@@ -42,8 +42,8 @@ class TestAnywhere extends munit.FunSuite:
         _ <- Say.Line(s"$n").perform
         m <- effect[State % Int, Int](State.Get())
       yield m
-    assertEquals(Cont0.handle(counting)(State[Int, Say +: Pure, Int](41)).handle(writer[(Int, Int)]).value, (List("41"), (42, 42)))
-    assertEquals(Cont0.handle(counting.handle(writer[Int]))(State[Int, Pure, (List[String], Int)](41)).value, (42, (List("41"), 42)))
+    assertEquals(Cont.handle(counting)(State[Int, Say +: Pure, Int](41)).handle(writer[(Int, Int)]).value, (List("41"), (42, 42)))
+    assertEquals(Cont.handle(counting.handle(writer[Int]))(State[Int, Pure, (List[String], Int)](41)).value, (42, (List("41"), 42)))
 
   test("Pure + A + B and A +: B +: Pure are one row; a tail call costs no frame — 100 000 of them"):
     import RowEffects.+
@@ -62,15 +62,15 @@ class TestAnywhere extends munit.FunSuite:
     import okay.one.std.{Reader as R, State as S, Writer as W, Throws as Th}
     type R2 = Writer % String +: Throws % String +: Pure
     type R1 = Throws % String +: Pure
-    assertEquals(Cont0.handle(Cont0.handle(Cont0.handle(counting)(S[Int, R2, Int](41)))(W.collect[String, R1, (Int, Int)]))(Th.either[String, Pure, (List[String], (Int, Int))]).run,
+    assertEquals(Cont.handle(Cont.handle(Cont.handle(counting)(S[Int, R2, Int](41)))(W.collect[String, R1, (Int, Int)]))(Th.either[String, Pure, (List[String], (Int, Int))]).run,
       Right((List("41"), (42, 42))))
     type R2b = State % Int +: Throws % String +: Pure
-    assertEquals(Cont0.handle(Cont0.handle(Cont0.handle(counting)(W.collect[String, R2b, Int]))(Th.either[String, State % Int +: Pure, (List[String], Int)]))(S[Int, Pure, Either[String, (List[String], Int)]](41)).run,
+    assertEquals(Cont.handle(Cont.handle(Cont.handle(counting)(W.collect[String, R2b, Int]))(Th.either[String, State % Int +: Pure, (List[String], Int)]))(S[Int, Pure, Either[String, (List[String], Int)]](41)).run,
       (42, Right((List("41"), 42))))
     // a failure under the state keeps it, over the state loses it
-    assertEquals(Cont0.handle(Cont0.handle(Cont0.handle(counting)(Th.either[String, State % Int +: Writer % String +: Pure, Int]))(W.collect[String, State % Int +: Pure, Either[String, Int]]))(S[Int, Pure, (List[String], Either[String, Int])](200)).run,
+    assertEquals(Cont.handle(Cont.handle(Cont.handle(counting)(Th.either[String, State % Int +: Writer % String +: Pure, Int]))(W.collect[String, State % Int +: Pure, Either[String, Int]]))(S[Int, Pure, (List[String], Either[String, Int])](200)).run,
       (201, (List("200"), Left("big"))))
-    assertEquals(Cont0.handle(Cont0.handle(Cont0.handle(counting)(S[Int, Writer % String +: Throws % String +: Pure, Int](200)))(Th.either[String, Writer % String +: Pure, (Int, Int)]))(W.collect[String, Pure, Either[String, (Int, Int)]]).run,
+    assertEquals(Cont.handle(Cont.handle(Cont.handle(counting)(S[Int, Writer % String +: Throws % String +: Pure, Int](200)))(Th.either[String, Writer % String +: Pure, (Int, Int)]))(W.collect[String, Pure, Either[String, (Int, Int)]]).run,
       (List("200"), Left("big")))
 
   test("a handler inside a body taken off by an outer one: paths relocated through both"):
@@ -78,7 +78,7 @@ class TestAnywhere extends munit.FunSuite:
     type Inner = Reader % Int +: State % Int +: Pure
     val body: Eff[Inner, Int] = ask[Int].at[Inner].flatMap(a => get[Int].at[Inner].map(_ + a))
     // the state outside, handled first though it is second in the row; the reader inside, after it
-    val p = Cont0.handle(Cont0.handle(body)(S[Int, Reader % Int +: Pure, Int](10)).map(_._2))(R[Int, Pure, Int](5))
+    val p = Cont.handle(Cont.handle(body)(S[Int, Reader % Int +: Pure, Int](10)).map(_._2))(R[Int, Pure, Int](5))
     assertEquals(p.run, 15)
 
   test("local and handleWith inside a body whose row was another's: the interceptor's path relocated"):
@@ -86,7 +86,7 @@ class TestAnywhere extends munit.FunSuite:
     type R2 = Throws % String +: Reader % Int +: Pure
     val body: Eff[R2, Int] = local[Int, Int, R2](_ * 10)(ask[Int].perform)
       .flatMap(a => handleWith[String, Int, R2](raise("x").perform)(e => pure(e.length + a)))
-    assertEquals(Cont0.handle(Cont0.handle(body)(R[Int, Throws % String +: Pure, Int](4)))(Th.either[String, Pure, Int]).run, Right(41))
+    assertEquals(Cont.handle(Cont.handle(body)(R[Int, Throws % String +: Pure, Int](4)))(Th.either[String, Pure, Int]).run, Right(41))
 
   // -- one's own effect written once, over any row outside; taken off wherever it is
   enum Log[A]:
@@ -100,13 +100,13 @@ class TestAnywhere extends munit.FunSuite:
     import okay.one.std.Reader as R
     type R5 = Reader % Int +: Log +: Pure
     val p: Eff[R5, Int] = ask[Int].at[R5].flatMap(n => perform(Log.Line(s"n=$n")).at[R5].map(_ => n * 2))
-    assertEquals(Cont0.handle(Cont0.handle(p)(logging[Int, Reader % Int +: Pure]))(R[Int, Pure, (List[String], Int)](21)).run, (List("n=21"), 42))
+    assertEquals(Cont.handle(Cont.handle(p)(logging[Int, Reader % Int +: Pure]))(R[Int, Pure, (List[String], Int)](21)).run, (List("n=21"), 42))
 
   test("100 000 operations of an effect deep in the row, its handler taken off from there"):
     import okay.one.std.{Reader as R, State as S, Writer as W}
     type R4 = Writer % Int +: Reader % Int +: State % Int +: Pure
     def loop(i: Int): Eff[R4, Unit] =
       if i == 0 then pure(()) else get[Int].at[R4].flatMap(s => put(s + 1).at[R4]).flatMap(_ => loop(i - 1))
-    val r = Cont0.handle(Cont0.handle(Cont0.handle(loop(100000))(S[Int, Writer % Int +: Reader % Int +: Pure, Unit](0)))(W.collect[Int, Reader % Int +: Pure, (Int, Unit)]))(R[Int, Pure, (List[Int], (Int, Unit))](0)).run
+    val r = Cont.handle(Cont.handle(Cont.handle(loop(100000))(S[Int, Writer % Int +: Reader % Int +: Pure, Unit](0)))(W.collect[Int, Reader % Int +: Pure, (Int, Unit)]))(R[Int, Pure, (List[Int], (Int, Unit))](0)).run
     assertEquals(r._1, Nil)
     assertEquals(r._2._1, 100000)

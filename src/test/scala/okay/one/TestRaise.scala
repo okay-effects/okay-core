@@ -1,6 +1,6 @@
 package okay.one
 
-import okay.one.Cont0.*
+import okay.one.Cont.*
 import okay.one.Handlers.*
 import okay.one.handler.*
 import okay.one.row.*
@@ -37,7 +37,7 @@ class TestRaise extends munit.FunSuite:
     val inRet = perform[Ask, R, Int](Ask.Get).handle(new Answering[Ask, Pure, Int, Int]:
       def ret(a: Int) = thrower
       def value[X](op: Ask[X]): X = op match { case Ask.Get => 1 })
-    val inDefer = Cont0.defer[Pure, Int](thrower)
+    val inDefer = Cont.defer[Pure, Int](thrower)
     for p <- List(inBind, inValue, inClause, inRet, inDefer) do assertEquals(failed(p.step), boom)
   }
 
@@ -69,9 +69,9 @@ class TestRaise extends munit.FunSuite:
   test("stack safe: a throw under 100 000 handlers and binds, unwound") {
     def nested[R <: Row](i: Int)(using In[Ask, R]): Int ! R =
       if i == 0 then perform[Ask, R, Int](Ask.Get).map(_ => throw boom)
-      else Cont0.defer(nested[Ask +: R](i - 1)).handle(reader(i)).map(_ + 1)
+      else Cont.defer(nested[Ask +: R](i - 1)).handle(reader(i)).map(_ + 1)
     assertEquals(failed(nested[Ask +: Pure](100000).handle(reader(0)).step), boom)
     def deep(i: Int): Int ! Ask +: Pure =
-      if i == 0 then pure(0).map(_ => throw boom) else Cont0.defer(deep(i - 1)).map(_ + 1)
+      if i == 0 then pure(0).map(_ => throw boom) else Cont.defer(deep(i - 1)).map(_ + 1)
     assertEquals(failed(deep(100000).handle(reader(1)).step), boom)
   }

@@ -2,7 +2,7 @@ package okay.scala2
 
 import cats.Functor
 import okay.core.Intercept
-import okay.one.Cont0
+import okay.one.Cont
 import okay.core.Ops._
 import okay.one.row.{In, Row}
 import okay.one.std.{Reader, Throws}
@@ -11,7 +11,7 @@ import tofu.{Errors, WithLocal}
 /** tofu's typeclasses over `Of[R]#L` for Scala 2, against tofu's 2.13 artifacts — as `okay.interop.TofuProgram`'s,
  * by `Intercept.at`: `import okay.scala2.CatsProgram._, okay.scala2.TofuProgram._` */
 object TofuProgram {
-  type P[R <: Row, A] = Cont0[R, Nothing, Nothing, A]
+  type P[R <: Row, A] = Cont[R, Nothing, Nothing, A]
 
   implicit def withLocal[R <: Row, C](implicit in: In[ReaderOf[C]#L, R]): WithLocal[Of[R]#L, C] = new WithLocal[Of[R]#L, C] {
     def functor: Functor[Of[R]#L] = CatsProgram.monad[R]
@@ -30,7 +30,7 @@ object TofuProgram {
       })
     def restore[A](fa: P[R, A]): P[R, Option[A]] =
       Intercept.by[ThrowsOf[E]#L, R, Option[A]](in)(okay.core.Ops.map(fa)(a => Option(a)))(new Intercept.Clause[ThrowsOf[E]#L, R, Option[A]] {
-        def apply[X](op: Throws[E, X], k: X => P[R, Option[A]]): P[R, Option[A]] = Cont0.pure[R, Option[A]](None)
+        def apply[X](op: Throws[E, X], k: X => P[R, Option[A]]): P[R, Option[A]] = Cont.pure[R, Option[A]](None)
       })
     def lift[A](fa: P[R, A]): P[R, A] = fa
   }
