@@ -65,7 +65,7 @@ def counting(i: Int): Int ! State % Int =
 run(state(0)(counting(100000)))   // (100000, 100000)
 ```
 
-## The standard effects (`okay.std`)
+## The standard effects (`okay.core.std`)
 
 | Effect | Operations | Handler → answer |
 |---|---|---|

@@ -1,6 +1,6 @@
 package okay.core
 
-import okay.std.*
+import okay.core.std.*
 
 /** `intercept`: an effect already in the row handled again for a body — `local`, `handleWith` */
 class TestIntercept extends munit.FunSuite:

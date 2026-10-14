@@ -1,7 +1,7 @@
 package okay.core
 
 import okay.one.handler.Deep
-import okay.std.*
+import okay.core.std.*
 
 /** the handlers' semantics: a clause outside its handler, the order of handlers with a functional state, two
  * handlers of one effect by path, deep crossings */

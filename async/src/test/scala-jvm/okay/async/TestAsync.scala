@@ -1,7 +1,7 @@
 package okay.async
 
 import okay.core.*
-import okay.std.*
+import okay.core.std.*
 import java.util.concurrent.{Executors, TimeUnit}
 
 /** `Async`: `runIO` the run, at the top, its failure the `Left` */

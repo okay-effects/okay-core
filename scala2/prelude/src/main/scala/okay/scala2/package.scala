@@ -9,5 +9,5 @@ package object scala2 {
   type StateOf[S] = { type L[X] = okay.one.std.State[S, X] }
   type WriterOf[W] = { type L[X] = okay.one.std.Writer[W, X] }
   type ThrowsOf[E] = { type L[X] = okay.one.std.Throws[E, X] }
-  type EmitOf[W] = { type L[X] = okay.std.Emit[W, X] }
+  type EmitOf[W] = { type L[X] = okay.core.std.Emit[W, X] }
 }

@@ -2,7 +2,7 @@ package okay.core
 
 import okay.one.Cont
 import okay.one.handler.Deep
-import okay.std.*
+import okay.core.std.*
 
 /** a handler of an effect wherever it is in a row: okay's shape, over the kernel's program itself */
 class TestAnywhere extends munit.FunSuite:

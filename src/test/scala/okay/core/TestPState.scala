@@ -1,6 +1,6 @@
 package okay.core
 
-import okay.std.*
+import okay.core.std.*
 
 /** `PState`: the state's type in the answer type, in control; a program of effects by `lower` */
 class TestPState extends munit.FunSuite:

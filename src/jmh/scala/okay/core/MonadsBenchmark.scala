@@ -4,7 +4,7 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.one.handler.{Answering as OneAnswering, Deep}
 import Control.{reset, shift}
-import okay.std.*
+import okay.core.std.*
 
 /** an operation answered with its value; one crossed by every `Tick`, performed never */
 enum Tick[A]:
@@ -83,7 +83,7 @@ class MonadsBenchmark:
     if i == 0 then get[Int].at[St] else get[Int].at[St].flatMap(x => put(x + 1).at[St]).flatMap(_ => counting(i - 1))
 
   @Benchmark
-  def state(): Int = run(okay.std.state(0)(counting(n)))._1
+  def state(): Int = run(okay.core.std.state(0)(counting(n)))._1
   @Benchmark
   def stateCell(): Int = run(cell(0)(counting(n)))._1
 
@@ -92,7 +92,7 @@ class MonadsBenchmark:
     if i == 0 then get[Int].at[DeepRow] else get[Int].at[DeepRow].flatMap(x => put(x + 1).at[DeepRow]).flatMap(_ => countingDeep(i - 1))
   /** the same, the state under two more handlers */
   @Benchmark
-  def stateDeep(): Int = run(reader(0)(okay.std.writer[Int, (Int, Int), Reader % Int +: Pure](okay.std.state(0)(countingDeep(n)))))._2._1
+  def stateDeep(): Int = run(reader(0)(okay.core.std.writer[Int, (Int, Int), Reader % Int +: Pure](okay.core.std.state(0)(countingDeep(n)))))._2._1
 
   type Rd = Reader % Int +: Pure
   def asks(i: Int, acc: Int): Int ! Reader % Int = if i == 0 then okay.core.pure(acc) else ask[Int].flatMap(v => asks(i - 1, acc + v))
@@ -108,26 +108,26 @@ class MonadsBenchmark:
   def telling(i: Int): Eff[Wr, Unit] = if i == 0 then okay.core.pure(()) else tell(i).at[Wr].flatMap(_ => telling(i - 1))
 
   @Benchmark
-  def writer(): Int = run(okay.std.writer[Int, Unit, Pure](telling(n)))._1.length
+  def writer(): Int = run(okay.core.std.writer[Int, Unit, Pure](telling(n)))._1.length
 
   def raising(i: Int, acc: Int): Eff[Pure, Int] =
     if i == 0 then okay.core.pure(acc)
-    else okay.std.throws[String, Int, Pure](raise("no").at[Throws % String +: Pure]).flatMap(e => raising(i - 1, acc + e.fold(_.length, identity)))
+    else okay.core.std.throws[String, Int, Pure](raise("no").at[Throws % String +: Pure]).flatMap(e => raising(i - 1, acc + e.fold(_.length, identity)))
 
   @Benchmark
   def throwing(): Int = run(raising(n, 0))
 
   @Benchmark
-  def choose(): Int = run(okay.std.choose(among(0 until n).map(_ + 1))).length
+  def choose(): Int = run(okay.core.std.choose(among(0 until n).map(_ + 1))).length
   /** the same under one more handler */
   @Benchmark
-  def chooseNested(): Int = run(handleIn(ticking[Int, Pure])(okay.std.choose(among(0 until n).map(_ + 1)).map(_.length)))
+  def chooseNested(): Int = run(handleIn(ticking[Int, Pure])(okay.core.std.choose(among(0 until n).map(_ + 1)).map(_.length)))
 
   def fibs(i: Int, a: Long, b: Long): Unit ! Emit % Long =
     if i == 0 then okay.core.pure(()) else yield_(a).flatMap(_ => fibs(i - 1, b, a + b))
 
   @Benchmark
-  def collect(): Long = run(okay.std.collect[Long, Unit, Pure](fibs(n, 0, 1)))._1.sum
+  def collect(): Long = run(okay.core.std.collect[Long, Unit, Pure](fibs(n, 0, 1)))._1.sum
 
   def leftMapping: Eff[Pure, Int] =
     var p: Eff[Pure, Int] = okay.core.pure(0)
@@ -195,14 +195,14 @@ class MonadsBenchmark:
     if i == 0 then get[Int] else get[Int].flatMap(x => put(x + 1)).flatMap(_ => countingBang(i - 1))
 
   @Benchmark
-  def stateBang(): Int = run(okay.std.state(0)(countingBang(n)))._1
+  def stateBang(): Int = run(okay.core.std.state(0)(countingBang(n)))._1
 
   /** `Int ! State % Int + Reader % Int`: two effects joined, each path found through `+`'s sides, per call */
   def countingBoth(i: Int): Int ! State % Int + Reader % Int =
     if i == 0 then get[Int] else ask[Int].flatMap(d => get[Int].flatMap(x => put(x + d))).flatMap(_ => countingBoth(i - 1))
 
   @Benchmark
-  def stateReaderBang(): Int = run(okay.std.reader(1)(okay.std.state(0)(countingBoth(n))))._1
+  def stateReaderBang(): Int = run(okay.core.std.reader(1)(okay.core.std.state(0)(countingBoth(n))))._1
 
   /** a column safe from the queens placed, the nearest first — a loop */
   def safe(col: Int, placed: List[Int]): Boolean =
@@ -219,35 +219,35 @@ class MonadsBenchmark:
 
   /** the 92 solutions of 8 queens by choose — not divided by `n` */
   @Benchmark
-  def queens(): Int = run(okay.std.choose(place(0, Nil))).length
+  def queens(): Int = run(okay.core.std.choose(place(0, Nil))).length
 
   def forever(a: Long, b: Long): Unit ! Emit % Long = yield_(a).flatMap(_ => forever(b, a + b))
 
   /** `n` elements of an infinite generator pulled, each a run of the rest */
   @Benchmark
-  def generate(): Long = sum(okay.std.stream[Long](forever(0, 1)).start)
+  def generate(): Long = sum(okay.core.std.stream[Long](forever(0, 1)).start)
 
   /** the same, each element mapped in the generator's handler: `Stream.map`, fused */
   @Benchmark
-  def generateMapped(): Long = sum(okay.std.stream[Long](forever(0, 1)).map(_ + 1).start)
+  def generateMapped(): Long = sum(okay.core.std.stream[Long](forever(0, 1)).map(_ + 1).start)
 
   /** `n` elements of an infinite generator taken: each element's rest run in place by the handler, the rest after
    * the `n`th dropped */
   @Benchmark
-  def generateTaken(): Long = okay.std.stream[Long](forever(0, 1)).take(n).sum
+  def generateTaken(): Long = okay.core.std.stream[Long](forever(0, 1)).take(n).sum
 
   /** `n` elements of a finite generator summed, pushed: each where it is yielded, no rest captured */
   @Benchmark
-  def generatePushed(): Long = okay.std.stream[Long](fibs(n, 0, 1)).fold(0L)(_ + _)
+  def generatePushed(): Long = okay.core.std.stream[Long](fibs(n, 0, 1)).fold(0L)(_ + _)
 
   /** the first `n` elements summed, each pulled by a run of the rest: no list made */
-  private def sum(s0: okay.std.Step[Long]): Long =
+  private def sum(s0: okay.core.std.Step[Long]): Long =
     var s = s0
     var i = 0
     var sum = 0L
     while i < n do
       s match
-        case e: okay.std.Step.Next[Long] => sum += e.w; i += 1; if i < n then s = e.pull()
-        case e: okay.std.Step.Later[Long] => sum += e.w; i += 1; if i < n then s = e.pull()
-        case okay.std.Step.Done() => i = n
+        case e: okay.core.std.Step.Next[Long] => sum += e.w; i += 1; if i < n then s = e.pull()
+        case e: okay.core.std.Step.Later[Long] => sum += e.w; i += 1; if i < n then s = e.pull()
+        case okay.core.std.Step.Done() => i = n
     sum

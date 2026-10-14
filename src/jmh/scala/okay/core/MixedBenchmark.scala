@@ -2,7 +2,7 @@ package okay.core
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
-import okay.std.*
+import okay.core.std.*
 import okay.core.*
 
 /**

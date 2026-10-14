@@ -2,7 +2,7 @@ package okay.interop
 
 import cats.Functor
 import okay.core.*
-import okay.std.*
+import okay.core.std.*
 import tofu.{Errors, WithLocal}
 
 /** TOFU'S TYPECLASSES OVER `Eff[R, *]`: code written over `F[_]` with tofu runs on okay's effects. The context a
@@ -14,14 +14,14 @@ object TofuProgram:
 
   given withLocal[R <: Row, C](using p: Reader % C :? R): WithLocal[Of[R], C] = new WithLocal[Of[R], C]:
     def functor: Functor[Of[R]] = CatsProgram.monad[R]
-    def context: Eff[R, C] = okay.std.ask[C].at[R]
+    def context: Eff[R, C] = okay.core.std.ask[C].at[R]
     /** the value outside asked once, every `ask` of `fa` answered `project` of it */
     def local[A](fa: Eff[R, A])(project: C => C): Eff[R, A] =
-      okay.std.ask[C].at[R].flatMap(c => Intercept.at(p.in)(fa)([X] => (op: Reader[C, X], k: X => Eff[R, A]) => op match
+      okay.core.std.ask[C].at[R].flatMap(c => Intercept.at(p.in)(fa)([X] => (op: Reader[C, X], k: X => Eff[R, A]) => op match
         case Reader.Ask() => k(project(c))))
 
   given errors[R <: Row, E](using p: Throws % E :? R): Errors[Of[R], E] = new Errors[Of[R], E]:
-    def raise[A](err: E): Eff[R, A] = okay.std.raise(err).at[R]
+    def raise[A](err: E): Eff[R, A] = okay.core.std.raise(err).at[R]
     /** a `raise` of `fa` answered `f` of the error, the rest dropped; `f`'s program outside the interceptor */
     def tryHandleWith[A](fa: Eff[R, A])(f: E => Option[Eff[R, A]]): Eff[R, A] =
       Intercept.at(p.in)(fa)([X] => (op: Throws[E, X], k: X => Eff[R, A]) => op match

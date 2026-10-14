@@ -1,6 +1,6 @@
 package okay.core
 
-import okay.std.*
+import okay.core.std.*
 import okay.core.Control.reset
 
 /** DELIMITERS NESTED DEEP — a handler in a handler in a handler…, as a recursive function installing one each call

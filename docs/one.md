@@ -104,7 +104,7 @@ function of (`(c: Effects) ?=> c.Prog[A]`, `c.Body`, `Handled ?=>`, `Within`, `n
 
 **Stays, re-based on `A ! R`.** The facade `Rows` — `!`, `+`, `%`, `Needs`/`Place`: `A ! E1 + E2` is all a
 program's type says, the row made by the handlers around it, fitted where it runs — now `Needs` over the kernel's
-`In`/`Removed` evidence, not over a context. `okay.std` by its names (`reader`, `local`, `state`, `cell`, `writer`,
+`In`/`Removed` evidence, not over a context. `okay.core.std` by its names (`reader`, `local`, `state`, `cell`, `writer`,
 `attempt`, `handleWith`, `choose`, `collect`, `generate`, `stream`, `pstate`). `Stream` (250 lines, over
 `generate`: `k` as data is what it is made of). `RowEffects`, okay's `Effects[M]` instance, over `A ! R` directly —
 `Program` (a program built at its row) is no longer needed under it. `okay.core.kernel.OnCore` through `Step`, one

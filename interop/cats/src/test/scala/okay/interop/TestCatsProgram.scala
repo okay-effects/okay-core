@@ -3,7 +3,7 @@ package okay.interop
 import cats.Monad
 import cats.syntax.all.*
 import okay.core.*
-import okay.std.*
+import okay.core.std.*
 import CatsProgram.given
 
 /** cats' monad over `Eff[R, *]`, on every platform: its laws on a sample, `tailRecM` and a left-nested chain in

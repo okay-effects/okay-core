@@ -3,7 +3,7 @@ package okay.core
 import okay.one.{Cont, Delim}
 import okay.one.Cont.Shift0
 import okay.one.row.Nearest
-import okay.std.*
+import okay.core.std.*
 import okay.core.Control.{reset, shift, shift0}
 import okay.one.std.{Reader as ReaderH, State as StateH}
 

@@ -1,6 +1,6 @@
 package okay.core
 
-import okay.std.*
+import okay.core.std.*
 import okay.core.Control.{reset, shift}
 
 /** `A ! E1 + E2`: a program needing effects, fitted to the place it runs at — the row the handlers' */

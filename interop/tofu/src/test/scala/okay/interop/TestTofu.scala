@@ -3,7 +3,7 @@ package okay.interop
 import cats.Monad
 import cats.syntax.all.*
 import okay.core.*
-import okay.std.*
+import okay.core.std.*
 import tofu.{Errors, WithContext, WithLocal}
 import CatsProgram.given
 import TofuProgram.given

@@ -5,7 +5,7 @@ import okay.one.Cont
 import okay.one.handler.Deep
 import okay.one.step.Step
 import okay.one.step.Step.step
-import okay.std.*
+import okay.core.std.*
 
 import scala.util.control.NonFatal
 

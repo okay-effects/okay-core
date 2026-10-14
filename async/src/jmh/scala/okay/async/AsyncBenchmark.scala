@@ -1,7 +1,7 @@
 package okay.async
 
 import okay.core.*
-import okay.std.*
+import okay.core.std.*
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 

@@ -1,7 +1,7 @@
 # Architecture
 
 One monad, one machine; a facade over it. The kernel is okay-one's, imported as it is (`okay.one`); the facade
-(`okay.core`, `okay.std`) is what a user writes programs in. No macros, no runtime tests of an operation's class, no
+(`okay.core`, `okay.core.std`) is what a user writes programs in. No macros, no runtime tests of an operation's class, no
 cast in the kernel; the facade has two `@unchecked` matches, named below.
 
 ```
@@ -18,7 +18,7 @@ okay.core       THE FACADE
   Control       reset/shift/shift0 over Shifts[S, T]; cont/lower for Control[R]
   RowEffects    okay's Effects[M] over Eff
   kernel        OnCore: okay-kernel's Effects and Control on the one monad (docs/kernel.md)
-okay.std        the effects by their names: reader (local), state, cell, writer, throws (handleWith), choose, first,
+okay.core.std        the effects by their names: reader (local), state, cell, writer, throws (handleWith), choose, first,
                 Emit (collect, generate), Stream/stream, Step
 async/, interop/, scala2/   not yet re-based on the one monad (docs/one.md §5, steps 5–7)
 ```

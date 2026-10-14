@@ -1,6 +1,6 @@
 package okay.core
 
-import okay.std.*
+import okay.core.std.*
 
 /** a generator's consumer: the next element and the rest, a program of nothing of the generator's own answer; or done */
 enum Gen[W]:

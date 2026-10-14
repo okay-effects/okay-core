@@ -1,11 +1,11 @@
 # Async — the module `async/`
 
-`okay.async`, a module of its own: the core (`okay.core`, `okay.std`) has no thread, no wait, no callback in it.
+`okay.async`, a module of its own: the core (`okay.core`, `okay.core.std`) has no thread, no wait, no callback in it.
 Every example here is compiled and run by the module's `TestAsyncDoc`.
 
 ```scala
 import okay.core.*
-import okay.std.*
+import okay.core.std.*
 import okay.async.*
 ```
 

@@ -11,7 +11,7 @@ infix type +[F[_], G[_]] = okay.core.+[F, G]
 /** an effect of two parameters, its first given: `Reader % Int` */
 infix type %[F[_, _], S] = okay.core.%[F, S]
 
-export okay.std.{Reader, ask, reader, local, State, get, put, modify, state, cell, Writer, tell, writer,
+export okay.core.std.{Reader, ask, reader, local, State, get, put, modify, state, cell, Writer, tell, writer,
   Throws, raise, throws, handleWith, Choose, among, choose, first, Emit, yield_, collect, generate, PState, pstate,
   Source, Stream, Generator, Step, stream}
 // for one's own effects and handlers, and a program with its row in its type

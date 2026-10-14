@@ -38,7 +38,7 @@ are compiled and checked by `TestGuide`).
 - `TestReference` checks the machine against the meaning on random programs: run it after any change to the machine.
   okay-one's suites run on a 512k stack (`build.sbt`): a regression in the machine's stack use fails loudly.
 
-## The facade, `okay.core`, `okay.std`
+## The facade, `okay.core`, `okay.core.std`
 
 - `A ! Es` is `(c: Needs[Es]) ?=> Eff[c.R, A]`: a program fitted where it runs (`Place`, `Needs`, `Paths`); `Path`
   is found from the place first (docs/architecture.md). Two `@unchecked` matches, named there — no others.
@@ -70,7 +70,7 @@ are compiled and checked by `TestGuide`).
 
 ## `words/`
 
-- `import okay.*` is the artifact `okay-core-words`, one package object over `okay.core` and `okay.std`: the core
+- `import okay.*` is the artifact `okay-core-words`, one package object over `okay.core` and `okay.core.std`: the core
   puts nothing at the top of the package `okay` (the okay platform's own `okay.*` would clash on one classpath).
   `TestFacade`, the guide's check (`TestGuide`, `TestGuideDoc`) are its tests: `sbt wordsJVM/test`.
 

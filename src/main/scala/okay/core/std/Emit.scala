@@ -1,4 +1,4 @@
-package okay.std
+package okay.core.std
 
 import okay.core.*
 import okay.one.handler.{Deep, Stateful}

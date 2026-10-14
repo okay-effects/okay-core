@@ -51,7 +51,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 
 /**
  * THE WORDS, `import okay.*`: `A ! E1 + E2`, the standard effects by their names, `perform`, `run` — one package
- * object over `okay.core` and `okay.std`, an artifact of its own (`okay-core-words`), so that the core puts nothing
+ * object over `okay.core` and `okay.core.std`, an artifact of its own (`okay-core-words`), so that the core puts nothing
  * at the top of the package `okay`: the okay platform, whose own `okay.*` are its words over `Effects[M]`, depends on
  * the core without a clash on one classpath (docs/okay.md). A user of okay-core alone adds it for the taste. Its
  * tests: what is written on `import okay.*` alone, and docs/guide.md's blocks compiled as they are written

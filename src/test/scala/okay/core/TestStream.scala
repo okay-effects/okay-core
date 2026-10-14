@@ -1,6 +1,6 @@
 package okay.core
 
-import okay.std.*
+import okay.core.std.*
 
 /** `stream`: a source as a generator, `k` data — one type, `Step` */
 class TestStream extends munit.FunSuite:

@@ -1,7 +1,7 @@
 package okay.async
 
 import okay.core.*
-import okay.std.*
+import okay.core.std.*
 
 /** `Async` on every platform: what needs no other thread — computations, callbacks answered at once, a run not
  * waited for (`subscribe`); where the platform cannot wait (JS), a run waited for and not complete at once fails

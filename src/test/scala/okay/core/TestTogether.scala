@@ -1,6 +1,6 @@
 package okay.core
 
-import okay.std.*
+import okay.core.std.*
 import okay.core.Control.{reset, shift}
 
 /** CONTROL AND EFFECTS TOGETHER: a reset passes every operation on, a shift's body and its k perform */

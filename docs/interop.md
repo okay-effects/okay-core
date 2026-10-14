@@ -13,7 +13,7 @@ Every example here is compiled and run by `okay-core-tofu`'s `TestInteropDoc`.
 
 ```scala
 import okay.core.*
-import okay.std.*
+import okay.core.std.*
 import okay.interop.CatsProgram.given
 import okay.interop.TofuProgram.given
 
