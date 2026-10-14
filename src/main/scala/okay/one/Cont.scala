@@ -8,8 +8,11 @@ import scala.compiletime.{error, summonFrom}
 /** the row under a `$`, `T` outside it */
 type Delim[T <: Row] = Control[T] +: T
 
+/** a row's end under a `$`, nothing outside it: `Ask +: Reset` — `Ask` handled inside the `$` */
+type Reset = Delim[Pure]
+
 /** a program of delimited control with no effect, under one `$`, its answer unmoved */
-type Cps[L, A] = Cont[Delim[Pure], L, L, A]
+type Cps[L, A] = Cont[Reset, L, L, A]
 
 /** a PROGRAM OF EFFECTS over the row `R`: no answers — its handlers' `k` its rest, data */
 infix type ![+A, R <: Row] = Cont[R, Nothing, Nothing, A]
@@ -87,15 +90,11 @@ enum Cont[R <: Row, I, +O, +A]:
       : Cont[R, I3, O2, B] =
     inline l match
       case _: Lifts.Down[?, ?] => summonFrom {
-        case ev: (I =:= Nothing) => down(f, ev)
+        case ev: (I =:= Nothing) =>
+          ev.flip.liftCo[[x] =>> Cont[R, x, O, B]](bound(ev.flip.liftCo[[x] =>> A => Cont[R, Nothing, x, B]](f)))
         case _ => Bind(this, (x: A) => Lift[R, I, B](f(x))) }
       case _: Lifts.Same[?, ?, ?] => bound(f)
       case _: Lifts.Up[?, ?] => Bind(Lift[R, T, A](this), f)
-
-  /** a program of effects bound to one: `bound`, at the answers none — one call at the site of a `flatMap`, the
-   * evidence applied here, not inlined there: user code stays small, and the JIT's room for the loop with it */
-  private[one] def down[B](f: A => Cont[R, Nothing, Nothing, B], ev: I =:= Nothing): Cont[R, I, O, B] =
-    ev.flip.liftCo[[x] =>> Cont[R, x, O, B]](bound(ev.flip.liftCo[[x] =>> A => Cont[R, Nothing, x, B]](f)))
 
   /** `f` bound at the answers the same: on an operation, its rest */
   private[one] def bound[I2, B](f: A => Cont[R, I2, I, B]): Cont[R, I2, O, B] = this match
@@ -117,14 +116,13 @@ enum Lifts[I, -O, I2, T, I3, +O2]:
   case Up[I2, T]() extends Lifts[Nothing, Nothing, I2, T, I2, T]
 
 object Lifts extends LiftsSame:
-  /** inline: decided where `flatMap` is written, no value made at run time */
-  inline given down[I, O]: Lifts.Down[I, O] = Down()
+  given down[I, O]: Lifts.Down[I, O] = Down()
 
 trait LiftsSame extends LiftsUp:
-  inline given same[I, O, I2]: Lifts.Same[I, O, I2] = Lifts.Same()
+  given same[I, O, I2]: Lifts.Same[I, O, I2] = Lifts.Same()
 
 trait LiftsUp:
-  inline given up[I2, T]: Lifts.Up[I2, T] = Lifts.Up()
+  given up[I2, T]: Lifts.Up[I2, T] = Lifts.Up()
 
 object Cont:
   /** `a`, a program of effects over any row */

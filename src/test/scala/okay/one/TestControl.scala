@@ -90,7 +90,7 @@ class TestControl extends munit.FunSuite:
 
   test("printf with a state inside the $: taken into k, each resumption from the state as it was") {
     type S = Int => String
-    type Q = St +: Delim[Pure]
+    type Q = St +: Reset
     // `$ (handle_counter(get ; x <- shift0(k => pure(x => k(x))) ; get ; s"$n $x $m"))`
     val body: Cont[Q, String ! Pure, S ! Pure, String] =
       perform[St, Q, Int](St.Get).cont[S ! Pure].flatMap(n =>
@@ -115,7 +115,7 @@ class TestControl extends munit.FunSuite:
   }
 
   test("a program of effects under a $: its row with the $ in it, no answer of its own; beside a shift0, lifted") {
-    type R = Ask +: Delim[Pure]
+    type R = Ask +: Reset
     def p[R <: Row](using In[Ask, R]): Int ! R = for n <- perform[Ask, R, Int](Ask.Get) yield n + 1
     val under: Int ! R = p[R]
     val body: Cont[R, Int ! Pure, Int ! Pure, Int] = for
@@ -127,7 +127,7 @@ class TestControl extends munit.FunSuite:
   }
 
   test("an Answering handler inside the $, under a shift0 resumed twice: in k both times") {
-    type R = Ask +: Delim[Pure]
+    type R = Ask +: Reset
     val body: Cont[R, Int ! Pure, Int ! Pure, Int] =
       Shift0[R, Pure, Nothing, Nothing, Int, Int ! Pure, Int](summon, k => Bind(k(1), (a: Int) => Map(k(2), (b: Int) => a + b)))
         .flatMap(x => perform[Ask, R, Int](Ask.Get).cont[Int ! Pure].map(_ + x))
@@ -147,11 +147,11 @@ class TestControl extends munit.FunSuite:
 
   test("a Linear handler inside the $: k once, at any answers — before it and after it a program outside") {
     type S = Int => String
-    type Q = Log +: Delim[Pure]
+    type Q = Log +: Reset
     var log = List.empty[String]
-    val once = new Linear[Log, Delim[Pure], String, String]:
+    val once = new Linear[Log, Reset, String, String]:
       def ret(a: String) = pure(a)
-      def apply[I, O, X](op: Log[X], k: X => Cont[Delim[Pure], I, O, String]) = op match
+      def apply[I, O, X](op: Log[X], k: X => Cont[Reset, I, O, String]) = op match
         case Log.Tell(s) =>
           log = s :: log
           k(()).map(r => { log = ("after " + s) :: log; r })
@@ -169,4 +169,15 @@ class TestControl extends munit.FunSuite:
     val p: Int ! R = perform[Ask, R, Int](Ask.Get).flatMap(n => perform[Log, R, Unit](Log.Tell(s"n $n")).map(_ => n))
     val q: (List[String], Int) ! Pure = reset(p.handle(reader(4)).cont[Int]).handle(log)
     assertEquals(q.run, (List("n 4"), 4))
+  }
+
+  test("ATM in a for, three lines, no Cont written: the $ makes it a program of effects, `!`") {
+    val r = rows[Ask +: Reset]
+    val body = for
+      n <- r.perform(Ask.Get)
+      x <- r.shift0[String, Int](k => pure((x: Int) => k(x).run))
+      m <- r.perform(Ask.Get)
+    yield s"$n $x $m"
+    val p = dollar(body.handle(reader(5)))(s => pure("<" + s + ">"))
+    assertEquals(p.run(42), "<5 42 5>")
   }

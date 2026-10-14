@@ -21,17 +21,17 @@ class TestCont0 extends munit.FunSuite:
     type S = Int => String
     // `$ ("Hello " + shift0(k => x => k(x)))`: the body's rest answers a String, the body a function — each a program
     // over the row outside the `$`, Pure: run as any program of effects
-    val body: Cont[Delim[Pure], String ! Pure, S ! Pure, Int] =
-      Shift0[Delim[Pure], Pure, Nothing, Nothing, String, S ! Pure, Int](Nearest.Here(), k => Return((x: Int) => k(x).run))
+    val body: Cont[Reset, String ! Pure, S ! Pure, Int] =
+      Shift0[Reset, Pure, Nothing, Nothing, String, S ! Pure, Int](Nearest.Here(), k => Return((x: Int) => k(x).run))
     val p: S ! Pure = Dollar[Pure, String ! Pure, Nothing, Nothing, S, String](
-      Bind(body, (n: Int) => Return[Delim[Pure], String ! Pure, String](n.toString)),
+      Bind(body, (n: Int) => Return[Reset, String ! Pure, String](n.toString)),
       (s: String) => Return[Pure, Nothing, String]("Hello " + s))
     assertEquals(p.run(42), "Hello 42")
   }
 
   test("the same by shift0 and dollar: the path to the $ found, its row outside inferred") {
     type S = Int => String
-    val p: S ! Pure = dollar(shift0[Pure, Nothing, Nothing, String, S ! Pure, Int, Delim[Pure]](k =>
+    val p: S ! Pure = dollar(shift0[Pure, Nothing, Nothing, String, S ! Pure, Int, Reset](k =>
       Return((x: Int) => k(x).run)).map(_.toString))((s: String) => Return("Hello " + s))
     assertEquals(p.run(42), "Hello 42")
   }

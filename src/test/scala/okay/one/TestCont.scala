@@ -73,10 +73,10 @@ class TestCont extends munit.FunSuite:
   test("answer type modification in Cont, around compiled programs: a shift0 turning String into Int => String, its k a compiled program, resumed twice") {
     type S = Int => String
     type C = Cps[String, String]
-    val body: Cont[Delim[Pure], String ! Pure, S ! Pure, String] =
-      Cont.Shift0[Delim[Pure], Pure, Nothing, Nothing, String, S ! Pure, Int](Nearest.Here(), k =>
+    val body: Cont[Reset, String ! Pure, S ! Pure, String] =
+      Cont.Shift0[Reset, Pure, Nothing, Nothing, String, S ! Pure, Int](Nearest.Here(), k =>
         Cont.Return((x: Int) => k(x).run + " / " + k(x + 1).run))
-      .flatMap((x: Int) => asked[Ask +: Log +: Delim[Pure]].handle(reader(x)).handle(log).cont[String ! Pure].map(_.toString))
+      .flatMap((x: Int) => asked[Ask +: Log +: Reset].handle(reader(x)).handle(log).cont[String ! Pure].map(_.toString))
     val p: S ! Pure = Cont.Dollar[Pure, String ! Pure, Nothing, Nothing, S, String](body,
       (s: String) => Cont.Return[Pure, Nothing, String]("got " + s))
     assertEquals(p.run(41), "got (List(got 41),42) / got (List(got 42),43)")

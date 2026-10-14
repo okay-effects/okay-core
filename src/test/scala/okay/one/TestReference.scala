@@ -26,40 +26,79 @@ class TestReference extends munit.FunSuite:
     case Done(a: A)
     case Op[R <: Row, A, E[_], X](op: E[X], in: In[E, R], k: X => Norm[R, A]) extends Norm[R, A]
 
-  /** a program of effects to its normal form, each node by its rule — a handler the textbook's: its body's normal
-   * form, an operation of its own given to it with the rest under it again, one of another's going out past it */
-  def norm[R <: Row, I, O, A](p: Cont[R, I, O, A]): Norm[R, A] = p match
-    case Return(a) => Norm.Done(a)
-    case b: Bind[r, i, t, o, x, a] => bind(norm(b.m), (x: x) => norm(b.f(x)))
-    case mp: Cont.Map[r, i, o, x, a] => bind(norm(mp.m), (x: x) => Norm.Done(mp.f(x)))
-    case df: Defer[r, i, o, a] => norm(df.c())
-    case pf: Perform[r, e, s, x] => Norm.Op(pf.op, pf.in, (x: x) => Norm.Done(x))
-    case ph: PerformHere[e, t, s, x] => Norm.Op(ph.op, In.Here[e, t](), (x: x) => Norm.Done(x))
-    case ij: Inject[r, e, y, i, o, a] => Norm.Op(ij.op, ij.in, (y: y) => norm(ij.g(y)))
-    case ih: InjectHere[e, t, y, i, o, a] => Norm.Op(ih.op, In.Here[e, t](), (y: y) => norm(ih.g(y)))
-    case h: Handle[e, t, x, i, a, j, o, b] => handled(h.h, frames(norm(h.body), h.k))
-    case h: HandleK[e, t, x, i, a, b] => handled(h.h, frames(norm(h.body), h.k))
-    case h: HandleState[e, t, st, x, i, a, j, o, b] => stated(h.h, h.s, frames(norm(h.body), h.k))
-    case v: View[e, r, t, x, i, a, j, o] => viewed(v.rm, frames(norm(v.body), v.k))
-    case l: Lower[r, s, o] => control(l.c)((x: s) => Norm.Done(x))
-    case d: Dollar[t, i, i2, o2, b, a] =>
-      bind(control(d.body)((x: a) => Norm.Done(d.ret(x))), (p: Cont[t, i2, o2, b]) => norm(p))
-    case l: Lift[r, s, a] => norm(l.p)
+  /** A PROGRAM'S NORMAL FORM WITH ITS ANSWERS: as `Norm`; or its first shift0 not under a `$` in it — its path to the
+   * `$`, its body, its rest. The answers Asai–Kameyama's: the rest's `I` what the shift0's `k` gives, the shift0's
+   * what its body makes */
+  enum NormC[P <: Row, I, +O, +A]:
+    case Done[P <: Row, S, A](a: A) extends NormC[P, S, S, A]
+    case Op[P <: Row, I, O, A, E[_], X](op: E[X], in: In[E, P], k: X => NormC[P, I, O, A]) extends NormC[P, I, O, A]
+    case Shifted[P <: Row, T <: Row, I1, O1, X1, Y, I, O, A](at: Nearest[T, P], f: (Y => Cont[T, I1, O1, X1]) => O,
+        k: Y => NormC[P, I, Cont[T, I1, O1, X1], A]) extends NormC[P, I, O, A]
+
+  /** a program to its normal form, each node by its rule — a handler the textbook's: its body's normal form, an
+   * operation of its own given to it with the rest under it again, one of another's going out past it, a shift0
+   * going out past it with the handler in its rest, the state as it is; a `$` the shift0's, its rest the `$` put back,
+   * its body's answer run outside */
+  def normC[P <: Row, I, O, A](p: Cont[P, I, O, A]): NormC[P, I, O, A] = p match
+    case Return(a) => NormC.Done(a)
+    case b: Bind[r, i, t, o, x, a] => bindC(normC(b.m), (x: x) => normC(b.f(x)))
+    case mp: Cont.Map[r, i, o, x, a] => bindC(normC(mp.m), (x: x) => NormC.Done(mp.f(x)))
+    case df: Defer[r, i, o, a] => normC(df.c())
+    case pf: Perform[r, e, s, x] => NormC.Op(pf.op, pf.in, (x: x) => NormC.Done(x))
+    case ph: PerformHere[e, t, s, x] => NormC.Op(ph.op, In.Here[e, t](), (x: x) => NormC.Done(x))
+    case ij: Inject[r, e, y, i, o, a] => NormC.Op(ij.op, ij.in, (y: y) => normC(ij.g(y)))
+    case ih: InjectHere[e, t, y, i, o, a] => NormC.Op(ih.op, In.Here[e, t](), (y: y) => normC(ih.g(y)))
+    case h: Handle[e, t, x, i, a, j, o, b] => handledC(h.h, framesC(normC(h.body), h.k))
+    case h: HandleState[e, t, st, x, i, a, j, o, b] => statedC(h.h, h.s, framesC(normC(h.body), h.k))
+    case h: HandleK[e, t, x, i, a, b] => effects(handled(h.h, frames(norm(h.body), h.k)))
+    case v: View[e, r, t, x, i, a, j, o] => viewedC(v.rm, framesC(normC(v.body), v.k))
+    case s: Shift0[r, t, i1, o1, x1, o, a] => NormC.Shifted(s.at, s.f, (y: a) => NormC.Done(y))
+    case d: Dollar[t, i, i2, o2, b, a] => dollarC(normC(d.body), d.ret)
+    case l: Lower[r, s, o] => lowerC(normC(l.c))
+    case l: Lift[r, s, a] => effects(norm(l.p))
     case _ => throw IllegalStateException("not a node of a program written")
+
+  /** a program of effects: its normal form, no shift0 in it */
+  def norm[R <: Row, I, O, A](p: Cont[R, I, O, A]): Norm[R, A] = toNorm(normC(p))
+
+  def toNorm[P <: Row, I, O, A](n: NormC[P, I, O, A]): Norm[P, A] = n match
+    case NormC.Done(a) => Norm.Done(a)
+    case o: NormC.Op[p, i, o, a, e, x] => Norm.Op(o.op, o.in, (x: x) => toNorm(o.k(x)))
+    case _: NormC.Shifted[p, t, i1, o1, x1, y, i, o, a] => throw IllegalStateException("a shift0 with no $ around: not written")
+
+  /** a program of effects' normal form at any answer: none of its own */
+  def effects[P <: Row, S, A](n: Norm[P, A]): NormC[P, S, S, A] = n match
+    case Norm.Done(a) => NormC.Done(a)
+    case o: Norm.Op[p, a, e, x] => NormC.Op(o.op, o.in, (x: x) => effects(o.k(x)))
 
   def bind[R <: Row, X, A](n: Norm[R, X], f: X => Norm[R, A]): Norm[R, A] = n match
     case Norm.Done(x) => f(x)
     case o: Norm.Op[r, x, e, y] => Norm.Op(o.op, o.in, (y: y) => bind(o.k(y), f))
+
+  def bindC[P <: Row, X, I, T, O, A](n: NormC[P, T, O, X], f: X => NormC[P, I, T, A]): NormC[P, I, O, A] = n match
+    case NormC.Done(x) => f(x)
+    case o: NormC.Op[p, t, o, x, e, y] => NormC.Op(o.op, o.in, (y: y) => bindC(o.k(y), f))
+    case s: NormC.Shifted[p, t2, i1, o1, x1, y, t, o, x] => NormC.Shifted(s.at, s.f, (y: y) => bindC(s.k(y), f))
 
   def frames[R <: Row, X, I, A, J](n: Norm[R, X], k: Machine.Frame[R, X, I, A, J]): Norm[R, A] = k match
     case b: Machine.Frame.Bind[r, x, i, t, a, v, j] => frames(bind(n, (x: x) => norm(b.f(x))), b.rest)
     case mp: Machine.Frame.Map[r, x, i, a, v, j] => frames(bind(n, (x: x) => Norm.Done(mp.f(x))), mp.rest)
     case Machine.Frame.End() => n
 
+  def framesC[P <: Row, X, I, O, V, J](n: NormC[P, I, O, X], k: Machine.Frame[P, X, I, V, J]): NormC[P, J, O, V] = k match
+    case b: Machine.Frame.Bind[p, x, i, t, a, v, j] => framesC(bindC(n, (x: x) => normC(b.f(x))), b.rest)
+    case mp: Machine.Frame.Map[p, x, i, a, v, j] => framesC(bindC(n, (x: x) => NormC.Done(mp.f(x))), mp.rest)
+    case Machine.Frame.End() => n
+
   /** a normal form a program again: its value, or its operation bound to the rest */
   def reify[R <: Row, A](n: Norm[R, A]): A ! R = n match
     case Norm.Done(a) => Return(a)
     case o: Norm.Op[r, a, e, x] => Inject(o.op, o.in, (x: x) => reify(o.k(x)))
+
+  def reifyC[P <: Row, I, O, A](n: NormC[P, I, O, A]): Cont[P, I, O, A] = n match
+    case NormC.Done(a) => Return(a)
+    case o: NormC.Op[p, i, o, a, e, x] => Inject(o.op, o.in, (x: x) => reifyC(o.k(x)))
+    case s: NormC.Shifted[p, t, i1, o1, x1, y, i, o, a] => Bind(Shift0(s.at, s.f), (y: y) => reifyC(s.k(y)))
 
   def handled[E[_], T <: Row, A, B](h: Stateless[E, T, A, B], n: Norm[E +: T, A]): Norm[T, B] = n match
     case Norm.Done(a) => norm(h.ret(a))
@@ -72,44 +111,74 @@ class TestReference extends munit.FunSuite:
         case h: Deep[E, T, A, B] => norm(h(o.op, (x: x) => reify(handled(h, o.k(x)))))
       case th: In.There[f2, g, t] => Norm.Op(o.op, th.in, (x: x) => handled(h, o.k(x)))
 
+  /** a handler leaving the rest, at the answers through it: a shift0 going out past it takes it into its rest */
+  def handledC[E[_], T <: Row, J, O, A, B](h: Passing[E, T, A, B], n: NormC[E +: T, J, O, A]): NormC[T, J, O, B] = n match
+    case NormC.Done(a) => effects(norm(h.ret(a)))
+    case o: NormC.Op[p, j, o2, a, f, x] => o.in match
+      case _: In.Here[f2, t] => h match
+        case h: Answering[E, T, A, B] => handledC(h, o.k(h.value(o.op)))
+        case h: Translating[E, T, A, B] => bindC(effects(norm(h(o.op))), (x: x) => handledC(h, o.k(x)))
+        case h: Linear[E, T, A, B] => normC(h[J, O, x](o.op, (x: x) => reifyC(handledC(h, o.k(x)))))
+      case th: In.There[f2, g, t] => NormC.Op(o.op, th.in, (x: x) => handledC(h, o.k(x)))
+    case s: NormC.Shifted[p, t2, i1, o1, x1, y, j, o2, a] => s.at match
+      case Nearest.There(at1) => NormC.Shifted(at1, s.f, (y: y) => handledC(h, s.k(y)))
+      case _: Nearest.Here[t3] => Nearest.absurd(s.at)
+
   def stated[E[_], T <: Row, S, A, B](h: Stateful[E, T, S, A, B], s: S, n: Norm[E +: T, A]): Norm[T, B] = n match
     case Norm.Done(a) => norm(h.ret(s, a))
     case o: Norm.Op[r, a, f, x] => o.in match
       case _: In.Here[f2, t] => stated(h, h.next(s, o.op), o.k(h.value(s, o.op)))
       case th: In.There[f2, g, t] => Norm.Op(o.op, th.in, (x: x) => stated(h, s, o.k(x)))
 
+  /** a state under a `$`: taken into a shift0's rest as it is — each resumption from it */
+  def statedC[E[_], T <: Row, S, J, O, A, B](h: Stateful[E, T, S, A, B], s: S, n: NormC[E +: T, J, O, A]): NormC[T, J, O, B] =
+    n match
+      case NormC.Done(a) => effects(norm(h.ret(s, a)))
+      case o: NormC.Op[p, j, o2, a, f, x] => o.in match
+        case _: In.Here[f2, t] => statedC(h, h.next(s, o.op), o.k(h.value(s, o.op)))
+        case th: In.There[f2, g, t] => NormC.Op(o.op, th.in, (x: x) => statedC(h, s, o.k(x)))
+      case sh: NormC.Shifted[p, t2, i1, o1, x1, y, j, o2, a] => sh.at match
+        case Nearest.There(at1) => NormC.Shifted(at1, sh.f, (y: y) => statedC(h, s, sh.k(y)))
+        case _: Nearest.Here[t3] => Nearest.absurd(sh.at)
+
   def viewed[E[_], R <: Row, T <: Row, A](rm: Removed[E, R, T], n: Norm[R, A]): Norm[E +: T, A] = n match
     case Norm.Done(a) => Norm.Done(a)
     case o: Norm.Op[r, a, f, x] => Norm.Op(o.op, Removed.relocate(o.in, rm), (x: x) => viewed(rm, o.k(x)))
+
+  def viewedC[E[_], R <: Row, T <: Row, J, O, A](rm: Removed[E, R, T], n: NormC[R, J, O, A]): NormC[E +: T, J, O, A] = n match
+    case NormC.Done(a) => NormC.Done(a)
+    case o: NormC.Op[p, j, o2, a, f, x] => NormC.Op(o.op, Removed.relocate(o.in, rm), (x: x) => viewedC(rm, o.k(x)))
+    case s: NormC.Shifted[p, t2, i1, o1, x1, y, j, o2, a] =>
+      NormC.Shifted(Nearest.relocate(s.at, rm), s.f, (y: y) => viewedC(rm, s.k(y)))
+
+  /** a `$`: its body's value through `ret`, its answer a program outside; a shift0 of its own given its rest with the
+   * `$` put back, as a program outside; the operations of the row outside past it */
+  def dollarC[T <: Row, I, I2, O2, B, A](n: NormC[Delim[T], I, Cont[T, I2, O2, B], A], ret: A => I): NormC[T, I2, O2, B] =
+    n match
+      case NormC.Done(a) => normC(ret(a))
+      case o: NormC.Op[p, i, p2, a, e, x] => o.in match
+        case In.There(in) => NormC.Op(o.op, in, (x: x) => dollarC(o.k(x), ret))
+        case In.Here() => ControlOp.absurd(o.op)
+      case s: NormC.Shifted[p, t2, i1, o1, x1, y, i, p2, a] => s.at match
+        case _: Nearest.Here[t3] => normC(s.f((y: y) => reifyC(dollarC(s.k(y), ret))))
+        case Nearest.There(_) => Nearest.absurd(s.at)
+
+  /** a `reset`: a `$` whose answer is a value; a shift0's rest with it put back a program outside, its value run */
+  def lowerC[R <: Row, S, O](n: NormC[Delim[R], S, O, S]): NormC[R, Nothing, Nothing, O] = n match
+    case NormC.Done(a) => NormC.Done(a)
+    case o: NormC.Op[p, s, o2, a, e, x] => o.in match
+      case In.There(in) => NormC.Op(o.op, in, (x: x) => lowerC(o.k(x)))
+      case In.Here() => ControlOp.absurd(o.op)
+    case sh: NormC.Shifted[p, t2, i1, o1, x1, y, s, o2, a] => sh.at match
+      case _: Nearest.Here[t3] =>
+        NormC.Done(sh.f((y: y) => Bind(Lift[R, o1, Cont[R, i1, o1, x1]](reifyC(lowerC(sh.k(y)))),
+          (q: Cont[R, i1, o1, x1]) => q)))
+      case Nearest.There(_) => Nearest.absurd(sh.at)
 
   /** a program with no effect left: its value */
   def value[A](n: Norm[Pure, A]): A = n match
     case Norm.Done(a) => a
     case o: Norm.Op[r, a, e, x] => In.absurd(o.in)
-
-  /** a program under a `$` over `R`, none of the row's handlers in it: `(A => I) => O` over the normal forms of
-   * effects over `R` — its operations out past the `$` to the handlers around; a shift0's `k` the rest as a program
-   * over `R`, its effects in it; a `$` in it the same a row deeper, its answer run here */
-  def control[R <: Row, I, O, A](c: Cont[Delim[R], I, O, A])(k: A => Norm[R, I]): Norm[R, O] = c match
-    case Return(a) => k(a)
-    case b: Bind[w, i, t, o, x, a] => control(b.m)((x: x) => control(b.f(x))(k))
-    case mp: Cont.Map[w, i, o, x, a] => control(mp.m)((x: x) => k(mp.f(x)))
-    case df: Defer[w, i, o, a] => control(df.c())(k)
-    case s: Shift0[r, t, i1, o1, x1, o, a] => s.at match
-      case _: Nearest.Here[t2] =>
-        Norm.Done(s.f((x: a) => reify(k(x)).cont[o1].flatMap((p: Cont[R, i1, o1, x1]) => p)))
-      case Nearest.There(_) => throw IllegalStateException("a handler under the $: not written")
-    case d: Dollar[t, i, i2, o2, b, a] =>
-      bind(lower(control(d.body)((a: a) => Norm.Done(d.ret(a)))), (p: Cont[Delim[R], i2, o2, b]) => control(p)(k))
-    case l: Lift[r, s, a] => bind(lower(norm(l.p)), k)
-    case _ => throw IllegalStateException("not a node of control written")
-
-  /** a normal form over the row under a `$` is one over the row outside: no operation of `Control` */
-  def lower[R <: Row, A](n: Norm[Delim[R], A]): Norm[R, A] = n match
-    case Norm.Done(a) => Norm.Done(a)
-    case o: Norm.Op[r, a, e, x] => o.in match
-      case In.There(in) => Norm.Op(o.op, in, (x: x) => lower(o.k(x)))
-      case In.Here() => ControlOp.absurd(o.op)
 
   // THE PROGRAMS
 
@@ -251,9 +320,16 @@ class TestReference extends munit.FunSuite:
     /** the `$` over `R`: a program of effects over `R` */
     def dollar(b: B[R]): L[R] = Dollar[R, L[R], Nothing, Nothing, Int, Int](b, a => Return(a))
     if depth == 0 then ret(c)
-    else r.nextInt(11) match
+    else r.nextInt(15) match
       case 0 => ret(c)
       case 1 => body[R](r, depth - 1).map(_ * 3 + c)
+      /** handlers under the `$`, of each kind leaving the rest — a shift0 under them takes them into its rest */
+      case 11 => under[R](r, depth - 1).handle(reader(c)).handle(state(c)).map(_._2)
+      case 12 => under[R](r, depth - 1).handle(askFromSt[St +: Delim[R]](c)).handle(state(c)).map(_._2)
+      case 13 => under[R](r, depth - 1).handle(once[St +: Delim[R]](c)).handle(state(c)).map(_._2)
+      /** the state taken from past the head: a view under the `$` */
+      case 14 => under[R](r, depth - 1).handle(state(c)).map(_._2).handle(reader(c + 1))
+      // not here: a handler with a state of its own (a cell): when its value is asked is the machine's, not the meaning's
       case 2 =>
         val (l, rr) = (body[R](r, depth - 1), body[R](r, depth - 1))
         l.flatMap(x => if x % 2 == 0 then rr.map(_ + x) else ret(x - c))
@@ -298,10 +374,66 @@ class TestReference extends munit.FunSuite:
         val (l, rr) = (body[R](r, depth - 1), body[R](r, depth - 1))
         l.flatMap(x => rr.map(_ + x))
 
-  test("control: random programs of shift0 and $, effects out of them past the $s — the machine as the meaning") {
+  /** each `Get` answered `n`, `k` once, the value plus one: a `Linear` */
+  def once[T <: Row](n: Int) = new Linear[Ask, T, Int, Int]:
+    def ret(a: Int) = pure(a)
+    def apply[I, O, X](op: Ask[X], k: X => Cont[T, I, O, Int]) = op match
+      case Ask.Get => k(n).map(_ + 1)
+
+  /** a random program under the `$` over `R`, under handlers of `Ask` and `St`: operations of theirs, of `Choose`
+   * past the `$`, shift0s past the handlers, `$`s of its own. Every random choice made here, none in the closures */
+  type Q[R <: Row] = Ask +: St +: Delim[R]
+  type BQ[R <: Row] = Cont[Q[R], L[R], L[R], Int]
+
+  def under[R <: Row](r: Random, depth: Int)(using In[Ask, R], In[Choose, R]): BQ[R] =
+    val c = r.nextInt(5)
+    def ret(n: Int): BQ[R] = Return(n)
+    if depth == 0 then ret(c)
+    else r.nextInt(10) match
+      case 0 => ret(c)
+      case 1 =>
+        val rest = under[R](r, depth - 1)
+        perform[Ask, Q[R], Int](Ask.Get).flatMap(n => rest.map(_ + n))
+      case 2 =>
+        val rest = under[R](r, depth - 1)
+        perform[St, Q[R], Int](St.Get).flatMap(n => rest.map(_ * 2 + n))
+      case 3 =>
+        val rest = under[R](r, depth - 1)
+        perform[St, Q[R], Unit](St.Put(c)).flatMap(_ => rest)
+      case 4 =>
+        val (l, rr) = (under[R](r, depth - 1), under[R](r, depth - 1))
+        perform[Choose, Q[R], Boolean](Choose.Flip).flatMap(b => if b then l else rr.map(_ + c))
+      case 5 =>
+        val inner = under[R](r, depth - 1)
+        r.nextInt(4) match
+          case 0 => rows[Q[R]].shift0[Int, Int](_ => Return(c)).flatMap(_ => inner)
+          case 1 => rows[Q[R]].shift0[Int, Int](k => k(c)).flatMap(x => inner.map(_ + x))
+          case 2 => rows[Q[R]].shift0[Int, Int](k => k(c).flatMap(k)).flatMap(x => inner.map(_ * x))
+          case _ => rows[Q[R]].shift0[Int, Int](k => k(c).flatMap(a => k(a + 1).map(_ + a))).flatMap(x => inner.map(_ - x))
+      /** a `$` of its own under the handlers, a shift0 up to it */
+      case 6 =>
+        val inner: Cont[Delim[Q[R]], BQ[R], BQ[R], Int] = r.nextInt(3) match
+          case 0 => Return(c)
+          case 1 => Shift0[Delim[Q[R]], Q[R], L[R], L[R], Int, BQ[R], Int](Nearest.Here(), k => k(c).flatMap(k)).map(_ + 1)
+          case _ =>
+            perform[St, Delim[Q[R]], Int](St.Get).flatMap(n =>
+              Shift0[Delim[Q[R]], Q[R], L[R], L[R], Int, BQ[R], Int](Nearest.Here(), k => k(c + n).flatMap(a => k(a * 2))))
+        val after = under[R](r, depth - 1)
+        Dollar[Q[R], BQ[R], L[R], L[R], Int, Int](inner, a => Return(a + c)).flatMap(x => after.map(_ + x))
+      case 7 =>
+        val inner = under[R](r, depth - 1)
+        Defer(() => inner).map(_ + c)
+      case 8 =>
+        val (l, rr) = (under[R](r, depth - 1), under[R](r, depth - 1))
+        l.flatMap(x => if x % 2 == 0 then rr.map(_ + x) else ret(x - c))
+      case _ =>
+        val (l, rr) = (under[R](r, depth - 1), under[R](r, depth - 1))
+        l.flatMap(x => rr.map(_ + x))
+
+  test("control: random programs of shift0 and $, effects out of them past the $s, handlers under the $s — the machine as the meaning") {
     val r = Random(23)
     type R = Choose +: Ask +: Pure
-    for i <- 1 to 500 do
+    for i <- 1 to 1500 do
       val p = Dollar[R, L[R], Nothing, Nothing, Int, Int](body[R](r, 4), a => Return(a)).handle(choose).handle(reader(5))
       assertEquals(p.run, value(norm(p)), s"program $i")
   }
@@ -321,16 +453,16 @@ class TestReference extends munit.FunSuite:
       case 0 => Return(c)
       case 1 =>
         val inner = body0(r, depth - 1)
-        Shift0[Delim[Pure], Pure, Nothing, Nothing, Int, L[Pure], Int](Nearest.Here(), k => k(c).flatMap(a => k(a + 1).map(_ + a)))
+        Shift0[Reset, Pure, Nothing, Nothing, Int, L[Pure], Int](Nearest.Here(), k => k(c).flatMap(a => k(a + 1).map(_ + a)))
           .flatMap(x => inner.map(_ - x))
       case 2 =>
         val (l, rr) = (body0(r, depth - 1), body0(r, depth - 1))
         l.flatMap(x => rr.map(_ + x))
       case _ =>
-        val inner: Cont[Delim[Delim[Pure]], B[Pure], B[Pure], Int] =
-          Shift0[Delim[Delim[Pure]], Delim[Pure], L[Pure], L[Pure], Int, B[Pure], Int](Nearest.Here(), k => k(c).flatMap(a => k(a * 2)))
+        val inner: Cont[Delim[Reset], B[Pure], B[Pure], Int] =
+          Shift0[Delim[Reset], Reset, L[Pure], L[Pure], Int, B[Pure], Int](Nearest.Here(), k => k(c).flatMap(a => k(a * 2)))
         val after = body0(r, depth - 1)
-        Dollar[Delim[Pure], B[Pure], L[Pure], L[Pure], Int, Int](inner, a => Return(a + c)).flatMap(x => after.map(_ + x))
+        Dollar[Reset, B[Pure], L[Pure], L[Pure], Int, Int](inner, a => Return(a + c)).flatMap(x => after.map(_ + x))
 
 /** an answer holding a kept rest */
 enum KeptR[R <: Row]:

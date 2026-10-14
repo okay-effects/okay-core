@@ -46,7 +46,7 @@ class TestLaws extends munit.FunSuite:
   test("the laws in a $ changing its answer: binds around the shift0, associated either way") {
     type S = Int => String
     type C[A] = A ! Pure
-    type P = Delim[Pure]
+    type P = Reset
     val shift: Cont[P, C[String], C[S], Int] =
       Shift0[P, Pure, Nothing, Nothing, String, C[S], Int](Nearest.Here(), k => Return((x: Int) => k(x).run))
     def show(n: Int): Cont[P, C[String], C[String], String] = Return(n.toString)
