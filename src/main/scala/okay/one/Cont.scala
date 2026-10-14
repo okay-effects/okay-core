@@ -69,6 +69,9 @@ enum Cont[R <: Row, I, +O, +A]:
   case Guarded[T <: Row, X, I, A, J, O, B] private[one] (g: Guard[T, A, B], k: Machine.Frame[T, X, I, A, J],
       body: Cont[T, I, O, X], none: (J =:= Nothing) | Null) extends Cont[T, J, O, B]
   /** a `k` resumed with `y`: its levels put back, outermost first, then its rest with `y` under them */
+  /** an observer's level around `body`, a program of effects: every operation on its way out seen there first */
+  case Observed[T <: Row, X, I, A, B] private[one] (o: Observer[T, A, B], k: Machine.Frame[T, X, I, A, Nothing],
+      body: Cont[T, I, Nothing, X]) extends Cont[T, Nothing, Nothing, B]
   case Resume[Y, T <: Row, I, O, B] private[one] (c: Machine.Rest[Y, T, I, O, B], y: Y) extends Cont[T, I, O, B]
   /** a `k` failed with `e`: its levels put back, then `e` raised inside them */
   case Fail[T <: Row, I, O, B] private[one] (c: Machine.Rest[Nothing, T, I, O, B], e: Throwable) extends Cont[T, I, O, B]
@@ -183,7 +186,8 @@ object Cont:
      * kind of `h` where it is written: one leaving the rest — `Passing`, `Stateful` — at any answers, a `$` around, a
      * shift0 under it in its `k`; one taking the rest — `Taking` — only on a program of effects, its answers none; a
      * kind not known there, the same, by a type test */
-    inline def handle[E[_], T, B, H <: Handler[E, T & Row, A, B]](h: H)(using rm: Removed[E, R, T & Row])
+    inline def handle[E[_], T, B, H <: Handler[E, T & Row, A, B]](h: H)(using rm: Removed[E, R, T & Row],
+        plain: Plain[E])
         : Cont[T & Row, I, O, B] =
       summonFrom {
         case ev: (H <:< Passing[E, T & Row, A, B]) => Handle(ev(h), Machine.Frame.End(), view(rm, p))
@@ -211,7 +215,7 @@ object Cont:
     no.liftCo[[x] =>> Cont[R, Nothing, x, A]](ni.liftCo[[x] =>> Cont[R, x, O, A]](p))
 
   /** a handler of a kind not known where it is written, around `p`: by a type test */
-  private def kinds[E[_], R <: Row, T <: Row, A, B](h: Handler[E, T, A, B], rm: Removed[E, R, T], p: A ! R): B ! T =
+  private[one] def kinds[E[_], R <: Row, T <: Row, A, B](h: Handler[E, T, A, B], rm: Removed[E, R, T], p: A ! R): B ! T =
     h match
       case ps: Passing[E, T, A, B] => Handle(ps, Machine.Frame.End(), view(rm, p))
       case st: Stateful[E, T, ?, A, B] => stateful(st, rm, p)
