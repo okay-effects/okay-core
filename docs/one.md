@@ -180,6 +180,14 @@ is touched before 3 is green.
   `Deep` handler): refused by the types, for good — the record says what it costs. What was wanted of it is had
   the other way round: a `Deep` handler's `k` crossing a `$` (`Lower`), and `Shift % S` for control under
   handlers with the answer fixed.
+- **The answer moved as `A ! Es`, the `$` among the effects** (2026-10-14): tried as `A !! Atm[X, Y] + Es` and not
+  kept, for three reasons, two of them the language's. `Y`, the `$`'s answer, is a constructor over the row outside
+  the `$` — the place's, `c.T` — and a match type on `Es` cannot return a constructor; a match type on `c.T` instead
+  is not reduced where the body is checked against the alias, the compiler's stand-in for `c` approximated to
+  `Row` in it. And `!` itself can carry no answers: `A ! Choose + F`, `A ! F` — okay's own signatures — have `F`
+  abstract, so the answers would be unknown and `pure`, `ask` in such a program would not type, as a program of
+  effects is at any answers but not at unknown ones. What stands: `Atm[A, X, Y, Es]`, `Y` a shape named —
+  `Hole[X, A]`, `Fixed[A]` — the row never named (`Delimited`, a `Needs` with the row outside the `$`).
 - **`Needs`/`Place`'s object a run**: measured in step 2 (`stateRows` against the kernel's own: okay-core's 4 % on
   `Cont`); if it costs more than that over the one monad, the facade is the place to pay it, not the kernel.
 - **okay-free, okay-eff, okay-cont**: experiments concluded, their READMEs the record; frozen once their authors
