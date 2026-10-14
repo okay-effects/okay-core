@@ -146,6 +146,12 @@ where the bind is wanted at             …
 — the states in them. The same for a schema: rows as named tuples, a stage adding a column with `++`
 (`Vector[Raw]` → `Vector[Enriched]`), a stage needing the column refused before the one adding it.
 
+**Recursion in constant stack**: the machine is a loop, the levels on the heap — functions calling each other in
+tail position, through `flatMap` or `defer`, run any depth (`TestRecursion`: a million steps, with and without an
+operation at each); `Cont.tailRecM(s0)(step)` is cats' loop, `step` a program of the next state (`Left`) or the value
+(`Right`) — mutual recursion a loop whose state names the function. The facade's `tailRecM` the same over `Eff[R, A]`
+(`TestFacadeRecursion`). The one rule: the recursive call inside the closure, never before its `flatMap`.
+
 **Control and audit** ([intercept.md](intercept.md)): a SENSITIVE effect (`given Sensitive[E]`) is handled only by
 `handleAudited`, which takes `Audited[E]` off the row — put there only by an audit (`audit(i)(body)`, an
 `Interceptor` whose clauses get `Pass`, the only way to perform it past the audit) or an observer; `Audited[E]` is

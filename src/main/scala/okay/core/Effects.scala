@@ -26,6 +26,9 @@ def pure[R <: Row, A](a: A): Eff[R, A] = Cont.pure(a)
 def unit[R <: Row]: Eff[R, Unit] = Cont.pure(())
 /** `defer(p)`: `p` built when the run gets to it — a tail call, in constant stack */
 def defer[R <: Row, A](p: => Eff[R, A]): Eff[R, A] = Cont.defer(p)
+/** `tailRecM(s0)(step)`: a loop in constant stack — `step` from a state to the next (`Left`) or the value (`Right`),
+ * cats' `tailRecM`; mutual recursion a loop whose state names the function */
+def tailRecM[R <: Row, S, A](s0: S)(step: S => Eff[R, Either[S, A]]): Eff[R, A] = Cont.tailRecM(s0)(step)
 
 /** A HANDLER of the effect `E`, over any row outside it: the body's value `A` to the answer `Ans`; each operation with
  * the rest of the body under the handler, `k` — deep, data: dropped, resumed, resumed again, kept. Its clauses are

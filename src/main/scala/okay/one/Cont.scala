@@ -145,6 +145,15 @@ object Cont:
   /** `p`, made when the run gets to it */
   def defer[R <: Row, A](p: => A ! R): A ! R = Defer(() => p)
 
+  /** A LOOP IN CONSTANT STACK — cats' `tailRecM`: `step` from a state to a program of the next state (`Left`) or the
+   * value (`Right`), any number of steps, each its effects; mutual recursion is a loop whose state names the function
+   * and its arguments. (A recursion through `flatMap` or `defer` runs in constant stack as well: the machine is a loop) */
+  def tailRecM[R <: Row, S, A](s0: S)(step: S => Either[S, A] ! R): A ! R =
+    step(s0).flatMap {
+      case Left(s) => tailRecM(s)(step)
+      case Right(a) => pure(a)
+    }
+
   /** `op`, an operation of `E` in the row `R` */
   inline def perform[E[_], R <: Row, X](op: E[X])(using inline in: In[E, R]): X ! R = operation(op)
 

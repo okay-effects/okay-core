@@ -30,7 +30,7 @@ val Atm: okay.core.Atm.type = okay.core.Atm
 type Hole[X, A] = okay.core.Hole[X, A]
 type Fixed[A] = okay.core.Fixed[A]
 type UnderAt[E[_], T <: okay.core.Row, I, O, A] = okay.core.UnderAt[E, T, I, O, A]
-export okay.core.{perform, pure, unit, defer, handle, handleIn, handleAt, translate, intercept, run, Handler, Answering,
+export okay.core.{perform, pure, unit, defer, tailRecM, handle, handleIn, handleAt, translate, intercept, run, Handler, Answering,
   Value, Under, Place, Needs, Delimited, Path, RowEffects, Op}
 export okay.core.Control.{reset, shift, shift0, lower}
 
