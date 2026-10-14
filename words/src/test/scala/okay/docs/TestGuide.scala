@@ -70,7 +70,7 @@ class TestGuide extends munit.FunSuite:
     assertEquals(run(reset[Int, Pure](shift0[Int, Pure, Int](k => k(1).map(_ + 1)).at[Shifts[Int, Pure] +: Pure].map(_ * 10))), 11)
 
   // -- the answer moved, the row not named
-  def printf: Atm[String, String, Hole[Int, String], Reader % Int] = for
+  def printf: Atm[String, Fixed[String], Hole[Int, String], Reader % Int] = for
     n <- ask[Int]
     x <- Atm.shift0[String, Int](k => pure((x: Int) => k(x)))
     m <- ask[Int]

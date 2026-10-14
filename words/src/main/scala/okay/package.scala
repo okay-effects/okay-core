@@ -24,7 +24,7 @@ type Pure = okay.core.Pure
 type Eff[R <: okay.core.Row, +A] = okay.core.Eff[R, A]
 type Shifts[S, T <: okay.core.Row] = okay.core.Shifts[S, T]
 /** `Atm[A, X, Y, Es]`: a program needing effects under a `$`, its answer moved; `Atm.shift0`, `Atm.dollar` */
-type Atm[+A, X, Y[_ <: okay.core.Row], Es[_]] = okay.core.Atm[A, X, Y, Es]
+type Atm[+A, X[_ <: okay.core.Row], Y[_ <: okay.core.Row], Es[_]] = okay.core.Atm[A, X, Y, Es]
 val Atm: okay.core.Atm.type = okay.core.Atm
 /** a `$`'s answers: `Hole[X, A]`, a hole of `X` in a program of `A` over the row outside; `Fixed[A]`, unchanged */
 type Hole[X, A] = okay.core.Hole[X, A]

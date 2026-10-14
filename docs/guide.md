@@ -258,7 +258,7 @@ are bound in it as they are, lifted to the answers; `Atm.shift0[X, A](k => …)`
 it:
 
 ```scala
-def printf: Atm[String, String, Hole[Int, String], Reader % Int] =
+def printf: Atm[String, Fixed[String], Hole[Int, String], Reader % Int] =
   for
     n <- ask[Int]
     x <- Atm.shift0[String, Int](k => pure((x: Int) => k(x)))
@@ -269,6 +269,45 @@ def hole: Eff[Pure, Int => Eff[Pure, String]] = Atm.dollar(handleAt(Reader(5))(p
 
 run(run(hole)(42))      // "<5 42 5>"
 ```
+
+**A state in the answer** — the answer moved is a state whose *type* the steps move (the kernel's `PState`): a
+protocol the compiler checks. `Atm.pstate[Es](s0)(body)` runs the body from a state of one type to one of another;
+`Atm.get[S]` reads it, `Atm.put[S](s2)` replaces it with one of another type; a step is a program from the state
+before to the state after, `Hole[Before, F]` to `Hole[After, F]`, `F` the run's value given to it by `pstate`:
+
+```scala
+final case class Closed()
+final case class Open(host: String)
+final case class Authed(host: String, user: String)
+type Session = Writer % String + Reader % Int
+
+def connect[F](host: String)(using Atm.Typestate[F]): Atm[Unit, Hole[Open, F], Hole[Closed, F], Session] =
+  Atm.get[Closed].flatMap(_ => Atm.put[Closed](Open(host)))
+def login[F](user: String)(using Atm.Typestate[F]): Atm[Unit, Hole[Authed, F], Hole[Open, F], Session] =
+  Atm.get[Open].flatMap(o => Atm.put[Open](Authed(o.host, user)))
+def query[F](q: String)(using Atm.Typestate[F]): Atm[Int, Hole[Authed, F], Hole[Authed, F], Session] =
+  for
+    a <- Atm.get[Authed]
+    _ <- tell(s"${a.user}@${a.host}: $q")
+  yield q.length
+def close[F](using Atm.Typestate[F]): Atm[Unit, Hole[Closed, F], Hole[Authed, F], Session] =
+  Atm.get[Authed].flatMap(_ => Atm.put[Authed](Closed()))
+
+def session: (Closed, Int) ! Session =
+  Atm.pstate[Session](Closed())(for
+    port <- ask[Int]
+    _ <- connect(s"db:$port")
+    _ <- login("ann")
+    n <- query("select 1")
+    _ <- close
+  yield n)
+
+run(reader(5432)(writer[String, (Closed, Int), Reader % Int +: Pure](session)))   // (List("ann@db:5432: select 1"), (Closed(), 8))
+```
+
+A query before the login, or a session left open, does not compile: the steps' answers do not meet, and the
+message names the states that do not. The effects beside the state — `tell`, `ask` — are the row's, handled around
+the run as ever. `TestAtm` has this and a pipeline whose schema is the state's type.
 
 The kernel's own form is `okay.one.Cont.{Shift0, Dollar}` over a row named; a program of effects enters control by
 `cont`, a closed program of control is one of effects again by `lower`. See `TestControl`.

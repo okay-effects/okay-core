@@ -47,12 +47,21 @@ are compiled and checked by `TestGuide`).
   they are written: never call them from a facade body whose answers or handler type are abstract — resolved there,
   only `Lifts.Up` fits and every bind gets a `Lift` (8333bf3: the mixed program 222 → 353 µs). Forward the evidence
   as an `inline` using parameter instead (`Op.flatMap`).
-- The answer moved with no row named: `Atm[A, X, Y, Es]` is `(c: Delimited[Es]) ?=> Cont[c.R, Eff[c.T, X], Eff[c.T, Y[c.T]], A]`
-  — one context parameter (a function type may not have one parameter depend on another), `Delimited` a `Needs`
-  with the row outside the nearest `$`, `T`; `Needs.delimited` is below `Needs.under` (both apply at a place with a
-  `$`). `Op.flatMap` binds into a rest at any answers (`Cont[R, I, O, B]`): a member that applies is never passed
-  over for an extension, even when its lambda fails inside. `handleAt(h)(body)`: `Passing`/`Stateful` at answers,
-  two overloads by the handler's class. Tried and not kept: the `$` among the effects, `A ! Atm[X, Y] + Es` (2026-10-14)
+- The answer moved with no row named: `Atm[A, X, Y, Es]` is `(c: Delimited[Es]) ?=> Cont[c.R, Eff[c.T, X[c.T]], Eff[c.T, Y[c.T]], A]`
+  — one context parameter (a function type may not have one parameter depend on another); `Delimited` a `Needs`
+  with the row outside the nearest `$`, `T` — a `Needs` itself, so inside a `$` it is the one found, nearer and more
+  specific than the place's outside (a `Needs.delimited` given beside `under` was ambiguous). `X` and `Y` are shapes
+  over `T` (`Hole`, `Fixed`): a state in the answer needs both sides over the row outside. `Op.flatMap` binds into a
+  rest at any answers (`Cont[R, I, O, B]`): a member that applies is never passed over for an extension, even when
+  its lambda fails inside. `handleAt(h)(body)`: `Passing`/`Stateful` at answers, two overloads by the handler's
+  class. `Atm.get`/`put` are steps not yet at their `$`, bound where used, as `Op`: a step's `F` (the run's value)
+  from `Atm.Typestate[F]` given by `pstate`, never inferred — a receiver's type variables are instantiated before
+  `.flatMap` is selected. `Atm.pstate` builds its `Delimited` by hand (`Delimited.under`, `Paths.under`): a search for
+  `Paths[Es, Delim[c.R]]` with `Es` abstract would build `One` for a sum (`find` on it a `MatchError`).
+  `Atm.pstate[Es](s0)(body)` names the effects: with `Es` inferred from the body scalac 3.9.0 dies (`wildApprox`
+  failed to remove uninstantiated Es, in `ImplicitRunInfo.collectParts`) — on a member or a local, with or without
+  the ascription; with `Es` given it does not.
+  Tried and not kept: the `$` among the effects, `A ! Atm[X, Y] + Es` (2026-10-14)
   — `Y` must be a constructor over the row outside, and a match type on `Es` cannot return one; a match type on `c.T`
   instead (`Answer[Y, c.T]`) is not reduced where the body is checked against the alias (the compiler's stand-in for
   `c` is approximated to `Row` in it); and `!` itself cannot carry answers at all — `A ! Choose + F` with `F` abstract

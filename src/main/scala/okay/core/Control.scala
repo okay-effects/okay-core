@@ -1,6 +1,6 @@
 package okay.core
 
-import okay.one.Cont
+import okay.one.{Cont, Lifts}
 import okay.one.std.{Shift, Shifts}
 
 /**
@@ -50,3 +50,52 @@ object Atm:
    * to the rest's answer; the `$`'s answer a program over `T`, the `$` one of effects there */
   def dollar[T <: Row, A, X, Y](body: Place[Control.Delim[T]] ?=> Cont[Control.Delim[T], Eff[T, X], Eff[T, Y], A])(ret: A => Eff[T, X])
       : Eff[T, Y] = Cont.dollar(body(using Place.at[Control.Delim[T]]))(ret)
+
+  // -- THE STATE IN THE ANSWER: its type moved by the steps (the kernel's `PState`), the row never named
+
+  /** the run's value, `F` — given to the steps by `pstate`, each takes it `using`: `def open[F](using
+   * Atm.Typestate[F]): Atm[Unit, Hole[Open, F], Hole[Closed, F], Es]` — a step from the state `Closed` to `Open` */
+  final class Typestate[F] private[Atm] ()
+
+  /** `get[S]`: the state, its type `S` unchanged. A step not yet at its `$`: bound where it is used, as an `Op` is */
+  final class Get[S]:
+    def at[F, Es[_]](using ts: Typestate[F], d: Delimited[Es]): Cont[d.R, Eff[d.T, S => Eff[d.T, F]], Eff[d.T, S => Eff[d.T, F]], S] =
+      Cont.Shift0(d.at, (k: S => Eff[d.T, S => Eff[d.T, F]]) => Cont.pure((s: S) => k(s).flatMap(f => f(s))))
+    inline def flatMap[F, Es[_], I2, T, I3, O2, B](using ts: Typestate[F], d: Delimited[Es])(f: S => Cont[d.R, I2, T, B])
+        (using inline l: Lifts[Eff[d.T, S => Eff[d.T, F]], Eff[d.T, S => Eff[d.T, F]], I2, T, I3, O2]): Cont[d.R, I3, O2, B] =
+      at[F, Es].flatMap(f)(using l)
+    def map[F, Es[_], B](using ts: Typestate[F], d: Delimited[Es])(f: S => B)
+        : Cont[d.R, Eff[d.T, S => Eff[d.T, F]], Eff[d.T, S => Eff[d.T, F]], B] = at[F, Es].map(f)
+  object Get:
+    /** a step where a program is expected: at its `$` there */
+    given toProgram[S, F, Es[_]](using ts: Typestate[F], d: Delimited[Es])
+        : Conversion[Get[S], Cont[d.R, Eff[d.T, S => Eff[d.T, F]], Eff[d.T, S => Eff[d.T, F]], S]] = _.at[F, Es]
+  def get[S]: Get[S] = Get()
+
+  /** `put[S](s2)`: a state of another type, `S2`, for the rest; the state before, `S` — the answer moved */
+  final class Put[S, S2](val s2: S2):
+    def at[F, Es[_]](using ts: Typestate[F], d: Delimited[Es]): Cont[d.R, Eff[d.T, S2 => Eff[d.T, F]], Eff[d.T, S => Eff[d.T, F]], Unit] =
+      Cont.Shift0(d.at, (k: Unit => Eff[d.T, S2 => Eff[d.T, F]]) => Cont.pure((_: S) => k(()).flatMap(f => f(s2))))
+    inline def flatMap[F, Es[_], I2, T, I3, O2, B](using ts: Typestate[F], d: Delimited[Es])(f: Unit => Cont[d.R, I2, T, B])
+        (using inline l: Lifts[Eff[d.T, S2 => Eff[d.T, F]], Eff[d.T, S => Eff[d.T, F]], I2, T, I3, O2]): Cont[d.R, I3, O2, B] =
+      at[F, Es].flatMap(f)(using l)
+    def map[F, Es[_], B](using ts: Typestate[F], d: Delimited[Es])(f: Unit => B)
+        : Cont[d.R, Eff[d.T, S2 => Eff[d.T, F]], Eff[d.T, S => Eff[d.T, F]], B] = at[F, Es].map(f)
+  object Put:
+    given toProgram[S, S2, F, Es[_]](using ts: Typestate[F], d: Delimited[Es])
+        : Conversion[Put[S, S2], Cont[d.R, Eff[d.T, S2 => Eff[d.T, F]], Eff[d.T, S => Eff[d.T, F]], Unit]] = _.at[F, Es]
+  final class PutFrom[S]:
+    def apply[S2](s2: S2): Put[S, S2] = Put(s2)
+  def put[S]: PutFrom[S] = PutFrom()
+
+  /** `pstate[Es](s0)(body)`: the body run from the state `s0`, of type `S0`, to one of type `S1` — the steps' answers
+   * meeting, or the compiler says which do not; the last state and the value, a program needing the effects `Es`,
+   * named here once (inferred from the body, scalac 3.9.0 dies in `wildApprox` on the open `Es`). The `$` is the
+   * run's own: the body's steps shift0 to it, its other operations go out to the handlers around */
+  final class PStateOf[Es[_]]:
+    def apply[S0, S1, W](s0: S0)(body: Typestate[(S1, W)] ?=> Atm[W, Hole[S1, (S1, W)], Hole[S0, (S1, W)], Es])
+        : (S1, W) ! Es = (c: Needs[Es]) ?=>
+      val d = Delimited.under(c)
+      Cont.dollar[c.R, Eff[c.R, S1 => Eff[c.R, (S1, W)]], Nothing, Nothing, S0 => Eff[c.R, (S1, W)], W](
+        body(using Typestate[(S1, W)]())(using d))((w: W) => Cont.pure((s1: S1) => Cont.pure((s1, w)))).flatMap(f => f(s0))
+  def pstate[Es[_]]: PStateOf[Es] = PStateOf()

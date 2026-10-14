@@ -1,7 +1,7 @@
 package okay.core
 
-import okay.one.Cont
-import okay.one.row.{+:, In, Nearest, Pure, Row}
+import okay.one.{Cont, Delim}
+import okay.one.row.{+:, Control, In, Nearest, Pure, Row}
 
 /** THE KERNEL'S ROWS, as they are: `Pure`, `E +: T`; an effect's place `In[E, R]`; `Removed[E, R, T]` — aliases,
  * not exports: scalac 2.13's TASTy reader cannot read an export of a sealed trait (`addChild inapplicable`) */
@@ -77,18 +77,23 @@ sealed trait ReqLow:
  * compiler builds them where the program is placed (`Needs`); an effect among them found by its `Req` */
 sealed abstract class Paths[Es[_], R <: Row]:
   def find[E[_]](r: Req[E, Es]): In[E, R]
+  /** the same paths one deeper, under `E` put at the head of `R` — a place made from a place, no search: the
+   * effects `Es` may be abstract where it is made, and a search would build `One` for a sum */
+  def under[E[_]]: Paths[Es, E +: R]
 object Paths extends PathsLow:
   /** one effect, `E0`, at its path. `Only` is its one case: `E0` an effect, not two joined — those have `Both`, by
    * priority — which the checker cannot tell apart, hence unchecked */
   final class One[E0[_], R <: Row](val head: In[E0, R]) extends Paths[E0, R]:
     def find[E[_]](r: Req[E, E0]): In[E, R] = (r: @unchecked) match
       case Req.Only() => head
+    def under[E[_]]: Paths[E0, E +: R] = One(In.There(head))
   /** two effects joined, `F + G`, each side's paths found on its own. `Left`, `Right` its cases: an operation of
    * the marker `Both` itself there is none */
   final class Both[F[_], G[_], R <: Row](val left: Paths[F, R], val right: Paths[G, R]) extends Paths[F + G, R]:
     def find[E[_]](r: Req[E, F + G]): In[E, R] = (r: @unchecked) match
       case Req.Left(l) => left.find(l)
       case Req.Right(g) => right.find(g)
+    def under[E[_]]: Paths[F + G, E +: R] = Both(left.under[E], right.under[E])
   given both[F[_], G[_], R <: Row](using left: Paths[F, R], right: Paths[G, R]): Paths[F + G, R] = Both(left, right)
 sealed trait PathsLow:
   given one[E0[_], R <: Row](using head: In[E0, R]): Paths[E0, R] = Paths.One(head)
@@ -99,7 +104,7 @@ sealed trait PathsLow:
 sealed abstract class Needs[Es[_]]:
   type R <: Row
   def paths: Paths[Es, R]
-object Needs extends NeedsDelimited:
+object Needs extends NeedsMore:
   def of[Es[_], R0 <: Row](p: Paths[Es, R0]): Needs[Es] { type R = R0 } = new Needs[Es]:
     type R = R0
     def paths: Paths[Es, R0] = p
@@ -108,9 +113,6 @@ object Needs extends NeedsDelimited:
   given under[Es[_], R0 <: Row](using h: Place[R0], p: Paths[Es, R0]): (Needs[Es] { type R = R0 }) = of(p)
   /** an effect needed: its path in the place's row — what `perform` finds in a program needing effects */
   given found[E[_], Es[_]](using n: Needs[Es], r: Req[E, Es]): In[E, n.R] = n.paths.find(r)
-sealed trait NeedsDelimited extends NeedsMore:
-  /** under a `$`, no place: the `Delimited`'s own `Needs` — after the place's, before another program's */
-  given delimited[Es[_]](using d: Delimited[Es]): (Needs[Es] { type R = d.R }) = d.needs
 sealed trait NeedsMore:
   /** in a program's place with more effects: its row, the paths of these in it */
   given more[Es[_], Fs[_]](using c: Needs[Fs], p: Paths[Es, c.R]): (Needs[Es] { type R = c.R }) = Needs.of(p)
@@ -134,29 +136,34 @@ infix type ![+A, Es[_]] = (c: Needs[Es]) ?=> Eff[c.R, A]
 
 /** A PLACE UNDER A `$` WITH THE EFFECTS `Es`: its row `R`, and `T`, the row outside the nearest `$` in `R` — where a
  * program moving the answer runs, its answers programs over `T`. One object a fitting, as `Needs`; a `Needs` itself
- * (`Needs.delimited`), so a program needing effects is bound in it as it is, lifted to the answers */
-sealed abstract class Delimited[Es[_]]:
-  type R <: Row
+ * (a `Needs` itself), so a program needing effects is bound in it as it is, lifted to the answers */
+sealed abstract class Delimited[Es[_]] extends Needs[Es]:
   type T <: Row
-  def needs: Needs[Es] { type R = Delimited.this.R }
   def at: Nearest[T, R]
 object Delimited:
-  /** at a place with the effects, a `$` in its row: the nearest one, `T` outside it */
+  /** under a `$` put over the place `c`: its paths one deeper, the `$` the nearest, `c`'s row outside it */
+  def under[Es[_]](c: Needs[Es]): Delimited[Es] { type R = Delim[c.R]; type T = c.R } = new Delimited[Es]:
+    type R = Delim[c.R]
+    type T = c.R
+    def paths: Paths[Es, Delim[c.R]] = c.paths.under[Control[c.R]]
+    def at: Nearest[c.R, Delim[c.R]] = Nearest.Here()
+  /** at a place with the effects, a `$` in its row: the nearest one, `T` outside it. A `Needs` itself, the nearer
+   * and the more specific where a program of effects is bound inside: found before the place's outside the `$` */
   given of[Es[_], T0 <: Row](using c: Needs[Es], n: Nearest[T0, c.R]): (Delimited[Es] { type R = c.R; type T = T0 }) =
     new Delimited[Es]:
       type R = c.R
       type T = T0
-      def needs: Needs[Es] { type R = c.R } = c
+      def paths: Paths[Es, c.R] = c.paths
       def at: Nearest[T0, c.R] = n
 
-/** `Atm[A, X, Y, Es]`: A PROGRAM OF `A` NEEDING THE EFFECTS `Es`, UNDER A `$`, ITS ANSWER MOVED — the rest up to the
- * `$` a program of `X` over the row outside it, `T`; the `$`'s answer one of `Y[T]`, a shape over that row: `Hole[X,
- * A]` for an answer holding `k` (printf), `Fixed[A]` for one unchanged, any `[T <: Row] =>> …`. No row named, as
+/** `Atm[A, X, Y, Es]`: A PROGRAM OF `A` NEEDING THE EFFECTS `Es`, UNDER A `$`, ITS ANSWER MOVED — from `X`, the
+ * rest's up to the `$`, to `Y`, the `$`'s: shapes over the row outside the `$`, `T` — `Hole[X, A]` an answer holding
+ * `k` (printf, a state in the answer), `Fixed[A]` one as it is, any `[T <: Row] =>> …`. No row named, as
  * `A ! Es`; the `$` and the handlers inside it make the row: `Atm.dollar(handleAt(Reader(5))(body))(ret)`.
- * `Atm[String, String, Hole[Int, String], Reader % Int]`. Not `A ! Es` with the `$` among `Es`: `Y` has to be a
+ * `Atm[String, Fixed[String], Hole[Int, String], Reader % Int]`. Not `A ! Es` with the `$` among `Es`: `Y` has to be a
  * constructor, over the row outside, and a match type on `Es` cannot give one back — nor may the alias match on
  * `c.T`, which the compiler stands in for while it checks the body, and a match on a stand-in is not reduced */
-type Atm[+A, X, Y[_ <: Row], Es[_]] = (c: Delimited[Es]) ?=> Cont[c.R, Eff[c.T, X], Eff[c.T, Y[c.T]], A]
+type Atm[+A, X[_ <: Row], Y[_ <: Row], Es[_]] = (c: Delimited[Es]) ?=> Cont[c.R, Eff[c.T, X[c.T]], Eff[c.T, Y[c.T]], A]
 /** a `$`'s answer: a hole of `X` in a program of `A` over the row outside — printf's `Int => Eff[T, String]` */
 type Hole[X, A] = [T <: Row] =>> X => Eff[T, A]
 /** a `$`'s answer: `A`, the rest's as it is */

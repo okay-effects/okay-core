@@ -75,7 +75,7 @@ class TestControl extends munit.FunSuite:
   // -- the answer moved, the row not named: Atm
 
   test("Atm: ATM in a for of three lines, no row named — printf, the reader inside the $"):
-    val body: Atm[String, String, Hole[Int, String], Reader % Int] = for
+    val body: Atm[String, Fixed[String], Hole[Int, String], Reader % Int] = for
       n <- ask[Int]
       x <- Atm.shift0[String, Int](k => pure((x: Int) => k(x)))
       m <- ask[Int]
@@ -85,7 +85,7 @@ class TestControl extends munit.FunSuite:
 
   test("Atm: a program needing effects bound in it, lifted; a state inside the $, k resumed twice from the state as it was"):
     def incr: Int ! State % Int = get[Int].flatMap(n => put(n + 1).map(_ => n))
-    val body: Atm[String, String, Fixed[String], State % Int] = for
+    val body: Atm[String, Fixed[String], Fixed[String], State % Int] = for
       a <- incr
       x <- Atm.shift0[String, Int](k => k(1).flatMap(s => k(2).map(t => s + t)))
       b <- incr
@@ -94,7 +94,7 @@ class TestControl extends munit.FunSuite:
     assertEquals(run(p), "[10 1 11][10 2 11]")
 
   test("Atm: the reader outside the $, k passing it — the ask of the rest answered where k is run"):
-    val body: Atm[String, String, Hole[Int, String], Reader % Int] = for
+    val body: Atm[String, Fixed[String], Hole[Int, String], Reader % Int] = for
       n <- ask[Int]
       x <- Atm.shift0[String, Int](k => pure((x: Int) => k(x)))
       m <- ask[Int]
