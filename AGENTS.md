@@ -59,6 +59,12 @@ are compiled and checked by `TestGuide`).
   has no answers to be at, so `pure`/`ask` in it would not type. `Hole[X, A]`, `Fixed[A]` name the two shapes.
 - Scala 2 reads this artifact through TASTy (`scala2/`): no inline, no opaque types in what it reads — `Ops`.
 
+## `words/`
+
+- `import okay.*` is the artifact `okay-core-words`, one package object over `okay.core` and `okay.std`: the core
+  puts nothing at the top of the package `okay` (the okay platform's own `okay.*` would clash on one classpath).
+  `TestFacade`, the guide's check (`TestGuide`, `TestGuideDoc`) are its tests: `sbt wordsJVM/test`.
+
 ## `onokay/`
 
 - okay's `Effects[M]` on the one monad over okay's rows (docs/okay.md): its jars are built in the okay repository

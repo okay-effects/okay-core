@@ -27,6 +27,9 @@ run(twice[Pure])                                                         // 12
 `A ! E1 + E2` is all a program's type says: a program of value `A`, in any place that has those effects — in any
 order, among any others, under any handlers. `!`, `+` and `%` are all a user needs to know; rows, paths, places and
 the machine are the library's own (`okay.core`, `okay.one`). These examples are compiled and run by `TestGuide`.
+`import okay.*` is the artifact `okay-core-words` (`words/`, one package object over `okay.core` and `okay.std`): the
+core itself puts nothing at the top of the package `okay`, so the okay platform — whose own `okay.*` are its words
+over `Effects[M]` — depends on the core with no clash on one classpath; a user of okay-core alone adds the words.
 
 ## Documentation
 
@@ -48,6 +51,7 @@ the machine are the library's own (`okay.core`, `okay.one`). These examples are 
 | `okay.one` | THE KERNEL (it lives here; written first in the okay-one repository, its last import 45189cb): `Cont[R, I, O, A]`, the rows (`row`: `Row`, `+:`, `Pure`, `In`, `Removed`), the handler forms (`handler`: `Answering`, `Stateful`, `Translating`, `Aborting`, `Deep`), the machine of one `Meta` (`machine`), `Step`, its std (`Reader`, `State`, `Writer`, `Throws`, `Choose`, `Shift % S`, `Async`) and its suites (`TestReference`, the meaning in CPS) |
 | `okay.core` | THE FACADE over it: `A ! E1 + E2` (`!`, `+`, `%`: all a program's type needs) — a program fitted to the place it runs at (`Needs`, `Place`, `Path`); `Eff[R, A]`, the kernel's program over a row named, `E :? R`, `Has[E]`; `Op`, an operation bound where it is used; `Handler`, `Answering`; `handle`, `handleIn`, `translate`, `intercept`, `run`; `Control`: `reset`/`shift`/`shift0` over `Shifts[S, T]`, `cont`/`lower` for `Control[R]`; `Atm[A, X, Y, Es]`, the answer moved with no row named — `Atm.shift0`, `Atm.dollar`, `handleAt` for the handlers inside the `$`; `RowEffects`, okay's `Effects[M]` over `Eff` ([docs/okay.md](docs/okay.md)) |
 | `okay.std` | the effects by their names, the kernel's std re-exported (one std): `reader` (`local`), `state` (each path its own), `cell`, `writer`, `throws` (`handleWith`), `choose`, `first`, `Emit` (`collect`, `generate`, `stream`, `Stream`, `Step`), `pstate` (the kernel's `PState`, lowered) |
+| `okay.*` | THE WORDS, `import okay.*` — `okay-core-words` (`words/`), an artifact of its own over `okay.core` and `okay.std` |
 | `okay.core.onokay` | okay's own `Effects[M]` on the one monad over okay's own rows, by a mapping (`onokay/`, tests only; docs/okay.md) |
 | `okay.core.kernel` | `OnCore`: okay-kernel's `Effects` and `Control` on the one monad — every delimiter of the bridge a `Deep` handler of one request effect, export through `Step` ([docs/kernel.md](docs/kernel.md)); okay-kernel's TCK in the module `kernel/` |
 | `okay.async` (module `async/`) | `async`, `await`, `Async.run`, asynchronous streams — the program stepped (`Step`), the driver outside; `Ref`, `Mailbox`: the core has no thread in it |

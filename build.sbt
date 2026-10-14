@@ -38,11 +38,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     // the suites forked on a small stack: the kernel's constant-stack guarantee (100 000 handlers, resets) fails loudly
     Test / fork := true,
     Test / javaOptions += "-Xss512k",
-    Bench.settings,
-    // docs/guide.md's scala blocks, compiled as they are written and their `expr   // value` lines checked
-    Test / sourceGenerators += Def.task {
-      GuideDoc.generate(baseDirectory.value.getParentFile / "docs" / "guide.md", (Test / sourceManaged).value / "okay" / "docs" / "GuideDoc.scala")
-    }.taskValue
+    Bench.settings
   )
   .jsSettings(
     libraryDependencies += "dev.okay" %%% "okay-kernel-scala" % kernelVersion,
@@ -53,13 +49,38 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / unmanagedSourceDirectories ++= platformDirs("test", "jvm-native").value
   )
 
+/**
+ * THE WORDS, `import okay.*`: `A ! E1 + E2`, the standard effects by their names, `perform`, `run` — one package
+ * object over `okay.core` and `okay.std`, an artifact of its own (`okay-core-words`), so that the core puts nothing
+ * at the top of the package `okay`: the okay platform, whose own `okay.*` are its words over `Effects[M]`, depends on
+ * the core without a clash on one classpath (docs/okay.md). A user of okay-core alone adds it for the taste. Its
+ * tests: what is written on `import okay.*` alone, and docs/guide.md's blocks compiled as they are written
+ */
+lazy val words = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("words"))
+  .dependsOn(core)
+  .settings(
+    name := "okay-core-words",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.2.3" % Test
+  )
+  .jvmSettings(
+    Test / unmanagedSourceDirectories ++= platformDirs("test", "jvm").value,
+    inConfig(Test)(allowUnsafe),
+    Test / fork := true,
+    // docs/guide.md's scala blocks, compiled as they are written and their `expr   // value` lines checked
+    Test / sourceGenerators += Def.task {
+      GuideDoc.generate(baseDirectory.value.getParentFile.getParentFile / "docs" / "guide.md", (Test / sourceManaged).value / "okay" / "docs" / "GuideDoc.scala")
+    }.taskValue
+  )
+
 lazy val unsafe = "--sun-misc-unsafe-memory-access=allow"
 lazy val allowUnsafe = javaOptions ++= (if (fork.value) Seq(unsafe) else Nil)
 
 /** the build's root: every platform's core and async, and the Scala 2.13 suites — `sbt test` runs them all */
 lazy val root = (project in file("."))
-  .aggregate(core.jvm, core.js, core.native, async.jvm, async.js, async.native, interopCats.jvm, interopCats.js,
-    interopCats.native, interopTofu, scala2Prelude, scala2Cats, scala2Tofu, scala2, kernel)
+  .aggregate(core.jvm, core.js, core.native, words.jvm, words.js, words.native, async.jvm, async.js, async.native,
+    interopCats.jvm, interopCats.js, interopCats.native, interopTofu, scala2Prelude, scala2Cats, scala2Tofu, scala2, kernel)
   .settings(
     name := "okay-core-root",
     publish / skip := true,

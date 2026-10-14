@@ -93,8 +93,9 @@ the types refuse), `TestCont`, `TestControl`, `TestShift`, `TestStd`, `TestStep`
 `TestContext` (`A ! E1 + E2`, control as an effect), `TestControl` (both faces), `TestDynamic` (a functional state by
 hand, two handlers of one effect by path, 500 handlers crossed), `TestIntercept`, `TestNesting` (100 000 handlers
 nested in constant stack), `TestTogether`, `TestStream`, `TestAnywhere` (okay's `TestEffectsRows` over
-`RowEffects[Eff]`); `TestFacade` (`import okay.*` alone); `TestGuide` and `TestGuideDoc` (the guide's text compiled:
-its `scala` blocks generated into `GuideDoc` by `project/GuideDoc.scala`, each `expr   // value` line checked);
+`RowEffects[Eff]`). `words/src/test`: `TestFacade` (`import okay.*` alone); `TestGuide` and `TestGuideDoc` (the guide's
+text compiled: its `scala` blocks generated into `GuideDoc` by `project/GuideDoc.scala`, each `expr   // value` line
+checked).
 `TestNative` and `kernel/` (the bridge, okay-kernel's TCK).
 
 ## Benchmarks

@@ -5,7 +5,7 @@ text is compiled: `project/GuideDoc.scala` makes its `scala` blocks one object, 
 `expr   // value` against the value written. `TestGuide` runs the examples besides.
 
 ```scala
-import okay.*    // A ! E1 + E2, the standard effects, run — and for one's own: Handler, Answering, perform
+import okay.*    // A ! E1 + E2, the standard effects, run — and for one's own: Handler, Answering, perform (okay-core-words)
 ```
 
 ## Programs and their place
