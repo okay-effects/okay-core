@@ -206,7 +206,7 @@ Who does what: 1–3 in okay-one, by its author, now; `Guard`/`cancel` in okay-c
 sprint item `one-monad` then; the facade and `RowEffects` at step 2 likewise. Read §4 before writing a test, §5
 before starting a step.
 
-## 8. Where the landing stands (branch `one-monad`, 2026-10-13)
+## 8. Where the landing stands (merged to master 2026-10-14; the branch `one-monad` goes on)
 
 Steps 1–3, 5, 6 and 7's Scala 2 are done on the branch (changelog.d/one-monad-*.md): `okay.one` imported by
 `scripts/import-one.sh` (its HEAD, re-run per commit); `okay.core` over it — `A ! E1 + E2` by `Needs`/`Place`, `Path`
