@@ -8,8 +8,11 @@ import okay.one.handler.{Answering as OneAnswering, Deep, Handler as OneHandler,
 final class Op[E[_], X](val op: E[X]) extends AnyVal:
   def at[R <: Row](using p: Path[E, R]): Eff[R, X] = Cont.perform[E, R, X](op)(using p.in)
   def perform[R <: Row](using Path[E, R]): Eff[R, X] = at[R]
-  /** bound into a rest at any answers: a program of effects, or one under a `$` moving the answer */
-  def flatMap[R <: Row, I, O, B](f: X => Cont[R, I, O, B])(using Path[E, R]): Cont[R, I, O, B] = at[R].flatMap(f)
+  /** bound into a rest at any answers: a program of effects, or one under a `$` moving the answer. Inline: the
+   * answers of `f`'s program are known where it is written, so a rest of effects is a bind as it was (`Lifts.Down`) —
+   * expanded here with `I`, `O` abstract it was `Lifts.Up`, a `Lift` node and a level of the machine at every
+   * operation bound */
+  inline def flatMap[R <: Row, I, O, B](f: X => Cont[R, I, O, B])(using Path[E, R]): Cont[R, I, O, B] = at[R].flatMap(f)
   def map[R <: Row, B](f: X => B)(using Path[E, R]): Eff[R, B] = at[R].map(f)
 object Op:
   /** an operation where a program is expected: performed there, in the row expected */
