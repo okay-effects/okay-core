@@ -1,6 +1,6 @@
 package okay.core
 
-import okay.one.Cont
+import okay.one.{Cont, Lifts}
 import okay.one.handler.{Answering as OneAnswering, Deep, Handler as OneHandler, Passing, Stateful, Translating}
 
 /** AN OPERATION, not yet a program: of the row where it is bound — `for n <- ask[Int]; _ <- tell(n) yield n`, the
@@ -8,11 +8,12 @@ import okay.one.handler.{Answering as OneAnswering, Deep, Handler as OneHandler,
 final class Op[E[_], X](val op: E[X]) extends AnyVal:
   def at[R <: Row](using p: Path[E, R]): Eff[R, X] = Cont.perform[E, R, X](op)(using p.in)
   def perform[R <: Row](using Path[E, R]): Eff[R, X] = at[R]
-  /** bound into a rest at any answers: a program of effects, or one under a `$` moving the answer. Inline: the
-   * answers of `f`'s program are known where it is written, so a rest of effects is a bind as it was (`Lifts.Down`) —
-   * expanded here with `I`, `O` abstract it was `Lifts.Up`, a `Lift` node and a level of the machine at every
-   * operation bound */
-  inline def flatMap[R <: Row, I, O, B](f: X => Cont[R, I, O, B])(using Path[E, R]): Cont[R, I, O, B] = at[R].flatMap(f)
+  /** bound into a rest at any answers: a program of effects, or one under a `$` moving the answer. The answers met
+   * (`Lifts`) are decided where this is written, not here: resolved in this body `I`, `O` are abstract and only
+   * `Lifts.Up` fits — a `Lift` node and a level of the machine at every operation bound (8333bf3); given at the
+   * site, a rest of effects is a bind as it was (`Lifts.Down`) */
+  inline def flatMap[R <: Row, I, O, I3, O2, B](f: X => Cont[R, I, O, B])(using p: Path[E, R],
+      inline l: Lifts[Nothing, Nothing, I, O, I3, O2]): Cont[R, I3, O2, B] = at[R](using p).flatMap(f)(using l)
   def map[R <: Row, B](f: X => B)(using Path[E, R]): Eff[R, B] = at[R].map(f)
 object Op:
   /** an operation where a program is expected: performed there, in the row expected */
