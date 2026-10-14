@@ -6,7 +6,9 @@ delimited control, on **one monad**: `Cont[R, I, O, A]`, effects with rows in th
 
 No macros, no runtime tests of an operation's class, no cast: an operation carries a path to its effect in the row,
 and a handler follows it; a handler's `k` is a program over the row outside, resumed any number of times, anywhere
-that row is handled. (okay-kernel's programs, run natively by the same machine, are untyped by the kernel's design:
+that row is handled. Effects can be put under CONTROL AND AUDIT: an effect marked sensitive is handled only under
+its audit — the types refuse anything else — and an observer sees every operation of every effect and its answer
+([docs/intercept.md](docs/intercept.md)). (okay-kernel's programs, run natively by the same machine, are untyped by the kernel's design:
 their operations are found by identity — `okay.core.kernel`.)
 
 ## A taste
@@ -34,8 +36,11 @@ over `Effects[M]` — depends on the core with no clash on one classpath; a user
 ## Documentation
 
 - [Guide](docs/guide.md) — programs, `A ! E1 + E2`, rows, the standard effects, your own effects and handlers,
-  answering in place, control's two faces, streams, intercepting (`local`, `handleWith`), `Eff[R, A]` and okay's
-  interface.
+  answering in place, control's two faces, streams, intercepting (`local`, `handleWith`), control and audit
+  (`audit`, `observe`), `Eff[R, A]` and okay's interface.
+- [Control and audit of effects](docs/intercept.md) — interceptors: a sensitive effect handled only under its audit,
+  guaranteed by the types; each operation told to a trail, checked by a policy, changed or refused; an observer of
+  every effect.
 - [okay-core on one monad: the landing plan](docs/one.md) — the decision of 2026-10-13: one monad, `k` as data, what
   stays and what goes, the kernel's acceptance, the gates in order — and where the landing stands.
 - [Architecture](docs/architecture.md) — the kernel, the machine, the facade, tests, benchmarks (being re-written for

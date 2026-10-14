@@ -7,6 +7,9 @@
   guarantees, the semantics of a `shift` under a handler, the measurements (`Cont0` is the one monad's `Cont` now).
 - [The kernel, `okay.one`](one-kernel.md) — the account of the kernel: rows, the nodes, the handler forms, the
   machine, control as an effect of the row, failure, guards, the specification, speed.
+- [Control and audit of effects: interceptors](intercept.md) — a sensitive effect handled only under its audit
+  (the guarantee by types), the audit's `Interceptor` and `Pass`, a plain effect intercepted, the observer of every
+  effect, the trail as an effect, where an interceptor stands and what it sees, the machine's level, the cost.
 - [On one monad: the landing plan](one.md) — the decision of 2026-10-13 and the order of the landing, its gates.
 - [Architecture](architecture.md) — the kernel (`Cont` and its machine) and the facade over it, the references,
   the tests and the benchmarks.

@@ -361,6 +361,65 @@ run(throws[String, Int, Pure](handleWith[String, Int, Throws % String +: Pure](r
 
 Nested ones compose, as tofu's `local`s do: the inner clause's `ask` is the outer interceptor's.
 
+## Control and audit: interceptors
+
+An interceptor stands between a program and the handler of one of its effects: it sees each operation, and passes it
+on, changed or not, or refuses it. Three of them — all `okay.one.std.Audit`'s, the full account in
+[intercept.md](intercept.md):
+
+- `intercept`, `Intercept.at`: a PLAIN effect handled again for a part of the program (above);
+- `audit(i)(body)`: a SENSITIVE effect — one whose author gives `Sensitive[E]` — under an `Interceptor`, its clauses
+  given `Pass`, the only way to perform it past the audit;
+- `observe(o)(body)`: every operation of every effect on its way out, seen by an `Observer` — told, passed on (its
+  answer told each time the rest gets it), or refused.
+
+The trail is an effect too, `Audit` (`record`, handled by `trail`): a value a test reads, a handler sends anywhere.
+
+```scala
+import okay.one.row.{In, Sensitive, Audited}
+import okay.one.handler.{Interceptor, Pass, Observer, Seen}
+import okay.one.std.Audit as Trail
+import okay.one.std.Audit.handleAudited
+
+enum Pay[A]:
+  case Transfer(to: String, amount: Int) extends Pay[String]
+
+given Sensitive[Pay] = Sensitive()
+
+def transfer[R <: Row](to: String, amount: Int)(using In[Pay, R]): Eff[R, String] =
+  okay.one.Cont.perform[Pay, R, String](Pay.Transfer(to, amount))
+
+def bank[T <: Row, A] = new okay.one.handler.Answering[Pay, T, A, A]:
+  def ret(a: A) = okay.one.Cont.pure(a)
+  def value[X](op: Pay[X]): X = op match
+    case Pay.Transfer(to, amount) => s"sent $amount to $to"
+
+def limited[T <: Row, A](limit: Int)(using In[Trail, T]) = new Interceptor[Pay, T, A, A]:
+  def ret(a: A) = okay.one.Cont.pure(a)
+  def apply[X](op: Pay[X], k: X => Eff[T, A], pass: Pass[Pay, T]): Eff[T, A] = op match
+    case Pay.Transfer(to, amount) =>
+      pass(Pay.Transfer(to, amount min limit)).flatMap(receipt =>
+        Trail.record[T](s"transfer $amount to $to: $receipt").flatMap(_ => k(receipt)))
+
+def telling[T <: Row, A](using In[Trail, T]) = new Observer[T, A, A]:
+  def ret(a: A) = okay.one.Cont.pure(a)
+  def apply[E[_], X](op: Seen[E, X, T], k: X => Eff[T, A]): Eff[T, A] =
+    Trail.record[T](s"${op.effect} ${op.describe}").flatMap(_ =>
+      op.proceed.flatMap(x => Trail.record[T](s"  → $x").flatMap(_ => k(x))))
+
+type Outside = Audited[Pay] +: Trail +: Pure
+
+run(Trail.audit(limited[Outside, String](100))(transfer[Pay +: Outside]("bob", 250)).handleAudited(bank).handle(Trail.trail))   // (List("transfer 250 to bob: sent 100 to bob"), "sent 100 to bob")
+run(Trail.observe(telling[Outside, String])(transfer[Pay +: Trail +: Pure]("bob", 5)).handleAudited(bank).handle(Trail.trail))   // (List("Pay Transfer(bob,5)", "  → sent 5 to bob"), "sent 5 to bob")
+```
+
+- The audit's body is over `Pay +: Outside`; outside it the row has `Audited[Pay]` — opaque, the same operations at
+  run time, but no `In[Pay, …]` for it, so no program there performs `Pay`.
+- What the types refuse: a sensitive effect handled by `handle` ("a sensitive effect is handled only under its
+  audit"); `handleAudited` with no audit before it; `intercept` of it; `Pay` performed outside its audit.
+- The observer's row outside is the body's with every sensitive effect audited (`Audited.Marks`): it sees them all.
+  It takes the rest, so it is around a program of effects (`!`) only.
+
 ## `Eff[R, A]`: the row in the type, and okay's interface
 
 `Eff[R, A]` is the kernel's program over a row named, `okay.one`'s `A ! R` — what code written over `F[_]` takes

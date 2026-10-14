@@ -30,7 +30,11 @@ framework and the kernel data. No dependencies of its own; the facade (`okay.cor
 - `std` — `Reader % V`, `State % S`, `Writer % W`, `Throws % E`, `Choose`; `Shifts[S, T]`, delimited control as an
   effect — `reset` its `Deep` handler, `shift0` and `shift` (Danvy–Filinski's) its operations; `Emit % W` — `collect`,
   and `generate`, a lazy generator of the consumer's own type, `k` kept as its next step; `PState`, a state whose
-  type changes, carried by the answer type under a `$`; `Async`, driven by the program stepped.
+  type changes, carried by the answer type under a `$`; `Async`, driven by the program stepped; `Audit` — the trail
+  as an effect, and the interceptors: `audit` (a sensitive effect under an `Interceptor`, `Pass` the only way on),
+  `handleAudited`, `intercept`, `observe` (an `Observer` of every effect, `Seen`).
+- `row` also: `Sensitive[E]` (an effect's author's given), `Plain[E]` (what `handle` asks), `Audited[E]` (opaque: in
+  the row outside an audit, the same operations, no `In[E, …]`).
 
 ```scala
 infix type ![+A, R <: Row] = Cont[R, Nothing, Nothing, A]   // a program of effects: no answers of its own
@@ -106,6 +110,47 @@ level, each finalizer run on the way. A guard taken into a `k` is put back each 
 resumption. At a step, `resume.fail(e)` raises inside the rest's levels; `resume.cancel()` unwinds them — finalizers
 run, no recover asked, `Step.Cancelled`; under `uncancelable` the step is given back as it is, the cancel fired when
 the program leaves the mask.
+
+**A state whose type changes, at work** (`TestAtmUses`; the facade's own form is the guide's *A state in the
+answer*): `PState`'s `get[S]` reads the state at `S`, `put[S](s2)` writes `s2` over an `S` — shift0s up to the `$`
+`pstate` puts around the body, its answer `S => …` the rest given the state, moved by a `put` of another type. The
+state is given to the body (`pstate`'s body a context function), so a step takes it `using` and the program never
+names it:
+
+```scala
+def login[F](user: String)(using st: PState[R, Nothing, F]) =
+  st.get[Open].flatMap(o => st.put[Open](Authed(o.host, user)))          // Open → Authed
+
+pstate[R, Nothing, Closed, Closed, Int](Closed())(for                    // from Closed to Closed, of Int
+  port <- r.perform(Ask.Get)                                             // an effect of the row, the state untouched
+  _ <- connect(s"db:$port")
+  _ <- login("alice")
+  n <- query("select 1")                                                 // Authed, told to Log
+  _ <- close
+yield n).handle(reader(5432)).handle(log).run     // (List("alice@db:5432: select 1"), (Closed(), 8))
+```
+
+At each bind the state one step leaves must be the state the next expects: a query before the login, or a session
+left open (the run must end `Closed`), does not compile, and `Lifts`' message names the four answers met —
+
+```
+the answers do not meet at this bind —
+the program before it wants its rest at  … Open => …
+its rest is at                          … Authed => …
+and wants its own rest at               …
+where the bind is wanted at             …
+```
+
+— the states in them. The same for a schema: rows as named tuples, a stage adding a column with `++`
+(`Vector[Raw]` → `Vector[Enriched]`), a stage needing the column refused before the one adding it.
+
+**Control and audit** ([intercept.md](intercept.md)): a SENSITIVE effect (`given Sensitive[E]`) is handled only by
+`handleAudited`, which takes `Audited[E]` off the row — put there only by an audit (`audit(i)(body)`, an
+`Interceptor` whose clauses get `Pass`, the only way to perform it past the audit) or an observer; `Audited[E]` is
+opaque, so outside the audit no program performs `E`, and `handle` refuses it (`Plain[E]`). An observer
+(`observe(o)(body)`) sees every operation of every effect on its way out: a level of no effect, `UnderObserve`, which
+`level` does not pass — the operation goes out by `outE`, stops there, the clause gets it (`Seen`) with `k`; its
+answer told each time the rest gets it. `eval` is untouched; the lanes the same within noise.
 
 **The specification**: `TestReference`, the whole monad's meaning, each node by its rule — effects: the textbook
 substitution semantics of deep handlers over the nodes, a program's normal form its value or its first operation with

@@ -46,6 +46,10 @@ The whole account is [one-kernel.md](one-kernel.md); what the facade relies on:
 - **`Step`**: a program run to its value, or to its first operation of the row at the top, given back with its rest
   (`Yield(op, in, resume)`), or `Failed` — what `Async`, a generator pulled, and the kernel protocol's `Computation`
   are built on.
+- **Control and audit**: an effect marked sensitive (`Sensitive[E]`) is handled only under its audit — `audit` (an
+  `Interceptor`, `Pass` the way on) or `observe` (an `Observer` of every effect) puts `Audited[E]`, opaque, in the
+  row outside, where no program performs it and only `handleAudited` handles it; an observer is a level of the
+  machine of its own (`UnderObserve`), passed by no look-up ([intercept.md](intercept.md)).
 - **The specification** is `TestReference`: every node's meaning in CPS, random programs' answers pinned by a digest.
 
 ## The facade
