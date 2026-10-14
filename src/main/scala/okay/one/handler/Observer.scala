@@ -15,8 +15,11 @@ abstract class Observer[T <: Row, A, B]:
 final class Seen[E[_], X, T <: Row] private[one] (val op: E[X], in: In[E, T]):
   /** its effect: the class of its operation's enum, `Pay` */
   def effect: String =
-    val c = op.getClass
-    Option(c.getEnclosingClass).getOrElse(c).getSimpleName.stripSuffix("$")
+    // from the class's name, on every platform (no `getEnclosingClass` on Scala.js): `…TestIntercept$Pay$Transfer` →
+    // `Pay`, `okay.one.std.Reader$Ask` → `Reader`, an enum's singleton case `Pay$$anon$1` → `Pay`
+    val simple = op.getClass.getName.split('.').last
+    val parts = simple.split('$').filter(p => p.nonEmpty && p != "anon" && !p.forall(_.isDigit))
+    if parts.length >= 2 then parts(parts.length - 2) else parts.lastOption.getOrElse(simple)
   /** the operation as written: `Transfer(acct,6)` */
   def describe: String = op.toString
   /** passed on: its value the handler's further out */

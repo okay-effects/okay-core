@@ -85,13 +85,18 @@ class TestIntercept extends munit.FunSuite:
     assertEquals(p.handle(Writer.collect).run, (List("a", "B"), ()))
   }
 
+  /** a value as the trail shows it, the same on every platform (Scala.js shows `()` as `undefined`) */
+  def shown(x: Any): String = x match
+    case () => "()"
+    case v => v.toString
+
   /** an observer telling every operation and its answer to the trail */
   def telling[T <: Row, A](using In[Audit, T]) = new Observer[T, A, A]:
     def ret(a: A) = pure(a)
     def apply[E[_], X](op: Seen[E, X, T], k: X => A ! T): A ! T = for
       _ <- record[T](s"${op.effect} ${op.describe}")
       x <- op.proceed
-      _ <- record[T](s"  → $x")
+      _ <- record[T](s"  → ${shown(x)}")
       a <- k(x)
     yield a
 
