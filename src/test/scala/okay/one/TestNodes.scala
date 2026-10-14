@@ -3,7 +3,7 @@ package okay.one
 import Cont.*
 import okay.one.row.*
 
-class TestCont0 extends munit.FunSuite:
+class TestNodes extends munit.FunSuite:
   /** `n` `$`s, each in the rest its outer `$`'s shift0 resumed: an operation, then the next — each a row deeper, the
    * function one over any row */
   def nest[R <: Row](n: Int): Int ! R =

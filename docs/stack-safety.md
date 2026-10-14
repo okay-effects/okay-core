@@ -19,5 +19,4 @@ On the one monad the account is short:
 | a generator's rest (`generate`, `stream`) | `k` as data | each pull a run of the rest on the machine, a run of its own |
 | `okay.core.kernel.OnCore` | the bridge's delimiters | `Deep` handlers of the kernel's, their forwarding a `perform` and a `flatMap` — the machine's |
 
-okay-one's own suites run on a 512k stack, forked (its `build.sbt`): a regression in the machine fails loudly there
-before it is imported here.
+The JVM suites run forked on a 512k stack (`build.sbt`): a regression in the machine's stack use fails loudly.

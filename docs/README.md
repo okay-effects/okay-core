@@ -5,6 +5,8 @@
   `TestGuide`.
 - [What `Cont0` did better than okay-cont's `Cont`](cont0-vs-cont.md) — before the one monad: the foundation, the
   guarantees, the semantics of a `shift` under a handler, the measurements (`Cont0` is the one monad's `Cont` now).
+- [The kernel, `okay.one`](one-kernel.md) — the account of the kernel: rows, the nodes, the handler forms, the
+  machine, control as an effect of the row, failure, guards, the specification, speed.
 - [On one monad: the landing plan](one.md) — the decision of 2026-10-13 and the order of the landing, its gates.
 - [Architecture](architecture.md) — the kernel (`Cont` and its machine) and the facade over it, the references,
   the tests and the benchmarks.

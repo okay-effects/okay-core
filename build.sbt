@@ -35,6 +35,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     inConfig(Test)(allowUnsafe),
     Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
     Jmh / run / javaOptions ~= (o => (o :+ unsafe).distinct),
+    // the suites forked on a small stack: the kernel's constant-stack guarantee (100 000 handlers, resets) fails loudly
+    Test / fork := true,
+    Test / javaOptions += "-Xss512k",
     Bench.settings,
     // docs/guide.md's scala blocks, compiled as they are written and their `expr   // value` lines checked
     Test / sourceGenerators += Def.task {

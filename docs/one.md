@@ -185,7 +185,7 @@ is touched before 3 is green.
 - **okay-free, okay-eff, okay-cont**: experiments concluded, their READMEs the record; frozen once their authors
   are done writing them up.
 
-## 7. For okay-one's author, now — while the machine is being written
+## 7. For okay-one's author, then — while the machine was being written apart (history: the kernel lives here since 2026-10-14)
 
 Three things cost a line each now and a rewrite later:
 

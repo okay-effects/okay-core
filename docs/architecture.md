@@ -25,7 +25,7 @@ async/, interop/, scala2/   not yet re-based on the one monad (docs/one.md §5, 
 
 ## The kernel, in one page
 
-The whole account is okay-one's README; what the facade relies on:
+The whole account is [one-kernel.md](one-kernel.md); what the facade relies on:
 
 - **A program of effects has no answer types**: `A ! R` is `Cont[R, Nothing, Nothing, A]`. That is what lets one
   program run under any handlers. Answer types move only in `Control[R]` (shift0 and `$`, Materzok–Biernacki, typed
