@@ -49,7 +49,8 @@ object Machine:
    * `I`, `O` the answers of the rest, where it is resumed */
   enum Rest[-Y, T <: Row, I, +O, B] extends (Y => Cont[T, I, O, B]) with Fails[Cont[T, I, O, B]]:
     case Under[Y, E[_], T <: Row, X, I, A, B, N](h: Taking[E, T, A, B], k: Frame[E +: T, X, I, A, N],
-        inner: Y => Cont[E +: T, I, N, X], fails: Fails[Cont[E +: T, I, N, X]] | Null, none: N =:= Nothing)
+        inner: Y => Cont[E +: T, I, N, X], fails: Fails[Cont[E +: T, I, N, X]] | Null, none: N =:= Nothing,
+        pending: (B ! T) | Null)
       extends Rest[Y, T, N, N, B]
     case Through[Y, E[_], T <: Row, X, I, A, J, O, B](h: Passing[E, T, A, B], k: Frame[E +: T, X, I, A, J],
         inner: Y => Cont[E +: T, I, O, X], fails: Fails[Cont[E +: T, I, O, X]] | Null) extends Rest[Y, T, J, O, B]
@@ -143,9 +144,11 @@ object Machine:
     /** a handler taking the rest: no answer inside, nor of its rest — `N`, `Nothing` by `none`: a name for it, so
      * that the levels with an answer and those with none are told apart by a type test, not by `Nothing` */
     final class Under[E[_], T <: Row, V, B, N, V2, J2, O2, Z](val h: Taking[E, T, V, B], val k: Frame[T, B, N, V2, J2],
-        val m: Meta[T, V2, J2, O2, Z], val none: N =:= Nothing) extends Meta[E +: T, V, N, N, Z]:
-      /** an abort's program, to run here when the levels inside are left — their finalizers run first */
-      var pending: (B ! T) | Null = null
+        val m: Meta[T, V2, J2, O2, Z], val none: N =:= Nothing, pending0: (B ! T) | Null) extends Meta[E +: T, V, N, N, Z]:
+      /** an abort's program, to run here when the levels inside are left — their finalizers run first. The abort is
+       * known by it: a level taken into a `k` meanwhile (a finalizer's operation going out past it) and put back is a
+       * level made again, the program with it */
+      var pending: (B ! T) | Null = pending0
       def outer = m
     /** a handler leaving the rest: the answers through it */
     final class Through[E[_], T <: Row, V, B, J, V2, J2, O, Z](val h: Passing[E, T, V, B], val k: Frame[T, B, J, V2, J2],
@@ -206,8 +209,8 @@ object Machine:
   /** A WAY OUT not an error: an abort to a handler's level, a cancel — unwound as one, no guard recovering it.
    * Never thrown: a value of the machine's */
   sealed abstract class Exit extends Throwable(null, null, false, false)
-  /** an abort: its program pending at `level`, run there when the levels inside it are left */
-  final class AbortTo(val level: AnyRef) extends Exit
+  /** an abort: its program `pending` at a handler's level, run there when the levels inside it are left */
+  final class AbortTo(val pending: AnyRef) extends Exit
   /** a cancel, from a step */
   object Cancelled extends Exit
 
@@ -218,10 +221,13 @@ object Machine:
    * with its level — to the top, its answer to it */
   @tailrec private def unwind[Z](e: Throwable, m: Meta[?, ?, ?, ?, Z]): Next[Z] = m match
     case u: Meta.Under[e2, t, v, b, n, v2, j2, o2, z] => e match
-      case to: AbortTo if to.level eq u => u.pending match
-        case null => unwind(e, u.m)
-        case p => Eff(u.none.flip.liftCo[[x] =>> Cont[t, x, Nothing, b]](p), u.k, u.m)
+      case to: AbortTo => u.pending match
+        case p if p eq to.pending => Eff(u.none.flip.liftCo[[x] =>> Cont[t, x, Nothing, b]](p), u.k, u.m)
+        case _ => unwind(e, u.m)
       case _ => unwind(e, u.m)
+    case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] if u.g.masked && cancelAsked(u.m) =>
+      // a mask left by an error, a cancel asked under it: the region's end cancels still — unwound on as a cancel
+      unwind(Cancelled, u.m)
     case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] =>
       // a recovering guard: its program in the body's place, a program of effects as the body is (`none`, by the types)
       val recovered: Cont[t, j, Nothing, b] | Null = u.none match
@@ -262,21 +268,40 @@ object Machine:
         case _: Aborting[e4, t4, v4, b4] => u
         case _ => null
       case In.There(in) => level(in, u.m)
+      // a place by key: the handler asked whether the key is its own — then as the head; else on, the same place
+      case at: In.At[e3, r3] => u.h.at(at) match
+        case null => level(at.again[t], u.m)
+        case s: In.Same[e, E] => s match
+          case In.Same.Refl() => u.h match
+            case _: Aborting[e4, t4, v4, b4] => u
+            case _ => null
     case th: Meta.Through[e, t, v, b, j, v2, j2, o, z] => in match
       case In.Here() => th.h match
         case a: Answering[e4, t4, v4, b4] => a
         case _ => null
       case In.There(in) => level(in, th.m)
+      case at: In.At[e3, r3] => th.h.at(at) match
+        case null => level(at.again[t], th.m)
+        case s: In.Same[e, E] => s match
+          case In.Same.Refl() => th.h match
+            case a: Answering[e4, t4, v4, b4] => a
+            case _ => null
     case u: Meta.UnderState[e, t, s, v, b, j, v2, j2, o, z] => in match
       case In.Here() => u
       case In.There(in) => level(in, u.m)
+      case at: In.At[e3, r3] => u.h.at(at) match
+        case null => level(at.again[t], u.m)
+        case s: In.Same[e, E] => s match
+          case In.Same.Refl() => u
     case u: Meta.UnderView[e, r, t, v, j, v2, j2, o, z] => level(Removed.relocate(in, u.rm), u.m)
     case d: Meta.Dollar[t, a, j, i2, o2, b, v2, j2, z] => in match
       case In.Here() => null
       case In.There(in) => level(in, d.m)
+      case at: In.At[e3, r3] => level(at.again[t], d.m)
     case r: Meta.Reset[r2, s, o, n, v2, j2, o2, z] => in match
       case In.Here() => null
       case In.There(in) => level(in, r.m)
+      case at: In.At[e3, r3] => level(at.again[r2], r.m)
     case _ => m.passed match
       case null => null
       case o => level[E, R, Z](in, o)
@@ -310,8 +335,9 @@ object Machine:
       k: Frame[R, A, I, V1, J1], m: Meta[R, V1, J1, O, Z]): Next[Z] = u.h match
     case ab: Aborting[e4, t4, v4, b4] =>
       if guardsTo(m, u) then
-        u.pending = guarded(ab.abort[Y](op))
-        unwind(AbortTo(u), m)
+        val p = guarded(ab.abort[Y](op))
+        u.pending = p
+        unwind(AbortTo(p), m)
       else Eff(u.none.flip.liftCo[[x] =>> Cont[T, x, Nothing, B]](guarded(ab.abort[Y](op))), u.k, u.m)
     case _ => outE(op, in, g, null, k, m)
 
@@ -414,8 +440,8 @@ object Machine:
                 ret match
                   case Return(bv) => eval(guarded(b.f(bv)), k, m)
                   case r => eval(cn.none.flip.liftCo[[x] =>> Cont[t3, x, Nothing, b3]](r), Frame.Bind(b.f, k), m)
-              case _ => eval[e +: t3, i3, n, x2, a1, n, Z](body, cn.k, Meta.Under(cn.h, Frame.Bind(b.f, k), m, cn.none))
-          case _ => eval[e +: t3, i3, n, x2, a1, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Under(cn.h, Frame.Bind(b.f, k), m, cn.none))
+              case _ => eval[e +: t3, i3, n, x2, a1, n, Z](body, cn.k, Meta.Under(cn.h, Frame.Bind(b.f, k), m, cn.none, cn.pending))
+          case _ => eval[e +: t3, i3, n, x2, a1, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Under(cn.h, Frame.Bind(b.f, k), m, cn.none, cn.pending))
         case _ => eval(b.m, Frame.Bind(b.f, k), m)
       case _ => eval(b.m, Frame.Bind(b.f, k), m)
     case mp: Map[r, i, o, x, a] => mp.m match
@@ -435,7 +461,7 @@ object Machine:
         case Frame.Map(f, rest) => eval(guarded { val value = u.h.value[x](u.s, p.op); u.s = u.h.next(u.s, p.op); Return(f(value)) }, rest, m)
         case Frame.End() => eval(guarded { val value = u.h.value[x](u.s, p.op); u.s = u.h.next(u.s, p.op); Return[R, s, x](value) }, k, m)
       case u: Meta.Under[e2, t2, v, b, n, v2, j2, o2, z] =>
-        eval(clausing(u, p.op, Rest.Under(u.h, k, (y: x) => Return[R, s, x](y), null, u.none)), u.k, u.m)
+        eval(clausing(u, p.op, Rest.Under(u.h, k, (y: x) => Return[R, s, x](y), null, u.none, u.pending)), u.k, u.m)
       // seen from outside a handler of another effect, or the top: its place made, found the usual way
       case _ => foundOff(p.op, In.Here[e, t](), (y: x) => Return[R, s, x](y), k, m)
     case ih: InjectHere[e, t, y, i, o, a] => m match
@@ -445,7 +471,7 @@ object Machine:
       case u: Meta.UnderState[e2, t2, s2, v, b, j, v2, j2, o2, z] =>
         eval(guarded { val value = u.h.value[y](u.s, ih.op); u.s = u.h.next(u.s, ih.op); ih.g(value) }, k, m)
       case u: Meta.Under[e2, t2, v, b, n, v2, j2, o2, z] =>
-        eval(clausing(u, ih.op, Rest.Under(u.h, k, ih.g, null, u.none)), u.k, u.m)
+        eval(clausing(u, ih.op, Rest.Under(u.h, k, ih.g, null, u.none, u.pending)), u.k, u.m)
       case _ => foundOff(ih.op, In.Here[e, t](), ih.g, k, m)
     // an operation with its place, not the head: its handler found by its path
     case p: Perform[r, e, s, x] => found(p.op, p.in, (y: x) => Return[R, s, x](y), k, m)
@@ -454,7 +480,7 @@ object Machine:
     // or `inner(y)` itself, under it
     case rs: Resume[y, t, i, o, b] => rs.c match
       case cn: Rest.Under[y2, e, t2, x, i2, a, b2, n] =>
-        eval[e +: t2, i2, n, x, a, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Under(cn.h, k, m, cn.none))
+        eval[e +: t2, i2, n, x, a, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Under(cn.h, k, m, cn.none, cn.pending))
       case cn: Rest.Through[y2, e, t2, x, i2, a, j, o2, b2] =>
         eval[e +: t2, i2, O, x, a, j, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Through(cn.h, k, m))
       case cn: Rest.UnderState[y2, e, t2, s2, x, i2, a, j, o2, b2] =>
@@ -463,7 +489,7 @@ object Machine:
     // a handler entered: its level, the frames outside it those here; its body on its own frames
     case h: Handle[e, t, x, i, a, j, o, b] => eval(h.body, h.k, Meta.Through(h.h, k, m))
     case h: HandleState[e, t, st, x, i, a, j, o, b] => eval(h.body, h.k, Meta.UnderState(h.h, h.s, k, m))
-    case h: HandleK[e, t, x, i, a, b] => eval(h.body, h.k, Meta.Under(h.h, k, m, summon[I =:= Nothing]))
+    case h: HandleK[e, t, x, i, a, b] => eval(h.body, h.k, Meta.Under(h.h, k, m, summon[I =:= Nothing], null))
     case v: View[e, r, t, x, i, a, j, o] => eval(v.body, v.k, Meta.UnderView(v.rm, k, m))
     case Defer(p) => eval(guarded(p()), k, m)
     case _ => rare(c, k, m)
@@ -527,7 +553,7 @@ object Machine:
     case cn: Rest.UnderObserve[y2, t2, x, i2, a, b2, n] =>
       Eff[t2, i2, n, x, a, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.UnderObserve(cn.o, k, m, cn.none))
     case cn: Rest.Under[y2, e, t2, x, i2, a, b2, n] =>
-      Eff[e +: t2, i2, n, x, a, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Under(cn.h, k, m, cn.none))
+      Eff[e +: t2, i2, n, x, a, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Under(cn.h, k, m, cn.none, cn.pending))
     case cn: Rest.Through[y2, e, t2, x, i2, a, j, o2, b2] =>
       Eff[e +: t2, i2, O2, x, a, j, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Through(cn.h, k, m))
     case cn: Rest.UnderState[y2, e, t2, s2, x, i2, a, j, o2, b2] =>
@@ -537,7 +563,7 @@ object Machine:
   private def failIn[T <: Row, I, O, B, V, J, O2 >: O, Z](fl: Fail[T, I, O, B], k: Frame[T, B, I, V, J],
       m: Meta[T, V, J, O2, Z]): Next[Z] = fl.c match
     case cn: Rest.Under[y, e, t2, x, i2, a, b2, n] =>
-      Eff[e +: t2, i2, n, x, a, n, Z](failed(cn.fails, fl.e), cn.k, Meta.Under(cn.h, k, m, cn.none))
+      Eff[e +: t2, i2, n, x, a, n, Z](failed(cn.fails, fl.e), cn.k, Meta.Under(cn.h, k, m, cn.none, cn.pending))
     case cn: Rest.Through[y, e, t2, x, i2, a, j, o2, b2] =>
       Eff[e +: t2, i2, O2, x, a, j, Z](failed(cn.fails, fl.e), cn.k, Meta.Through(cn.h, k, m))
     case cn: Rest.UnderState[y, e, t2, s, x, i2, a, j, o2, b2] =>
@@ -563,20 +589,39 @@ object Machine:
   @tailrec private def outE[E[_], Y, R <: Row, I, O, A, V, J, Z](op: E[Y], in: In[E, R], g: Y => Cont[R, I, O, A],
       gf: Fails[Cont[R, I, O, A]] | Null, k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z]): Next[Z] = m match
     case u: Meta.Under[e, t, v, b, n, v2, j2, o2, z] => in match
-      case In.Here() => Eff(clausing(u, op, Rest.Under(u.h, k, g, gf, u.none)), u.k, u.m)
+      case In.Here() => Eff(clausing(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending)), u.k, u.m)
       case In.There(in) =>
-        val c = u.none.liftCo[[x] =>> Rest[Y, t, n, x, b]](Rest.Under(u.h, k, g, gf, u.none))
+        val c = u.none.liftCo[[x] =>> Rest[Y, t, n, x, b]](Rest.Under(u.h, k, g, gf, u.none, u.pending))
         outE[E, Y, t, n, o2, b, v2, j2, Z](op, in, c, c, u.k, u.m)
+      // a place by key: the handler's own — as the head; else past it, the same place
+      case at: In.At[e3, r3] => u.h.at(at) match
+        case null =>
+          val c = u.none.liftCo[[x] =>> Rest[Y, t, n, x, b]](Rest.Under(u.h, k, g, gf, u.none, u.pending))
+          outE[E, Y, t, n, o2, b, v2, j2, Z](op, at.again[t], c, c, u.k, u.m)
+        case s: In.Same[e, E] => s match
+          case In.Same.Refl() => Eff(clausing(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending)), u.k, u.m)
     case th: Meta.Through[e, t, v, b, j, v2, j2, o, z] => in match
       case In.Here() => Eff(passing(th.h, op, Rest.Through(th.h, k, g, gf)), th.k, th.m)
       case In.There(in) =>
         val c = Rest.Through(th.h, k, g, gf)
         outE(op, in, c, c, th.k, th.m)
+      case at: In.At[e3, r3] => th.h.at(at) match
+        case null =>
+          val c = Rest.Through(th.h, k, g, gf)
+          outE(op, at.again[t], c, c, th.k, th.m)
+        case s: In.Same[e, E] => s match
+          case In.Same.Refl() => Eff(passing(th.h, op, Rest.Through(th.h, k, g, gf)), th.k, th.m)
     case u: Meta.UnderState[e, t, s, v, b, j, v2, j2, o, z] => in match
       case In.Here() => Eff(stated(u, op, g), k, m)
       case In.There(in) =>
         val c = Rest.UnderState(u.h, u.s, k, g, gf)
         outE(op, in, c, c, u.k, u.m)
+      case at: In.At[e3, r3] => u.h.at(at) match
+        case null =>
+          val c = Rest.UnderState(u.h, u.s, k, g, gf)
+          outE(op, at.again[t], c, c, u.k, u.m)
+        case sm: In.Same[e, E] => sm match
+          case In.Same.Refl() => Eff(stated(u, op, g), k, m)
     case u: Meta.UnderView[e, r, t, v, j, v2, j2, o, z] =>
       val c = Rest.UnderView(u.rm, k, g, gf)
       outE(op, Removed.relocate(in, u.rm), c, c, u.k, u.m)
@@ -594,13 +639,22 @@ object Machine:
       case In.There(in) =>
         val c = Rest.UnderDollar[Y, t, A, I, a, j, i2, o2, b](d.ret, k, g, gf)
         outE(op, in, c, c, d.k, d.m)
+      case at: In.At[e3, r3] =>
+        val c = Rest.UnderDollar[Y, t, A, I, a, j, i2, o2, b](d.ret, k, g, gf)
+        outE(op, at.again[t], c, c, d.k, d.m)
     case r: Meta.Reset[r2, s, o, n, v2, j2, o2, z] => in match
       case In.Here() => ControlOp.absurd(op)
       case In.There(in) =>
         val c = r.none.liftCo[[x] =>> Rest[Y, r2, n, x, o]](Rest.UnderReset[Y, r2, A, I, s, o, n](k, g, gf, r.none))
         outE[E, Y, r2, n, o2, o, v2, j2, Z](op, in, c, c, r.k, r.m)
+      case at: In.At[e3, r3] =>
+        val c = r.none.liftCo[[x] =>> Rest[Y, r2, n, x, o]](Rest.UnderReset[Y, r2, A, I, s, o, n](k, g, gf, r.none))
+        outE[E, Y, r2, n, o2, o, v2, j2, Z](op, at.again[r2], c, c, r.k, r.m)
     case t: Meta.Top[r, v, z] => t.out match
-      case _: Out.None[z2] => In.absurd(in)
+      // none comes to the top of a row with none — but a place by key, no handler of it in force: raised
+      case _: Out.None[z2] => in match
+        case at: In.At[e3, r3] => unwind(IllegalStateException(s"an operation at a place by key with no handler of it in force: ${at.ref}"), m)
+        case null => In.absurd(in)
       case Out.Given(give) =>
         lazy val back: z = give(op, in, (y: Y) => drive[z](Eff[R, I, O, A, V, J, z](guarded(g(y)), k, t)),
           (e: Throwable) => drive[z](Eff[R, I, O, A, V, J, z](failed(gf, e), k, t)),

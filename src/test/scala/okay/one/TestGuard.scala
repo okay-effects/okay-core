@@ -69,6 +69,14 @@ class TestGuard extends munit.FunSuite:
     assertEquals(log.reverse, List("inner", "outer"))
   }
 
+  test("an abort whose finalizer's operation takes the aborting level into a k: the abort still its level's, on each path") {
+    // the finalizer's `among` goes out past `either`'s level to `all`, which takes it into k and resumes it twice:
+    // the level is made again each time, the abort pending with it — each path ends in the abort's answer
+    type R = T +: Choose +: Pure
+    val p = Throws.raise[String, R]("no").map(_ => 1).ensure(Choose.among[Int, R](Seq(1, 2)).map(_ => ()))
+    assertEquals(p.handle(Throws.either).handle(Choose.all).run, List(Left("no"), Left("no")))
+  }
+
   test("an abort past guards and states: each finalizer, the states dropped") {
     type R = T +: State % Int +: W +: Pure
     val p = State.put[Int, R](5).flatMap(_ => Throws.raise[String, R]("no")).map(_ => 1)
@@ -183,4 +191,16 @@ class TestGuardStep extends munit.FunSuite:
       case Step.Cancelled() => ()
       case other => fail(s"not cancelled at the mask's exit: $other")
     assertEquals(log.reverse, List("in 5", "fin"))
+  }
+
+
+  test("cancel under uncancelable, then the region fails: the cancel fires at the mask's exit — Cancelled, not recovered") {
+    val p = ask.flatMap(_ => pure(1).map(_ => throw boom)).uncancelable.recover(_ => pure(-1)).handle(cell[Reader % Int +: Pure, Int])
+    val s = p.step
+    s match
+      case y: Step.Yield[r, a, e, x] => assert(y.resume.cancel() eq s, "the same step given back")
+      case other => fail(s"not a step: $other")
+    first(s)(5) match
+      case Step.Cancelled() => ()
+      case other => fail(s"not cancelled: $other")
   }

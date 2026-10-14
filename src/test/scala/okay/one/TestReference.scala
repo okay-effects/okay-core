@@ -110,6 +110,11 @@ class TestReference extends munit.FunSuite:
         case h: Linear[E, T, A, B] => norm(h[Nothing, Nothing, x](o.op, (x: x) => reify(handled(h, o.k(x)))))
         case h: Deep[E, T, A, B] => norm(h(o.op, (x: x) => reify(handled(h, o.k(x)))))
       case th: In.There[f2, g, t] => Norm.Op(o.op, th.in, (x: x) => handled(h, o.k(x)))
+      // a place by key: the handler's own, as the head; else past it, the same place
+      case at: In.At[f2, r2] => h.at(at) match
+        case null => Norm.Op(o.op, at.again, (x: x) => handled(h, o.k(x)))
+        case s: In.Same[E, f] => s match
+          case In.Same.Refl() => handled(h, Norm.Op(o.op, In.Here[f, T](), o.k))
 
   /** a handler leaving the rest, at the answers through it: a shift0 going out past it takes it into its rest */
   def handledC[E[_], T <: Row, J, O, A, B](h: Passing[E, T, A, B], n: NormC[E +: T, J, O, A]): NormC[T, J, O, B] = n match
@@ -120,6 +125,10 @@ class TestReference extends munit.FunSuite:
         case h: Translating[E, T, A, B] => bindC(effects(norm(h(o.op))), (x: x) => handledC(h, o.k(x)))
         case h: Linear[E, T, A, B] => normC(h[J, O, x](o.op, (x: x) => reifyC(handledC(h, o.k(x)))))
       case th: In.There[f2, g, t] => NormC.Op(o.op, th.in, (x: x) => handledC(h, o.k(x)))
+      case at: In.At[f2, r2] => h.at(at) match
+        case null => NormC.Op(o.op, at.again, (x: x) => handledC(h, o.k(x)))
+        case s: In.Same[E, f] => s match
+          case In.Same.Refl() => handledC(h, NormC.Op(o.op, In.Here[f, T](), o.k))
     case s: NormC.Shifted[p, t2, i1, o1, x1, y, j, o2, a] => s.at match
       case Nearest.There(at1) => NormC.Shifted(at1, s.f, (y: y) => handledC(h, s.k(y)))
       case _: Nearest.Here[t3] => Nearest.absurd(s.at)
@@ -129,6 +138,10 @@ class TestReference extends munit.FunSuite:
     case o: Norm.Op[r, a, f, x] => o.in match
       case _: In.Here[f2, t] => stated(h, h.next(s, o.op), o.k(h.value(s, o.op)))
       case th: In.There[f2, g, t] => Norm.Op(o.op, th.in, (x: x) => stated(h, s, o.k(x)))
+      case at: In.At[f2, r2] => h.at(at) match
+        case null => Norm.Op(o.op, at.again, (x: x) => stated(h, s, o.k(x)))
+        case sm: In.Same[E, f] => sm match
+          case In.Same.Refl() => stated(h, s, Norm.Op(o.op, In.Here[f, T](), o.k))
 
   /** a state under a `$`: taken into a shift0's rest as it is — each resumption from it */
   def statedC[E[_], T <: Row, S, J, O, A, B](h: Stateful[E, T, S, A, B], s: S, n: NormC[E +: T, J, O, A]): NormC[T, J, O, B] =
@@ -137,6 +150,10 @@ class TestReference extends munit.FunSuite:
       case o: NormC.Op[p, j, o2, a, f, x] => o.in match
         case _: In.Here[f2, t] => statedC(h, h.next(s, o.op), o.k(h.value(s, o.op)))
         case th: In.There[f2, g, t] => NormC.Op(o.op, th.in, (x: x) => statedC(h, s, o.k(x)))
+        case at: In.At[f2, r2] => h.at(at) match
+          case null => NormC.Op(o.op, at.again, (x: x) => statedC(h, s, o.k(x)))
+          case sm: In.Same[E, f] => sm match
+            case In.Same.Refl() => statedC(h, s, NormC.Op(o.op, In.Here[f, T](), o.k))
       case sh: NormC.Shifted[p, t2, i1, o1, x1, y, j, o2, a] => sh.at match
         case Nearest.There(at1) => NormC.Shifted(at1, sh.f, (y: y) => statedC(h, s, sh.k(y)))
         case _: Nearest.Here[t3] => Nearest.absurd(sh.at)
@@ -159,6 +176,7 @@ class TestReference extends munit.FunSuite:
       case o: NormC.Op[p, i, p2, a, e, x] => o.in match
         case In.There(in) => NormC.Op(o.op, in, (x: x) => dollarC(o.k(x), ret))
         case In.Here() => ControlOp.absurd(o.op)
+        case at: In.At[e2, r2] => NormC.Op(o.op, at.again, (x: x) => dollarC(o.k(x), ret))
       case s: NormC.Shifted[p, t2, i1, o1, x1, y, i, p2, a] => s.at match
         case _: Nearest.Here[t3] => normC(s.f((y: y) => reifyC(dollarC(s.k(y), ret))))
         case Nearest.There(_) => Nearest.absurd(s.at)
@@ -169,6 +187,7 @@ class TestReference extends munit.FunSuite:
     case o: NormC.Op[p, s, o2, a, e, x] => o.in match
       case In.There(in) => NormC.Op(o.op, in, (x: x) => lowerC(o.k(x)))
       case In.Here() => ControlOp.absurd(o.op)
+      case at: In.At[e2, r2] => NormC.Op(o.op, at.again, (x: x) => lowerC(o.k(x)))
     case sh: NormC.Shifted[p, t2, i1, o1, x1, y, s, o2, a] => sh.at match
       case _: Nearest.Here[t3] =>
         NormC.Done(sh.f((y: y) => Bind(Lift[R, o1, Cont[R, i1, o1, x1]](reifyC(lowerC(sh.k(y)))),
@@ -275,6 +294,7 @@ class TestReference extends munit.FunSuite:
       case y: Step.Yield[r, a, e, x] => y.in match
         case _: In.Here[f, t] => go(y.resume(asked(y.op, n)))
         case th: In.There[f, g, t] => In.absurd(th.in)
+        case at: In.At[f, r] => In.unhandled(at)
     go(s)
   def asked[X](op: Ask[X], n: Int): X = op match { case Ask.Get => n }
 

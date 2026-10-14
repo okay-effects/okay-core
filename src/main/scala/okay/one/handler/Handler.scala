@@ -10,7 +10,10 @@ import okay.one.row.*
  * whatever they are: a `$` around them, a shift0 under them in its `k`; `Taking` take the rest — dropped, or given as `k` — so only a
  * program of effects, with no answer to drop. The forms are classes, not traits: the machine tells them apart by a
  * type test, a class's cheap */
-sealed abstract class Handler[E[_], T <: Row, A, B]
+sealed abstract class Handler[E[_], T <: Row, A, B]:
+  /** the place `in`, by key, found at run time — this handler's? None by default: the protocol's handlers
+   * (okay-kernel's, `okay.core.kernel`) say which keys are theirs, the evidence a `Key`'s (`Key.at`) */
+  def at[F[_], R <: Row](in: In.At[F, R]): In.Same[E, F] | Null = null
 
 /** a handler with no state: its `ret` of the value only */
 sealed abstract class Stateless[E[_], T <: Row, A, B] extends Handler[E, T, A, B]:

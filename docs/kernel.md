@@ -17,44 +17,57 @@ OnCore.foreign(otherComputation)               // import: another implementation
 ## How
 
 **A kernel program is a program of the one monad** over one row, `Req +: Pure` — `P`, a `Cont` in a box: `pure` a
-`Return`, `flatMap` a `Bind`, `delay` a `Defer`. Nothing of the bridge's own runs a program; the machine's loop does,
-in constant stack, `k` data.
+`Return`, `flatMap` a `Bind`, `delay` a `Defer`. Nothing of the bridge's own runs a program, forwards a request or
+unwinds a failure; the machine's loop does it all, in constant stack, `k` data.
 
-**Operations by identity, as requests.** The kernel finds a handler at run time, by the operation's key, where the
-operation runs — a `k` resumed under other handlers sees those. So every operation of the kernel is a REQUEST to the
-nearest delimiter of the bridge (`Req`: `Perform`, `Unwind`, `Mark`, `Env`, `Shift`), and every delimiter of the
-bridge — a kernel handler, a `$`, `recover`, `ensuring`, `uncancelable` — is a `Deep` handler of `Req` over the same
-row outside: it takes the requests it concerns and FORWARDS the rest outward, `perform(request).flatMap(k)`, its `k`
-the rest under it with itself put back (the kernel's `k` is data: the levels passed, put back when resumed).
+**Operations at a place by key.** The kernel finds a handler at run time, by the operation's key, where the
+operation runs — a `k` resumed under other handlers sees those. The one monad's rows have a place for that:
+`In.At(ref)`, A PLACE BY KEY — beside `Here` and `There`, the paths the compiler finds. An operation performed at it
+goes to the nearest handler in force that says the key is its own (`Handler.at`, the evidence a `Key`'s): the machine
+walks the levels as it walks a path (`level`, `outE`), the place the same at every level — answered in place, an
+abort, or out to the handler with the rest as `k`, the levels passed in it. So every operation of the kernel is
+`Perform(op)` at `In.At(op.key())`, and every delimiter of the bridge is a handler of the one effect `Req` at its
+own keys:
 
-**The handler shapes.** `Answering` resumes `k` with `value(op)`; `Aborting` resumes it with an ABORT, a signal
-unwinding from where the operation was to the handler, its finalizers run on the way; `Translating` runs its program
-in the handler's place, the rest resumed with its value; `General` runs the clause with `k` deep; a return
-`Returning`'s `answer`, else `General`'s `ret`, else the value.
+- a kernel handler, by its shape: `Answering` and `Translating` a `Linear` of the machine's — the rest given once,
+  through it (`k(value(op))`; the translation outside, then `k`); `General` a `Deep`, `k` data; `Aborting` the
+  machine's `Aborting`, its abort unwinding through the guards between. Each at its effect's key; the first two also
+  at a shift0's key (a handler is a delimiter) and at the key the handlers in force are asked by;
+- `$` a `Deep` at a shift0's key alone, its `ret` the `k` given;
+- `recover`, `ensuring`, `uncancelable`: the machine's guards (`Recovering`, a finalizer, a mask) — no delimiter of
+  the bridge's own.
 
-**Control** — the API's `Control`, apart from `Effects`; `OnCore` implements both. `$` is a delimiter whose return
-is `k`; `shift0` a request only a handler's delimiter or a `$`'s takes — the bridge's others forward it.
+The requests: `Perform` (a kernel operation), `Shift` (a shift0's body, to the nearest handler or `$`), `Env` (the
+handlers in force asked for: each adds itself and asks on; the top adds the host).
 
-**Failures, aborts, cancellation** are requests too — `Unwind`, `k` dropped — to the nearest delimiter taking them:
-`recover` (a failure), `ensuring` (any: the finalizer, then on), an `Aborting` handler (its own abort), a region (a
-cancellation pending there turns any into a cancellation), the top (the step). An exception of the program's
-functions is caught where the bridge calls it and unwinds from there — never a `Raise` of the machine's, which the
-bridge's delimiters would not see. What an operation is answered can be a SIGNAL (`k.fail`, `k.cancel`, an abort, a
-value given inside a region a cancellation waits for): the operation reads its value and unwinds from where it was
-performed.
+**Failures, aborts, cancellation are the machine's.** An exception of the program's functions is a `Raise` at the
+guarded call, unwound by the machine: `recover`'s guard, `ensuring`'s finalizer, an `Aborting` handler's level
+(its abort pending there, the finalizers between run first), the top (`Step.Failed`). A `k` handed out is resumed
+with a value, failed (`Fail`: the error raised inside its levels) or cancelled (the machine's cancel: under a mask
+the same step given back, the cancel fired when the mask is left — a region that fails with a cancel waiting cancels
+still). No signal read by an operation: nothing of the bridge's between an operation and its answer.
 
 **The protocol.** Export: the program stepped (the kernel's `Step`): a request come to the top is the host's in
 place if it answers its effect, else `Step.Yield` with the rest as the `Resume` — multi-shot, from any thread.
-Import: the handlers in force asked for (`Env`, each delimiter adding itself on the way out), the computation
-started with them as its host in place, its yields performed here as operations of this program; an abort or a
-cancellation crossing it cancels it, its finalizers' operations answered here.
+Import: the handlers in force asked for (`Env`), the computation started with them as its host in place, its yields
+performed here as operations of this program, each under a guard of its `k` (`Driven`): its value to `k`, a failure
+to `k.fail`, an abort or a cancellation crossing to `k.cancel` — its finalizers' operations performed here — then
+the unwinding on.
 
-**Two trusted steps**, each one method: `trust` (a value given where the program, built typed, expects it — the
-protocol is untyped by design) and `inside` (the row is phantom to the machine: a body of the bridge under one more
-delimiter of the bridge is the same program, its operations of the nearest delimiter, `Here`, as before).
+**Trusted steps.** The bridge's two, each one method: `trust` (a value given where the program, built typed, expects
+it — the protocol is untyped by design) and `inside` (the row is phantom to the machine: a body of the bridge under
+one more delimiter of the bridge is the same program). The kernel's own two, in `okay.one.row`, the price of a
+place found at run time: `Key.at` (one ref names one effect — as okay-kernel's `Key.of`) and `In.At.again` (the row
+of a place by key is phantom: the same place in every row).
 
-**The typed front, untouched.** `A ! E1 + E2`, paths, the standard effects: the same nodes; the bridge is a library
-over the kernel's `Deep`, nothing of it in the machine.
+**The typed front, untouched.** `A ! E1 + E2`, paths, the standard effects: the same nodes, the same `level` and
+`outE` with a case more each — `eval` untouched.
+
+**Found on the way: an abort whose finalizer takes the aborting level into a `k`.** A finalizer between an abort
+and its handler performing an operation that goes out past the handler's level and comes back resumed — the level
+made again — lost the abort: it was pending on the level object. The abort's program now goes with the level into
+the `Rest` and back (`Rest.Under.pending`), and the abort is known by it, not by the level. okay-core's own programs
+had it too (`TestGuard`: an abort under `either` with a finalizer choosing under `all`).
 
 **Not done: okay-core's own operations as the kernel's vocabulary.** okay-core's `Get`, `Ask`, `Tell`… find their
 handler by path, and carry no `Type`; the two worlds meet at the border (`computation`, `foreign`) and by the
@@ -82,15 +95,16 @@ implementations (okay-kernel's `integration/`: six implementations in one proces
 ## Measured
 
 `KernelMixedBenchmark` (src/jmh): okay-kernel's mixed program, written once over the kernel's `Effects`, on `OnCore`
-and on okay-kernel's reference machine — against `MixedBenchmark`, the same program in okay-core's own words. JDK 26,
-`-f 2 -wi 3 -i 5`, µs for 1000 orders (bench.d/2026-10-13T19-45_one-monad-5486b17.csv):
+— against `MixedBenchmark`, the same program in okay-core's own words. JDK 26, `-f 1 -wi 3 -i 5 -prof gc`, µs for
+1000 orders, two rounds each, interleaved with the master of the day (c7672da), 2026-10-14:
 
-| | µs |
-|---|---|
-| okay-core's own program (`MixedBenchmark`), the total a state / a cell | 162 / 214 |
-| the kernel's program on `OnCore`, the first cut | 419 |
-| the kernel's program on `Steps` | 547 |
-| before the one monad (bench.d/2026-10-10): own 127, native 231–255, `Steps` 523 | |
+| | before (`Deep` and requests) | a place by key, `Cont` a `Prog` |
+|---|---|---|
+| the kernel's program on `OnCore` | 450 / 452 (2.92 MB) | 294 (2.51 MB); 391 / 410 with the box still |
+| okay-core's own program (`MixedBenchmark`), state / cell | 222 / 221, 231 / 222 (1.430 MB) | 231 / 231, 234 / 238 (1.445 MB) |
+| the kernel's program on `Steps` (the reference), okay-java (okay-bench) | 535; 237–253 | |
 
-The bridge is the first cut: every kernel handler a `Deep` clause and a level of `k`, every operation a request and
-a read of its answer. What the native path on the two monads went through (474 → 231) is ahead of it.
+The own program's +15 B an order is `Rest.Under`'s field for the abort pending (the bug above); its time within the
+runs' noise. What is left between 294 and okay-java's 237: a kernel `Fn` adapted to a function at each bind and each
+`k` handed to a clause (okay-java's `k` is the kernel's `Fn` itself), an `Answering` handler as a `Linear` (the rest
+captured and resumed, not answered in place — the price of a shift0 to it), an `In.At` and a request an operation.

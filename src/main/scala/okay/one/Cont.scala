@@ -29,8 +29,11 @@ infix type ![+A, R <: Row] = Cont[R, Nothing, Nothing, A]
  *  - control's: `Shift0`, up to the nearest `$`, the answer type modified; `Dollar`, the `$`, its answer a program run
  *    outside it; `Lower`, a `reset` — its answer a value.
  *
- * A handler's frames `k` and a `k` as data the machine's: where it has run a program, it is put back */
-enum Cont[R <: Row, I, +O, +A]:
+ * A handler's frames `k` and a `k` as data the machine's: where it has run a program, it is put back.
+ *
+ * A program of the kernel's protocol as it is (okay-kernel's `Prog`, the row phantom to it): nothing boxed at the
+ * border (`okay.core.kernel`) */
+enum Cont[R <: Row, I, +O, +A] extends okay.kernel.Prog[A @scala.annotation.unchecked.uncheckedVariance]:
   case Return[R <: Row, S, A](a: A) extends Cont[R, S, S, A]
   case Bind[R <: Row, I, T, O, X, A](m: Cont[R, T, O, X], f: X => Cont[R, I, T, A]) extends Cont[R, I, O, A]
   case Map[R <: Row, I, O, X, A](m: Cont[R, I, O, X], f: X => A) extends Cont[R, I, O, A]

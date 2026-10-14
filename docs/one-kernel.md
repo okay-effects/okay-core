@@ -34,7 +34,9 @@ framework and the kernel data. No dependencies of its own; the facade (`okay.cor
   as an effect, and the interceptors: `audit` (a sensitive effect under an `Interceptor`, `Pass` the only way on),
   `handleAudited`, `intercept`, `observe` (an `Observer` of every effect, `Seen`).
 - `row` also: `Sensitive[E]` (an effect's author's given), `Plain[E]` (what `handle` asks), `Audited[E]` (opaque: in
-  the row outside an audit, the same operations, no `In[E, …]`).
+  the row outside an audit, the same operations, no `In[E, …]`); and A PLACE BY KEY, `In.At(ref)` with `Key[E]` —
+  a handler found at run time, the nearest that says the key is its own (`Handler.at`), whatever the row: the
+  protocol's place (okay-kernel's, `okay.core.kernel`), nothing of the typed front makes one ([kernel.md](kernel.md)).
 
 ```scala
 infix type ![+A, R <: Row] = Cont[R, Nothing, Nothing, A]   // a program of effects: no answers of its own

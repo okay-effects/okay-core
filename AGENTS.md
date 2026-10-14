@@ -36,7 +36,11 @@ are compiled and checked by `TestGuide`).
   clipped by `size > DesiredMethodLimit`) and A/B every change on `MixedBenchmark` (state) and the lanes.
 - A handler is over the row `T` outside it; a `Deep` clause's `k` data, a program over `T`, kept and resumed anywhere.
   `handle`'s `T` unbounded (`& Row` at its uses): a bounded one is fixed to `Row` before `Removed` is searched.
-- No casts; no exception at run time for a program that type checks (`In.absurd` matches only `null`).
+- No casts; no exception at run time for a program that type checks (`In.absurd` matches only `null`). The one
+  exception, named: A PLACE BY KEY, `In.At(ref)` — the protocol's (okay-kernel's handlers are found by identity at
+  run time), a case of `In` beside the paths; a handler says which keys are its own (`Handler.at`), `level` and
+  `outE` ask it. Its two trusted steps are in `okay.one.row`: `Key.at` (one ref names one effect) and `In.At.again`
+  (the row of a place by key is phantom). Nothing of the typed front makes one; the bridge (`okay.core.kernel`) does.
 - `TestReference` checks the machine against the meaning on random programs: run it after any change to the machine.
 - INTERCEPTORS — control and audit of effects (`TestIntercept`; okay-rs's `tests/intercept.rs` the same programs,
   keep them in step): an effect's author gives `Sensitive[E]`; `handle` asks `Plain[E]`, so a sensitive effect is

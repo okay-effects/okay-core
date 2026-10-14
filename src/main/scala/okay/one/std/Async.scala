@@ -36,6 +36,7 @@ object Async:
         case y: Step.Yield[r, a, e, x] => y.in match
           case _: In.Here[f, t] => awaited(y.op, y.resume, done)
           case th: In.There[f, g, t] => In.absurd(th.in)
+          case at: In.At[f, r] => In.unhandled(at)
 
   /** the step after `op`'s value if its callback came while registering; else `null`, the callback driving on */
   private def awaited[X, A](op: Async[X], resume: Step.Resume[X, Async +: Pure, A], done: Either[Throwable, A] => Unit)
