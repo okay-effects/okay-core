@@ -20,11 +20,11 @@ import scala.util.control.NonFatal
 object Machine:
   /** `p`, no effects left: its value */
   def run[A](p: A ! Pure): A =
-    drive(Eff(p, Frame.End(), Meta.Top(identity[A], (e: Throwable) => throw e, Out.none[A])))
+    drive(eval(p, Frame.End(), Meta.Top(identity[A], (e: Throwable) => throw e, Out.none[A])))
 
   /** `p` stepped: to its value, or to its first operation of `R` come to the top — given back with its rest */
   def stepped[R <: Row, A](p: A ! R): Step[R, A] =
-    drive(Eff(p, Frame.End(), Meta.Top((a: A) => Step.Done(a),
+    drive(eval(p, Frame.End(), Meta.Top((a: A) => Step.Done(a),
       (e: Throwable) => if e eq Cancelled then Step.Cancelled() else Step.Failed(e),
       Out.Given[R, Step[R, A]]([E[_], Y] => (op: E[Y], in: In[E, R], resume: Y => Step[R, A],
         fail: Throwable => Step[R, A], cancel: () => Step[R, A]) => Step.Yield(op, in, Step.Resume(resume, fail, cancel))))))
@@ -656,11 +656,11 @@ object Machine:
         case at: In.At[e3, r3] => unwind(IllegalStateException(s"an operation at a place by key with no handler of it in force: ${at.ref}"), m)
         case null => In.absurd(in)
       case Out.Given(give) =>
-        lazy val back: z = give(op, in, (y: Y) => drive[z](Eff[R, I, O, A, V, J, z](guarded(g(y)), k, t)),
-          (e: Throwable) => drive[z](Eff[R, I, O, A, V, J, z](failed(gf, e), k, t)),
+        lazy val back: z = give(op, in, (y: Y) => drive[z](eval[R, I, O, A, V, J, z](guarded(g(y)), k, t)),
+          (e: Throwable) => drive[z](eval[R, I, O, A, V, J, z](failed(gf, e), k, t)),
           // a cancel: unwound from inside k's levels; under a mask, kept for its exit — the step given back
           () => if masked(gf) then { t.cancelAsked = true; back }
-                else drive[z](Eff[R, I, O, A, V, J, z](failed(gf, Cancelled), k, t)))
+                else drive[z](eval[R, I, O, A, V, J, z](failed(gf, Cancelled), k, t)))
         Done(back)
 
   /** a shift0 ON ITS WAY OUT to its `$` by its path, past the handlers before it — each put around its rest, a `Rest`,
