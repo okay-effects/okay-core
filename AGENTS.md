@@ -52,7 +52,11 @@ are compiled and checked by `TestGuide`).
   with the row outside the nearest `$`, `T`; `Needs.delimited` is below `Needs.under` (both apply at a place with a
   `$`). `Op.flatMap` binds into a rest at any answers (`Cont[R, I, O, B]`): a member that applies is never passed
   over for an extension, even when its lambda fails inside. `handleAt(h)(body)`: `Passing`/`Stateful` at answers,
-  two overloads by the handler's class.
+  two overloads by the handler's class. Tried and not kept: the `$` among the effects, `A ! Atm[X, Y] + Es` (2026-10-14)
+  — `Y` must be a constructor over the row outside, and a match type on `Es` cannot return one; a match type on `c.T`
+  instead (`Answer[Y, c.T]`) is not reduced where the body is checked against the alias (the compiler's stand-in for
+  `c` is approximated to `Row` in it); and `!` itself cannot carry answers at all — `A ! Choose + F` with `F` abstract
+  has no answers to be at, so `pure`/`ask` in it would not type. `Hole[X, A]`, `Fixed[A]` name the two shapes.
 - Scala 2 reads this artifact through TASTy (`scala2/`): no inline, no opaque types in what it reads — `Ops`.
 
 ## Benchmarks, commits

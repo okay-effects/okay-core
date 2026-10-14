@@ -150,10 +150,17 @@ object Delimited:
       def at: Nearest[T0, c.R] = n
 
 /** `Atm[A, X, Y, Es]`: A PROGRAM OF `A` NEEDING THE EFFECTS `Es`, UNDER A `$`, ITS ANSWER MOVED — the rest up to the
- * `$` a program of `X` over the row outside it, `T`; the `$`'s answer one of `Y[T]`, a constructor over that row,
- * for an answer holding `k` (printf: `[T] =>> Int => Eff[T, String]`). No row named, as `A ! Es`; the `$` and the
- * handlers inside it make the row: `Atm.dollar(handleAt(Reader(5))(body))(ret)` */
+ * `$` a program of `X` over the row outside it, `T`; the `$`'s answer one of `Y[T]`, a shape over that row: `Hole[X,
+ * A]` for an answer holding `k` (printf), `Fixed[A]` for one unchanged, any `[T <: Row] =>> …`. No row named, as
+ * `A ! Es`; the `$` and the handlers inside it make the row: `Atm.dollar(handleAt(Reader(5))(body))(ret)`.
+ * `Atm[String, String, Hole[Int, String], Reader % Int]`. Not `A ! Es` with the `$` among `Es`: `Y` has to be a
+ * constructor, over the row outside, and a match type on `Es` cannot give one back — nor may the alias match on
+ * `c.T`, which the compiler stands in for while it checks the body, and a match on a stand-in is not reduced */
 type Atm[+A, X, Y[_ <: Row], Es[_]] = (c: Delimited[Es]) ?=> Cont[c.R, Eff[c.T, X], Eff[c.T, Y[c.T]], A]
+/** a `$`'s answer: a hole of `X` in a program of `A` over the row outside — printf's `Int => Eff[T, String]` */
+type Hole[X, A] = [T <: Row] =>> X => Eff[T, A]
+/** a `$`'s answer: `A`, the rest's as it is */
+type Fixed[A] = [T <: Row] =>> A
 
 /** a program's body at a handler's place: over `E +: T`, the handler's effect at the head — what a handler takes; a
  * program needing effects is fitted to it; built when the run enters the handler */

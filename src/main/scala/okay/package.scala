@@ -26,6 +26,9 @@ type Shifts[S, T <: okay.core.Row] = okay.core.Shifts[S, T]
 /** `Atm[A, X, Y, Es]`: a program needing effects under a `$`, its answer moved; `Atm.shift0`, `Atm.dollar` */
 type Atm[+A, X, Y[_ <: okay.core.Row], Es[_]] = okay.core.Atm[A, X, Y, Es]
 val Atm: okay.core.Atm.type = okay.core.Atm
+/** a `$`'s answers: `Hole[X, A]`, a hole of `X` in a program of `A` over the row outside; `Fixed[A]`, unchanged */
+type Hole[X, A] = okay.core.Hole[X, A]
+type Fixed[A] = okay.core.Fixed[A]
 type UnderAt[E[_], T <: okay.core.Row, I, O, A] = okay.core.UnderAt[E, T, I, O, A]
 export okay.core.{perform, pure, unit, defer, handle, handleIn, handleAt, translate, intercept, run, Handler, Answering,
   Value, Under, Place, Needs, Delimited, Path, RowEffects, Op}

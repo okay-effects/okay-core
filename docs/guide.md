@@ -249,15 +249,16 @@ run(reader(3)(twice[Reader % Int +: Pure].flatMap(x => ask[Int].at[Reader % Int 
 
 **The answer moved, `Atm[A, X, Y, Es]`** — `shift0` and `$` with the answer type modified (Materzok–Biernacki,
 typed as Asai–Kameyama), for printf and the like. Written as `A ! Es` is, no row named: a program of `A` needing
-`Es`, under a `$`; `X` the value of the rest up to the `$`, `Y[T]` the `$`'s answer — a constructor over `T`, the
-row outside the `$`, for an answer holding `k`, a program over that row. Operations and programs needing effects
+`Es`, under a `$`; `X` the value of the rest up to the `$`, `Y` the `$`'s answer — a shape over `T`, the row outside
+the `$`: `Hole[X, A]`, a hole of `X` in a program of `A` over it (an answer holding `k`), `Fixed[A]`, the answer as
+it is, or any `[T <: Row] =>> …`. Operations and programs needing effects
 are bound in it as they are, lifted to the answers; `Atm.shift0[X, A](k => …)` captures up to the `$`;
 `Atm.dollar(body)(ret)` is the `$`, a program of effects over `T`; a handler inside the `$` is `handleAt(h)(body)`,
 `h` the kernel's `Answering`/`Stateful`/… (the std's `Reader(e)`, `State(s0)`) — a `shift0` passes it, its `k` holds
 it:
 
 ```scala
-def printf: Atm[String, String, [T <: Row] =>> Int => Eff[T, String], Reader % Int] =
+def printf: Atm[String, String, Hole[Int, String], Reader % Int] =
   for
     n <- ask[Int]
     x <- Atm.shift0[String, Int](k => pure((x: Int) => k(x)))
