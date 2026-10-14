@@ -42,12 +42,12 @@ class TestAtmUses extends munit.FunSuite:
     val session = pstate[R, Nothing, Closed, Closed, Int](Closed())(for
       port <- r.perform(Ask.Get)
       _ <- connect(s"db:$port")
-      _ <- login("sergii")
+      _ <- login("alice")
       n <- query("select 1")
       _ <- close
     yield n)
     assertEquals(session.handle(reader(5432)).handle(log).run,
-      (List("sergii@db:5432: select 1"), (Closed(), 8)))
+      (List("alice@db:5432: select 1"), (Closed(), 8)))
   }
 
   test("a protocol: a query before the login does not compile") {
@@ -63,7 +63,7 @@ class TestAtmUses extends munit.FunSuite:
     doesNotMeet(compileErrors("""
       pstate[R, Nothing, Closed, Closed, Int](Closed())(for
         _ <- connect("db")
-        _ <- login("sergii")
+        _ <- login("alice")
         n <- query("select 1")
       yield n)"""), "Authed", "Closed")
   }

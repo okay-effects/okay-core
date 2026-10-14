@@ -38,6 +38,15 @@ are compiled and checked by `TestGuide`).
   `handle`'s `T` unbounded (`& Row` at its uses): a bounded one is fixed to `Row` before `Removed` is searched.
 - No casts; no exception at run time for a program that type checks (`In.absurd` matches only `null`).
 - `TestReference` checks the machine against the meaning on random programs: run it after any change to the machine.
+- INTERCEPTORS — control and audit of effects (`TestIntercept`; okay-rs's `tests/intercept.rs` the same programs,
+  keep them in step): an effect's author gives `Sensitive[E]`; `handle` asks `Plain[E]`, so a sensitive effect is
+  handled only by `okay.one.std.Audit.handleAudited`, which needs `Audited[E]` in the row — opaque, the same
+  operations at run time, no `In[E, …]` for it, so no program outside the audit performs `E`. `Audit.audit(i)(body)`:
+  an `Interceptor`, its clauses given `Pass`, the only way on. `Audit.observe(o)(body)`: an `Observer` of every
+  operation of every effect — a level of no effect (`Meta.UnderObserve`, taking the rest as `Under` does) that
+  `level` does not pass, so the operation goes out by `outE` and stops there; `Audited.Marks` the row outside, its
+  sensitive effects audited. `eval` untouched by it. `Intercept.at` (a plain effect anywhere, `Removed.Again`) is
+  beside it, unchanged.
   okay-one's suites run on a 512k stack (`build.sbt`): a regression in the machine's stack use fails loudly.
 
 ## The facade, `okay.core`, `okay.core.std`
