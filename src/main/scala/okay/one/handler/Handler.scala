@@ -11,9 +11,11 @@ import okay.one.row.*
  * program of effects, with no answer to drop. The forms are classes, not traits: the machine tells them apart by a
  * type test, a class's cheap */
 sealed abstract class Handler[E[_], T <: Row, A, B]:
-  /** the place `in`, by key, found at run time — this handler's? None by default: the protocol's handlers
-   * (okay-kernel's, `okay.core.kernel`) say which keys are theirs, the evidence a `Key`'s (`Key.at`) */
-  def at[F[_], R <: Row](in: In.At[F, R]): In.Same[E, F] | Null = null
+  /** the place `in`, by key, found at run time — this handler's? None by default (`null`): the protocol's handlers
+   * (okay-kernel's, `okay.core.kernel`) say which keys are theirs, the evidence a `Key`'s (`Key.at`). Its result
+   * not written `| Null`: Scala 2 reads the handler classes through TASTy and cannot read a union in a member's
+   * result (`scala2/`, a handler of its own) — `null` all the same, matched by the machine */
+  def at[F[_], R <: Row](in: In.At[F, R]): In.Same[E, F] = null
 
 /** a handler with no state: its `ret` of the value only */
 sealed abstract class Stateless[E[_], T <: Row, A, B] extends Handler[E, T, A, B]:

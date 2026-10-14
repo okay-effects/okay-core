@@ -140,7 +140,7 @@ object OnCore extends Effects with Control:
    * rest then with its value — a `Linear` of the machine's: the rest given once; a shift0 to it takes the rest
    * through it */
   private final class PassingD(h: KHandler[?, ?], own: Key[Req]) extends Linear[Req, KR, Any, Any]:
-    override def at[F[_], R <: Row](in: In.At[F, R]): In.Same[Req, F] | Null = owns(own, in)
+    override def at[F[_], R <: Row](in: In.At[F, R]): In.Same[Req, F] = owns(own, in)
     def ret(v: Any): U = returned(h, v)
     def apply[I, O, X](r: Req[X], k: X => Cont[KR, I, O, Any]): Cont[KR, I, O, Any] = r match
       case p: Perform => h match
@@ -152,7 +152,7 @@ object OnCore extends Effects with Control:
 
   /** a handler with a clause given `k`: `General` — a `Deep` of the machine's, `k` the rest, data */
   private final class GeneralD(h: KHandler[?, ?], own: Key[Req]) extends Deep[Req, KR, Any, Any]:
-    override def at[F[_], R <: Row](in: In.At[F, R]): In.Same[Req, F] | Null = owns(own, in)
+    override def at[F[_], R <: Row](in: In.At[F, R]): In.Same[Req, F] = owns(own, in)
     def ret(v: Any): U = returned(h, v)
     def apply[X](r: Req[X], k: X => U): U = r match
       case p: Perform => h match
@@ -163,7 +163,7 @@ object OnCore extends Effects with Control:
 
   /** a handler that never resumes: `Aborting` — the machine's, its abort unwinding through the guards between */
   private final class AbortingD(h: KAborting[?, ?], own: Key[Req]) extends Aborting[Req, KR, Any, Any]:
-    override def at[F[_], R <: Row](in: In.At[F, R]): In.Same[Req, F] | Null = own.at(in)
+    override def at[F[_], R <: Row](in: In.At[F, R]): In.Same[Req, F] = own.at(in)
     def ret(v: Any): U = returned(h, v)
     def abort[X](r: Req[X]): U = r match
       case p: Perform => Cont.pure(trust[KAborting[Any, Any]](h).abort(p.op))
@@ -171,7 +171,7 @@ object OnCore extends Effects with Control:
 
   /** `body $ k`: a delimiter at a shift0's key alone, its return `k` */
   private final class DollarD(kf: Fn[Any, Prog[Any]]) extends Deep[Req, KR, Any, Any]:
-    override def at[F[_], R <: Row](in: In.At[F, R]): In.Same[Req, F] | Null = shiftKey.at(in)
+    override def at[F[_], R <: Row](in: In.At[F, R]): In.Same[Req, F] = shiftKey.at(in)
     def ret(v: Any): U = unbox(kf.apply(v))
     def apply[X](r: Req[X], k: X => U): U = r match
       case s: Shift => unbox(s.body.apply(x => P(k(trust[X](x)))))

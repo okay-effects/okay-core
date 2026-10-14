@@ -87,7 +87,8 @@ are compiled and checked by `TestGuide`).
   instead (`Answer[Y, c.T]`) is not reduced where the body is checked against the alias (the compiler's stand-in for
   `c` is approximated to `Row` in it); and `!` itself cannot carry answers at all — `A ! Choose + F` with `F` abstract
   has no answers to be at, so `pure`/`ask` in it would not type. `Hole[X, A]`, `Fixed[A]` name the two shapes.
-- Scala 2 reads this artifact through TASTy (`scala2/`): no inline, no opaque types in what it reads — `Ops`.
+- Scala 2 reads this artifact through TASTy (`scala2/`): no inline, no opaque types in what it reads — `Ops`; no
+  union in the result of a member of a class it extends (`Handler.at`: `In.Same[E, F]`, `null` all the same).
 
 ## `words/`
 
