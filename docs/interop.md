@@ -5,9 +5,9 @@ A program over a row is an `F[_]`, `Eff[R, *]` (`CatsProgram.Of[R]`). The module
 - `okay-core-cats` (every platform): `okay.interop.CatsProgram`, cats' `StackSafeMonad`.
 - `okay-core-tofu` (the JVM's: tofu has no JS or Native artifacts): `okay.interop.TofuProgram` — `WithLocal` from a
   `Reader` anywhere in the row (`local` its interceptor), `Errors` from a `Throws` (`handleWith` its interceptor),
-  each by `okay.core.Intercept.at`: the effect handled again where it is in the row, the row kept — the program
-  stepped, an operation of the effect to the clause, any other performed again outside (the slow road, a run of the
-  machine an operation; the kernel's own relocation for it is to come).
+  each by `okay.core.Intercept.at`: the effect handled again where it is in the row, the row kept — the kernel's own
+  (`Removed.again(in)`: a `Deep` handler of the effect taken from its place and left there, the body seen with the
+  effect first by the path, no cast, no step; the clauses' own operations of it go to the handler outside).
 
 Every example here is compiled and run by `okay-core-tofu`'s `TestInteropDoc`.
 

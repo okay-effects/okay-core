@@ -234,6 +234,6 @@ levels and rests on the `Deep` road 20% (`Meta.Under`, `Rest.Under`, `Resume`, `
 the facade's fitting 10% (`handleIn`'s closure, `Needs`, `Paths.One`, `Removed.Head`, `Req`, `In.Here`), the
 program's closures 10%. Open.
 
-Deferred: Scala.js tests (the bridge does not link on master either), `Removed.Again` — an
-interceptor's relocation in the kernel, so `Intercept.at` (tofu's `local`, `handleWith` on an effect anywhere in a
-row) runs in the machine, not by stepping.
+Deferred: Scala.js tests (the bridge does not link on master either). Done since: `Removed.Again`, an interceptor's
+relocation in the kernel — `Intercept.at` (tofu's `local`, `handleWith` on an effect anywhere in a row) runs in the
+machine, not by stepping (changelog.d/removed-again.md).
