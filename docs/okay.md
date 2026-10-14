@@ -54,37 +54,14 @@ itself: `E.perform` is the kernel's `perform`, `E.flatMap` its `flatMap`.
 okay names this instance beside its own (the machine, the tree) when it chooses to; okay's repository is not changed
 by okay-core.
 
-## okay's `Effects[M]` over okay's own rows: `onokay/` (2026-10-14)
+## okay's `Effects[M]`: the decision (2026-10-14)
 
-The other way in, tried as asked: okay keeps its vocabulary — `okay.cont.Row`, `Member`, `Removed`, `Handler` — and
-okay-core gives the instance `okay.Effects[[R, A] =>> Eff[ToOne[R], A]]` by a MAPPING of rows (`okay.core.onokay.OnOkay`,
-a module of tests: okay's jars as built from its repository in `onokay/lib`, not published — the coordinates
-`dev.okay::okay-cont` are another library's in the local repository). `ToOne` is a match type, okay's list to the
-kernel's; `Member` walks to `In`. okay's program over `Effects[M]`, generic in `M`, runs on the one monad and its
-operations are answered by the kernel's handlers at the mapped row (`TestOnOkay`). What it found:
-
-1. **Match types do not reduce under a GADT bound.** `ToOne[R]` with `R` known to be `E +: T` only by a match on
-   the `Member` stays stuck, so the walk from `Member` to `In` — typed on each concrete shape — is given to the
-   abstract row by ONE TRUSTED STEP (`OnOkay.trust`, the only cast, named), as okay-kernel's bridge has `trust` for
-   the protocol's values. A mapping without it needs okay's rows to be the kernel's rows.
-2. **okay's `Removed[E, R]` named no place** — its `Out` a type member, its witness of `E`'s place `route`, a
-   function on an operation with its path, nothing a type reads. Mended in okay (branch `on-core`, 4abfcada2, one
-   trait in okay-cont and its two givens): `Removed` carries `pos: Pos[E, R, Out]` — at the head, or past an effect
-   — and the instance walks it to the kernel's `Removed[E, ToOne[R], ToOne[Out]]` as it walks `Member` (the same
-   trusted step). A handler ANSWERING IN PLACE runs at any place in the row through okay's own `handle` now
-   (`TestOnOkay`, the third).
-3. **okay's `Handler` clauses are okay-cont's `Cont` programs** (`k: X => Cont[o.Here, o.Here, Ans]`): a machine of
-   the one monad cannot run them; only an `Answering` (`value(op)`, no continuation) is expressible. The clauses
-   written over `Effects[M]`'s `M` — `apply[R <: Row, X](op: E[X], k: X => M[R, Ans]): M[R, Ans]`, the facade's
-   `Handler` here — is the change that lets okay's handlers (okay-std's) run on any encoding; it is the real
-   migration, whichever way in is taken.
-
-So the mapping stands for programs, operations and handlers answering in place, with one trusted step. What is
-left is 3 — and 3 is not a tweak: okay-cont's `Free` is a function of a context into `Cont`, a clause's `k` is a
-continuation of that context's stack, and a `Free` cannot wrap it losslessly (the context is its own). So clauses
-over `Effects[M]` cannot run on okay-cont's machine either: writing okay's `Handler` over `M` means okay's programs
-run on the one monad and okay-cont's machine is kept for its own tests, if at all — the switch of the platform's
-kernel, not a step before it. Its size: 16 files define handlers in okay's own code (okay-cont 9, okay-std 4,
-okay-async 2, okay-freer 1; three clause bodies use okay-cont's own words), plus okay's control interface
-(`shift`/`reset` over `M[A, S, R]`, `Shift`, `replay`) and okay-cont's `Dialogue`, `Bang` to be given on `Shift % S`,
-`Atm` and `Step`; the gate, okay's suites (1603 test files, every platform).
+Tried: okay keeping its own rows (`okay.cont.Row`, `Member`, `Removed`, `Handler`) and okay-core giving the instance
+by a mapping of rows (a module `onokay/`, since removed). It ran programs, operations and handlers answering in place
+— at the price of one trusted cast (match types do not reduce under a GADT bound) and a change in okay's `Removed`
+(its place as a value); and a `Handler`'s clauses, programs of okay-cont's own `Cont`, could not run on another
+machine at all. So the decision: **okay's module `okay-cont` goes, the one monad is the machine** — okay's
+`Effects[M]` is `okay.core.RowEffects[M]` over the kernel's rows (`In`, `Removed[E, R, T]`), its instance
+`RowEffects.eff`, its handlers the facade's `Handler` and `Answering`; what stood on okay-cont (okay's root words
+of the machine road, `AsyncCont`, the stream's machine twin) is rewritten over `Eff`. The platform's body on
+okay-freer (114 modules) is the phase after.

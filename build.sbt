@@ -190,22 +190,6 @@ lazy val interopTofu = (project in file("interop/tofu"))
  * (`okay.core.kernel.OnCore`), checked by okay-kernel's TCK and against its reference machine — the
  * JVM's, as they are. Tests only: nothing of its own to publish
  */
-/**
- * OKAY'S `Effects[M]` ON THE ONE MONAD (docs/okay.md): okay's own interface, over okay's own rows, given here by a
- * mapping of rows — `okay.core.onokay.OnOkay`. okay's jars as built from its repository (`sbt okayJVM/package
- * okayContJVM/package` there, the jars in `onokay/lib`): not published, the coordinates `dev.okay::okay-cont` being
- * another library's in the local repository. Tests only: nothing of its own to publish
- */
-lazy val onokay = (project in file("onokay"))
-  .dependsOn(core.jvm)
-  .settings(
-    name := "okay-core-onokay",
-    publish / skip := true,
-    scalacOptions ++= Seq("-deprecation", "-feature"),
-    Compile / unmanagedJars ++= (baseDirectory.value / "lib" * "*.jar").classpath,
-    libraryDependencies += "org.scalameta" %% "munit" % "1.2.3" % Test,
-    Test / fork := true)
-
 lazy val kernel = (project in file("kernel"))
   .dependsOn(core.jvm)
   .settings(

@@ -74,12 +74,6 @@ are compiled and checked by `TestGuide`).
   puts nothing at the top of the package `okay` (the okay platform's own `okay.*` would clash on one classpath).
   `TestFacade`, the guide's check (`TestGuide`, `TestGuideDoc`) are its tests: `sbt wordsJVM/test`.
 
-## `onokay/`
-
-- okay's `Effects[M]` on the one monad over okay's rows (docs/okay.md): its jars are built in the okay repository
-  (`sbt okayJVM/package okayContJVM/package`) and copied to `onokay/lib` (ignored by git) — not published: the
-  coordinates `dev.okay::okay-cont` belong to another library in the local repository. `sbt onokay/test`.
-
 ## Benchmarks, commits
 
 - `sbt "bench -prof gc"` the lanes and a table; `sbt "bench save -prof gc"` keeps the run in `bench.d`; the bar is
