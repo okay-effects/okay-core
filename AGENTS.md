@@ -1,0 +1,53 @@
+# okay-core — notes for agents
+
+Scala 3 (`build.sbt`: the version), sbt; tests with munit (`sbt test`: every suite on every platform — JVM, JS,
+Native; `sbt coreJVM/test` the JVM's alone). Always read this file first; the design is in `docs/` (architecture.md
+the map, one.md the decision and the gates, kernel.md the bridge, guide.md what a user reads — its `scala` blocks
+are compiled and checked by `TestGuide`).
+
+## The kernel, `okay.one` — THE KERNEL LIVES HERE (since 2026-10-14; it came from the okay-one repository, last at 45189cb)
+
+- An effect framework and its kernel, the boundary between them DATA: a program is a tree of `Cont` nodes, a
+  handler a value of one of its forms; the kernel an interpreter of them (`machine`: the fast one; `TestReference`:
+  the meaning, the specification). Rows (`row`) and handlers (`handler`) know no interpreter.
+- `Cont[R, I, O, A]`: `R` a row; `Control[T]` an effect in it, a `$` over `T` (`Control[T] +: T` = `Delim[T]`;
+  `Reset` = `Delim[Pure]`); `I`, `O` the answers of the nearest `$` in `R` — a program of effects (`A ! R`) has none,
+  `Nothing`. A shift0 is a node with its path to the `$` (`Nearest`), never past a `$`; a `$` over effects is a
+  `reset`. One `Meta` (handlers' levels and `$`s), one loop over it, typed by the answers: a frame
+  `Frame[R, X, I, V, J]`, a level `Meta[R, V, J, O, Z]`; the rest as data, `Rest` (`k`).
+- Handlers leaving the rest (`Passing`: `Answering`, `Translating`, `Linear`; `Stateful`) are at any answers — their
+  levels `Through`, `UnderState`; those taking it (`Taking`: `Aborting`, `Deep`) on `!` only — level `Under`, its
+  answer `N` with `none: N =:= Nothing` (a literal `Nothing` there made the checker call reachable cases
+  unreachable, under a GADT bound and a row). `handle` is `inline`, the kind by the static type of the handler,
+  `summonFrom` for the `!` of a `Taking` one: overloads broke the inference of the handler's `T`. `flatMap` is
+  `inline` too, the answers met by an inline given `Lifts` (`Down` first: a program of effects as the continuation —
+  a bind as it was, one call, `down`): an overload broke the inference of `pure`'s row, a `Conversion` needs the
+  feature import at its use.
+- User code is called inside a `try` at its call, never around the loop: a throw is a `Raise` node, unwound to the
+  top (`Step.Failed`). Keep it so for any new call of user code.
+- The loop (`Machine.eval`) is JIT-sensitive: C2 inlines into it until its budget (eval's own bytecode plus the
+  callees, ~8000) is spent — what comes later in the bytecode is left out of line, accessors included. Keep eval
+  small (3693 bytes at the landing; 4362 at okay-one c7af924; 7033 was 60% slower), its cases inline, `found` at
+  each operation case, state answered in the loop; a handler of a guarded call one call (`raised`), never
+  `case NonFatal(e)`. Moving hot cases out to helpers made it slower; cold ones (`rare`, `foundOff`, `aborted`) out
+  is right. Check with `-XX:+UnlockDiagnosticVMOptions -XX:+LogCompilation` (the inline tree of eval: what was
+  clipped by `size > DesiredMethodLimit`) and A/B every change on `MixedBenchmark` (state) and the lanes.
+- A handler is over the row `T` outside it; a `Deep` clause's `k` data, a program over `T`, kept and resumed anywhere.
+  `handle`'s `T` unbounded (`& Row` at its uses): a bounded one is fixed to `Row` before `Removed` is searched.
+- No casts; no exception at run time for a program that type checks (`In.absurd` matches only `null`).
+- `TestReference` checks the machine against the meaning on random programs: run it after any change to the machine.
+  okay-one's suites run on a 512k stack (`build.sbt`): a regression in the machine's stack use fails loudly.
+
+## The facade, `okay.core`, `okay.std`
+
+- `A ! Es` is `(c: Needs[Es]) ?=> Eff[c.R, A]`: a program fitted where it runs (`Place`, `Needs`, `Paths`); `Path`
+  is found from the place first (docs/architecture.md). Two `@unchecked` matches, named there — no others.
+- Handler bodies are deferred (`handleIn`): a handler installed by a recursive call costs no stack (`TestNesting`).
+- Scala 2 reads this artifact through TASTy (`scala2/`): no inline, no opaque types in what it reads — `Ops`.
+
+## Benchmarks, commits
+
+- `sbt "bench -prof gc"` the lanes and a table; `sbt "bench save -prof gc"` keeps the run in `bench.d`; the bar is
+  docs/one.md §4 H (okay-core-zero's last run in bench.d). Never recompile while a JMH run is going, never run two
+  JMH runs at once (other sessions run JMH too: wait for the lock). Compare by interleaved A/B.
+- Commits: no Co-Authored-By lines; repository text in English.

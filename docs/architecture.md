@@ -5,7 +5,7 @@ One monad, one machine; a facade over it. The kernel is okay-one's, imported as 
 cast in the kernel; the facade has two `@unchecked` matches, named below.
 
 ```
-okay.one        THE KERNEL (imported: scripts/import-one.sh, docs/one-imported.txt)
+okay.one        THE KERNEL (it lives here; it came from the okay-one repository, last at 45189cb, 2026-10-14)
   Cont         the monad: Cont[R, I, O, A] — R a row of effects (A ! R: no answers) or Control[R] (the answer moved)
   row           Row, Pure, E +: T; In[E, R] the path to an effect; Removed[E, R, T] a handler's place in a row
   handler       the forms, values: Answering, Stateful, Translating, Aborting, Deep (k: X => B ! T, data)

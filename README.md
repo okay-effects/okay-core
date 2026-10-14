@@ -45,7 +45,7 @@ the machine are the library's own (`okay.core`, `okay.one`). These examples are 
 
 | Package | What is in it |
 |---|---|
-| `okay.one` | THE KERNEL, imported as it is from okay-one (`scripts/import-one.sh`, `docs/one-imported.txt`): `Cont[R, I, O, A]`, the rows (`row`: `Row`, `+:`, `Pure`, `In`, `Removed`), the handler forms (`handler`: `Answering`, `Stateful`, `Translating`, `Aborting`, `Deep`), the machine of one `Meta` (`machine`), `Step`, its std (`Reader`, `State`, `Writer`, `Throws`, `Choose`, `Shift % S`, `Async`) and its suites (`TestReference`, the meaning in CPS) |
+| `okay.one` | THE KERNEL (it lives here; written first in the okay-one repository, its last import 45189cb): `Cont[R, I, O, A]`, the rows (`row`: `Row`, `+:`, `Pure`, `In`, `Removed`), the handler forms (`handler`: `Answering`, `Stateful`, `Translating`, `Aborting`, `Deep`), the machine of one `Meta` (`machine`), `Step`, its std (`Reader`, `State`, `Writer`, `Throws`, `Choose`, `Shift % S`, `Async`) and its suites (`TestReference`, the meaning in CPS) |
 | `okay.core` | THE FACADE over it: `A ! E1 + E2` (`!`, `+`, `%`: all a program's type needs) — a program fitted to the place it runs at (`Needs`, `Place`, `Path`); `Eff[R, A]`, the kernel's program over a row named, `E :? R`, `Has[E]`; `Op`, an operation bound where it is used; `Handler`, `Answering`; `handle`, `handleIn`, `translate`, `intercept`, `run`; `Control`: `reset`/`shift`/`shift0` over `Shifts[S, T]`, `cont`/`lower` for `Control[R]`; `RowEffects`, okay's `Effects[M]` over `Eff` ([docs/okay.md](docs/okay.md)) |
 | `okay.std` | the effects by their names, the kernel's std re-exported (one std): `reader` (`local`), `state` (each path its own), `cell`, `writer`, `throws` (`handleWith`), `choose`, `first`, `Emit` (`collect`, `generate`, `stream`, `Stream`, `Step`), `pstate` (the kernel's `PState`, lowered) |
 | `okay.core.kernel` | `OnCore`: okay-kernel's `Effects` and `Control` on the one monad — every delimiter of the bridge a `Deep` handler of one request effect, export through `Step` ([docs/kernel.md](docs/kernel.md)); okay-kernel's TCK in the module `kernel/` |
@@ -106,7 +106,6 @@ sbt bench                                     # JMH, then a summary table (proje
 sbt "bench -f 1 MonadsBenchmark.state"
 sbt "bench save -prof gc"                     # keep the run in bench.d/ (index.tsv + CSV)
 sbt "benchHistory <regexp>"                   # the benchmarks matching it, run by run
-scripts/import-one.sh                         # okay-one's HEAD into okay.one again
 ```
 
 Scala 3.9.0 (and 2.13.18 for `scala2/`), Scala.js 1.22.0, Scala Native 0.5.12, sbt 1.13.0, JDK 25 or later; tests

@@ -208,8 +208,8 @@ before starting a step.
 
 ## 8. Where the landing stands (merged to master 2026-10-14; the branch `one-monad` goes on)
 
-Steps 1–3, 5, 6 and 7's Scala 2 are done on the branch (changelog.d/one-monad-*.md): `okay.one` imported by
-`scripts/import-one.sh` (its HEAD, re-run per commit); `okay.core` over it — `A ! E1 + E2` by `Needs`/`Place`, `Path`
+Steps 1–3, 5, 6 and 7's Scala 2 are done on the branch (changelog.d/one-monad-*.md): `okay.one` imported from
+okay-one by `scripts/import-one.sh` until 45189cb, 2026-10-14 — the kernel lives here since; `okay.core` over it — `A ! E1 + E2` by `Needs`/`Place`, `Path`
 found from the place first, `Op`, the handler sugar, control's two faces, `RowEffects[Eff]`; one std; `OnCore` the
 kernel's `one/` bridge; the suites re-written (JVM 208, kernel 30, async 19, cats 2, tofu 9, Scala 2 6); the guide,
 the docs. Not passed: §4 H — captures 2×, generate +40%, the mixed program +70% against
