@@ -48,3 +48,21 @@ class TestFacade extends munit.FunSuite:
 
   test("okay's runner signatures, A ! E + F to A ! F, the rest inferred"):
     assertEquals(run(state(1)(runReader(41)(step))), (42, 42))
+
+  def step2: Int ! Reader % Int + (State % Int + Writer % String) =
+    ask[Int].flatMap(n => tell(s"n $n").flatMap(_ => modify[Int](_ + n)))
+
+  test("a runner's rest F a sum: the paths of the program found through the rest, each at its place"):
+    assertEquals(run(writer[String, (Int, Int), Pure](state(1)(runReader(41)(step2)))), (List("n 41"), (42, 42)))
+
+  /** two handlers inside a runner, the rest `F` under both; a program needing `F` alone, inside a bigger sum */
+  def runTwo[R, A, F[_]](r: R)(p: A ! Reader % R + F): (List[String], A) ! F = writer(reader(r)(p))
+  def twiceF[A, F[_]](p: A ! F): (A, A) ! Choose + F = p.flatMap(a => p.map(b => (a, b)))
+  def step3: Int ! Reader % Int + (State % Int + Writer % String) = step2
+
+  test("a runner's rest F a sum under two handlers — F's effects to F's handlers, the paths it came with, not the runner's own; a program needing F alone under a bigger sum"):
+    assertEquals(run(writer[String, (Int, (List[String], Int)), Pure](state(1)(runTwo(41)(step3)))),
+      (List("n 41"), (42, (Nil, 42))))
+    val q: Int ! State % Int + Writer % String = tell("x").flatMap(_ => modify[Int](_ + 1))
+    val p: (Int, Int) ! Choose + (State % Int + Writer % String) = twiceF(q)
+    assertEquals(run(writer[String, (Int, Seq[(Int, Int)]), Pure](state(0)(choose(p)))), (List("x", "x"), (2, Seq((1, 2)))))

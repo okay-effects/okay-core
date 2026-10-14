@@ -44,6 +44,12 @@ are compiled and checked by `TestGuide`).
 
 - `A ! Es` is `(c: Needs[Es]) ?=> Eff[c.R, A]`: a program fitted where it runs (`Place`, `Needs`, `Paths`); `Path`
   is found from the place first (docs/architecture.md). Two `@unchecked` matches, named there — no others.
+  A rest named abstractly (`F` in `A ! Reader % R + F`) is fitted by the paths it came with (`Paths.rest`, under
+  one to three handlers inside; `Needs.part` for `F` needed alone among `Choose + F`; `Paths.sub`), never by an
+  `In` for `F`: `Needs.found` with `Req.Only` on a sum is a `MatchError` at the run (2026-10-14, `TestFacade`). A
+  `Paths` given with a free `Fs` (`Needs[Fs]` searched with nothing in scope) is ambiguous at any place — keep the
+  effects a given fits tied to its result type. `F`'s effects go to `F`'s handlers, the paths it came with: a
+  handler the runner puts inside does not catch them.
 - Handler bodies are deferred (`handleIn`): a handler installed by a recursive call costs no stack (`TestNesting`).
 - The kernel's `flatMap` and `handle` are inline and decide the answers met (`Lifts`) and the handler's kind where
   they are written: never call them from a facade body whose answers or handler type are abstract — resolved there,

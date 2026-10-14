@@ -1,6 +1,7 @@
 package okay.core
 
 import okay.one.{Cont, Delim}
+import scala.util.NotGiven
 import okay.one.row.{+:, Control, In, Nearest, Pure, Row}
 
 /** THE KERNEL'S ROWS, as they are: `Pure`, `E +: T`; an effect's place `In[E, R]`; `Removed[E, R, T]` — aliases,
@@ -77,16 +78,20 @@ sealed trait ReqLow:
  * compiler builds them where the program is placed (`Needs`); an effect among them found by its `Req` */
 sealed abstract class Paths[Es[_], R <: Row]:
   def find[E[_]](r: Req[E, Es]): In[E, R]
-  /** the same paths one deeper, under `E` put at the head of `R` — a place made from a place, no search: the
-   * effects `Es` may be abstract where it is made, and a search would build `One` for a sum */
+  /** the same paths one deeper, under `E` put at the head of `R` — a place made from a place */
   def under[E[_]]: Paths[Es, E +: R]
-object Paths extends PathsLow:
+  /** the paths of `E` among these: the whole, or a side of two joined — a place made from a place, no search for
+   * the effects a program names abstractly, `F`: a search would build `One` for what is a sum at the call */
+  def sub[E[_]](r: Req[E, Es]): Paths[E, R]
+object Paths extends PathsRest:
   /** one effect, `E0`, at its path. `Only` is its one case: `E0` an effect, not two joined — those have `Both`, by
    * priority — which the checker cannot tell apart, hence unchecked */
   final class One[E0[_], R <: Row](val head: In[E0, R]) extends Paths[E0, R]:
     def find[E[_]](r: Req[E, E0]): In[E, R] = (r: @unchecked) match
       case Req.Only() => head
     def under[E[_]]: Paths[E0, E +: R] = One(In.There(head))
+    def sub[E[_]](r: Req[E, E0]): Paths[E, R] = (r: @unchecked) match
+      case Req.Only() => this
   /** two effects joined, `F + G`, each side's paths found on its own. `Left`, `Right` its cases: an operation of
    * the marker `Both` itself there is none */
   final class Both[F[_], G[_], R <: Row](val left: Paths[F, R], val right: Paths[G, R]) extends Paths[F + G, R]:
@@ -94,7 +99,22 @@ object Paths extends PathsLow:
       case Req.Left(l) => left.find(l)
       case Req.Right(g) => right.find(g)
     def under[E[_]]: Paths[F + G, E +: R] = Both(left.under[E], right.under[E])
+    def sub[E[_]](r: Req[E, F + G]): Paths[E, R] = r match
+      case Req.Only() => this
+      case Req.Left(l) => left.sub(l)
+      case Req.Right(g) => right.sub(g)
   given both[F[_], G[_], R <: Row](using left: Paths[F, R], right: Paths[G, R]): Paths[F + G, R] = Both(left, right)
+sealed trait PathsRest extends PathsLow:
+  /** at a place with the effects `E` themselves, `c`: its own paths — so a rest named abstractly, `F` in
+   * `A ! Reader % R + F`, is fitted by the paths it came with, a sum at the call as it may be (an `In` for `F`
+   * would be a place for a sum, `find` on it a `MatchError`); under one, two, three handlers inside — their effects
+   * not `E`, which is `one`'s, `In.here`. Above `one`, below `both` */
+  given rest[E[_]](using c: Needs[E]): Paths[E, c.R] = c.paths
+  given rest1[E[_], H[_]](using c: Needs[E], n1: NotGiven[H[Any] =:= E[Any]]): Paths[E, H +: c.R] = c.paths.under[H]
+  given rest2[E[_], H[_], H2[_]](using c: Needs[E], n1: NotGiven[H[Any] =:= E[Any]], n2: NotGiven[H2[Any] =:= E[Any]])
+      : Paths[E, H +: H2 +: c.R] = c.paths.under[H2].under[H]
+  given rest3[E[_], H[_], H2[_], H3[_]](using c: Needs[E], n1: NotGiven[H[Any] =:= E[Any]], n2: NotGiven[H2[Any] =:= E[Any]],
+      n3: NotGiven[H3[Any] =:= E[Any]]): Paths[E, H +: H2 +: H3 +: c.R] = c.paths.under[H3].under[H2].under[H]
 sealed trait PathsLow:
   given one[E0[_], R <: Row](using head: In[E0, R]): Paths[E0, R] = Paths.One(head)
 
@@ -104,7 +124,7 @@ sealed trait PathsLow:
 sealed abstract class Needs[Es[_]]:
   type R <: Row
   def paths: Paths[Es, R]
-object Needs extends NeedsMore:
+object Needs extends NeedsPart:
   def of[Es[_], R0 <: Row](p: Paths[Es, R0]): Needs[Es] { type R = R0 } = new Needs[Es]:
     type R = R0
     def paths: Paths[Es, R0] = p
@@ -113,6 +133,10 @@ object Needs extends NeedsMore:
   given under[Es[_], R0 <: Row](using h: Place[R0], p: Paths[Es, R0]): (Needs[Es] { type R = R0 }) = of(p)
   /** an effect needed: its path in the place's row — what `perform` finds in a program needing effects */
   given found[E[_], Es[_]](using n: Needs[Es], r: Req[E, Es]): In[E, n.R] = n.paths.find(r)
+sealed trait NeedsPart extends NeedsMore:
+  /** in a program's place whose effects have these among them, `Es` a part of `Fs`: the part's own paths — a rest
+   * `F` among `Choose + F` needed alone is fitted by the paths it came with, not by a place for `F` as one effect */
+  given part[Es[_], Fs[_]](using c: Needs[Fs], r: Req[Es, Fs]): (Needs[Es] { type R = c.R }) = Needs.of(c.paths.sub(r))
 sealed trait NeedsMore:
   /** in a program's place with more effects: its row, the paths of these in it */
   given more[Es[_], Fs[_]](using c: Needs[Fs], p: Paths[Es, c.R]): (Needs[Es] { type R = c.R }) = Needs.of(p)
