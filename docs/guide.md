@@ -305,7 +305,8 @@ def session: (Closed, Int) ! Session =
 run(reader(5432)(writer[String, (Closed, Int), Reader % Int +: Pure](session)))   // (List("ann@db:5432: select 1"), (Closed(), 8))
 ```
 
-A query before the login, or a session left open, does not compile: the steps' answers do not meet, and the
+A step guarded — `query(q).ensure(tell(s"left $q"))` — is told when it is left, however it is left: a guard sits
+at any answers, under the `$` among the steps. A query before the login, or a session left open, does not compile: the steps' answers do not meet, and the
 message names the states that do not. The effects beside the state — `tell`, `ask` — are the row's, handled around
 the run as ever. `TestAtm` has this and a pipeline whose schema is the state's type.
 

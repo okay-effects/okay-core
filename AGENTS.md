@@ -16,7 +16,9 @@ are compiled and checked by `TestGuide`).
   `reset`. One `Meta` (handlers' levels and `$`s), one loop over it, typed by the answers: a frame
   `Frame[R, X, I, V, J]`, a level `Meta[R, V, J, O, Z]`; the rest as data, `Rest` (`k`).
 - Handlers leaving the rest (`Passing`: `Answering`, `Translating`, `Linear`; `Stateful`) are at any answers — their
-  levels `Through`, `UnderState`; those taking it (`Taking`: `Aborting`, `Deep`) on `!` only — level `Under`, its
+  levels `Through`, `UnderState`; so is a guard (`UnderGuard`, as `Through`; a `Recovering` one on `!` only, `none`
+  its evidence — what it recovers with is a program of effects, and a shift0 cannot carry the evidence past it);
+  those taking it (`Taking`: `Aborting`, `Deep`) on `!` only — level `Under`, its
   answer `N` with `none: N =:= Nothing` (a literal `Nothing` there made the checker call reachable cases
   unreachable, under a GADT bound and a row). `handle` is `inline`, the kind by the static type of the handler,
   `summonFrom` for the `!` of a `Taking` one: overloads broke the inference of the handler's `T`. `flatMap` is

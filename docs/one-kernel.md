@@ -97,9 +97,11 @@ program of effects; a handler of `Control`; a shift0 past a `$`.
 call, never around the loop, and the machine goes on with `Raise(e)`: the frames of each level dropped, the levels
 unwound innermost first, the top's answer `Step.Failed(e)`; `run` rethrows.
 
-**Guards**: a level of no effect around a program — `p.ensure(fin)`, `p.recover(f)`, `p.uncancelable`, `p.guard(g)`.
-Unwinding runs each guard's finalizer where the guard was, innermost first, and gives the error to the first
-`recover` (an error thrown, not an operation's raise). An abort past guards (`Aborting`) unwinds to its handler's
+**Guards**: a level of no effect around a program — `p.ensure(fin)`, `p.recover(f)`, `p.uncancelable`, `p.guard(g)`
+— at any answers: a shift0 passes a guard as it passes a `Passing` handler, its `k` holding it. `recover` on a
+program of effects only: what it recovers with is one, run in the program's place (`Recovering`; `guard` refuses it
+elsewhere). Unwinding runs each guard's finalizer where the guard was, innermost first, and gives the error to the
+first `recover` (an error thrown, not an operation's raise). An abort past guards (`Aborting`) unwinds to its handler's
 level, each finalizer run on the way. A guard taken into a `k` is put back each resumption: its finalizer once a
 resumption. At a step, `resume.fail(e)` raises inside the rest's levels; `resume.cancel()` unwinds them — finalizers
 run, no recover asked, `Step.Cancelled`; under `uncancelable` the step is given back as it is, the cancel fired when

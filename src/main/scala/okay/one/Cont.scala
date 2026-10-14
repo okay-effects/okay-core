@@ -64,9 +64,10 @@ enum Cont[R <: Row, I, +O, +A]:
    * of `E` at any place in the row, the handler at its head */
   case View[E[_], R <: Row, T <: Row, X, I, A, J, O] private[one] (rm: Removed[E, R, T],
       k: Machine.Frame[R, X, I, A, J], body: Cont[R, I, O, X]) extends Cont[E +: T, J, O, A]
-  /** `body`, then its frames `k`, under the guard `g`: a level of no effect, the row the same in it */
-  case Guarded[T <: Row, X, I, A, B] private[one] (g: Guard[T, A, B], k: Machine.Frame[T, X, I, A, Nothing],
-      body: Cont[T, I, Nothing, X]) extends Cont[T, Nothing, Nothing, B]
+  /** `body`, then its frames `k`, under the guard `g`: a level of no effect, the row the same in it, the answers
+   * through as a `Handle`'s; `none`, no answer at its bottom, for a `Recovering` guard (`guard` asks for it) */
+  case Guarded[T <: Row, X, I, A, J, O, B] private[one] (g: Guard[T, A, B], k: Machine.Frame[T, X, I, A, J],
+      body: Cont[T, I, O, X], none: (J =:= Nothing) | Null) extends Cont[T, J, O, B]
   /** a `k` resumed with `y`: its levels put back, outermost first, then its rest with `y` under them */
   case Resume[Y, T <: Row, I, O, B] private[one] (c: Machine.Rest[Y, T, I, O, B], y: Y) extends Cont[T, I, O, B]
   /** a `k` failed with `e`: its levels put back, then `e` raised inside them */
@@ -217,17 +218,29 @@ object Cont:
       case tk: Taking[E, T, A, B] => HandleK(tk, Machine.Frame.End(), view(rm, p))
 
   extension [R <: Row, A](p: A ! R)
-    /** `p` under the guard `g` */
-    def guard[B](g: Guard[R, A, B]): B ! R = Guarded(g, Machine.Frame.End(), p)
-    /** `fin` after `p`, whatever way it is left: an end, an error, an abort, a cancel */
-    def ensure(fin: Unit ! R): A ! R = guard(Guard.ensuring(fin))
-    /** an error thrown in `p` given to `f` */
-    def recover(f: Throwable => A ! R): A ! R = guard(Guard.recover(f))
-    /** a cancel at a step of `p` kept for when it is left */
-    def uncancelable: A ! R = guard(Guard.uncancelable)
-
     /** `p` at any answer `S`: to put under a `$`, among programs moving the answer — none of its own to move */
     def cont[S]: Cont[R, S, S, A] = Lift(p)
+    /** an error thrown in `p` given to `f`: its program in `p`'s place — a program of effects, so `p` is one */
+    def recover(f: Throwable => A ! R): A ! R = Guarded(Guard.recover(f), Machine.Frame.End(), p, summon[Nothing =:= Nothing])
+
+  extension [R <: Row, I, O, A](p: Cont[R, I, O, A])
+    /** `p` under the guard `g`, at any answers; a `Recovering` one on a program of effects only — what it recovers
+     * with is one, and `p`'s place is where it goes: the kind by the static type of `g`, as `handle`'s */
+    inline def guard[B, G <: Guard[R, A, B]](g: G): Cont[R, I, O, B] = summonFrom {
+      case _: (G <:< Recovering[R, A, B]) => summonFrom {
+        case none: (I =:= Nothing) => Guarded(g, Machine.Frame.End(), p, none)
+        case _ => error("a recovering guard around a program at answers: what it recovers with is a program of " +
+          "effects, in the program's place — recover a program of effects; ensure, uncancelable at any answers") }
+      case _ => Guarded(g, Machine.Frame.End(), p, null) }
+    /** `fin` after `p`, whatever way it is left: an end, an error, an abort, a cancel — once a resumption of a `k`
+     * holding it. `none` when `p` is a program of effects: its guard's `ret` run as it was, no lift */
+    inline def ensure(fin: Unit ! R): Cont[R, I, O, A] = summonFrom {
+      case none: (I =:= Nothing) => Guarded(Guard.ensuring(fin), Machine.Frame.End(), p, none)
+      case _ => Guarded(Guard.ensuring(fin), Machine.Frame.End(), p, null) }
+    /** a cancel at a step of `p` kept for when it is left */
+    inline def uncancelable: Cont[R, I, O, A] = summonFrom {
+      case none: (I =:= Nothing) => Guarded(Guard.uncancelable, Machine.Frame.End(), p, none)
+      case _ => Guarded(Guard.uncancelable, Machine.Frame.End(), p, null) }
 
   /** `p` seen with `E` first: itself, if it is there already */
   private def view[E[_], R <: Row, T <: Row, I, O, A](rm: Removed[E, R, T], p: Cont[R, I, O, A])

@@ -29,6 +29,20 @@ class TestAtm extends munit.FunSuite:
   def close[F](using Atm.Typestate[F]): Atm[Unit, Hole[Closed, F], Hole[Authed, F], Es] =
     Atm.get[Authed].flatMap(_ => Atm.put[Authed](Closed()))
 
+  /** a query guarded: told when it is left, however it is left — the guard under the `$`, at the answers */
+  def guardedQuery[F](q: String)(using Atm.Typestate[F]): Atm[Int, Hole[Authed, F], Hole[Authed, F], Es] =
+    query(q).ensure(tell(s"left $q"))
+
+  test("a guard under the $: ensure around a step, the finalizer told after it"):
+    val session: (Closed, Int) ! Es = Atm.pstate[Es](Closed())(for
+      _ <- connect("db")
+      _ <- login("sergii")
+      n <- guardedQuery("select 2")
+      _ <- close
+    yield n)
+    assertEquals(run(reader(1)(writer[String, (Closed, Int), Reader % Int +: Pure](session))),
+      (List("sergii@db: select 2", "left select 2"), (Closed(), 8)))
+
   test("a protocol: connect, login, query, close — the port asked of the row, the query told to it"):
     val session: (Closed, Int) ! Es = Atm.pstate[Es](Closed())(for
       port <- ask[Int]

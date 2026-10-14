@@ -57,9 +57,9 @@ object Machine:
         inner: Y => Cont[E +: T, I, O, X], fails: Fails[Cont[E +: T, I, O, X]] | Null) extends Rest[Y, T, J, O, B]
     case UnderView[Y, E[_], R <: Row, T <: Row, X, I, A, J, O](rm: Removed[E, R, T], k: Frame[R, X, I, A, J],
         inner: Y => Cont[R, I, O, X], fails: Fails[Cont[R, I, O, X]] | Null) extends Rest[Y, E +: T, J, O, A]
-    /** a guard's level */
-    case UnderGuard[Y, T <: Row, X, I, A, B, N](g: Guard[T, A, B], k: Frame[T, X, I, A, N],
-        inner: Y => Cont[T, I, N, X], fails: Fails[Cont[T, I, N, X]] | Null, none: N =:= Nothing) extends Rest[Y, T, N, N, B]
+    /** a guard's level: the answers through, as `Through` */
+    case UnderGuard[Y, T <: Row, X, I, A, J, O, B](g: Guard[T, A, B], k: Frame[T, X, I, A, J],
+        inner: Y => Cont[T, I, O, X], fails: Fails[Cont[T, I, O, X]] | Null, none: (J =:= Nothing) | Null) extends Rest[Y, T, J, O, B]
     /** a program of effects' level at an answer: at any */
     case UnderLifted[Y, R <: Row, X, I, A, S](k: Frame[R, X, I, A, Nothing], inner: Y => Cont[R, I, Nothing, X],
         fails: Fails[Cont[R, I, Nothing, X]] | Null) extends Rest[Y, R, S, S, A]
@@ -75,7 +75,7 @@ object Machine:
 
   /** a mask among a rest's levels */
   @tailrec private def masked(f: Fails[?] | Null): Boolean = f match
-    case cn: Rest.UnderGuard[y, t, x, i, a, b, n] => cn.g.masked || masked(cn.fails)
+    case cn: Rest.UnderGuard[y, t, x, i, a, j, o, b] => cn.g.masked || masked(cn.fails)
     case cn: Rest.Under[y, e, t, x, i, a, b, n] => masked(cn.fails)
     case cn: Rest.Through[y, e, t, x, i, a, j, o, b] => masked(cn.fails)
     case cn: Rest.UnderState[y, e, t, s, x, i, a, j, o, b] => masked(cn.fails)
@@ -86,9 +86,16 @@ object Machine:
     case _ => false
 
   /** a mask left: a cancel asked under it fired, if no mask is left outside it — unwound from outside it */
-  private def maskLeft[T <: Row, V, B, N, V2, J2, O2, Z](u: Meta.UnderGuard[T, V, B, N, V2, J2, O2, Z], v: V): Next[Z] =
-    if cancelAsked(u.m) then Eff[T, J2, O2, V2, V2, J2, Z](Raise(Cancelled), Frame.End(), u.m)
-    else Eff(u.none.flip.liftCo[[x] =>> Cont[T, x, Nothing, B]](guarded(u.g.ret(v))), u.k, u.m)
+  private def maskLeft[T <: Row, V, B, J, V2, J2, O, Z](u: Meta.UnderGuard[T, V, B, J, V2, J2, O, Z], v: V, up: J <:< O): Next[Z] =
+    if cancelAsked(u.m) then Eff[T, J2, O, V2, V2, J2, Z](Raise(Cancelled), Frame.End(), u.m)
+    else Eff[T, J, O, B, V2, J2, Z](left(u, v, up), u.k, u.m)
+
+  /** a guard's `ret` at its bottom: a program of effects, as it is where the level has no answer (`none`), lifted
+   * where it has one */
+  private def left[T <: Row, V, B, J, V2, J2, O, Z](u: Meta.UnderGuard[T, V, B, J, V2, J2, O, Z], v: V, up: J <:< O)
+      : Cont[T, J, O, B] = u.none match
+    case null => up.liftCo[[x] =>> Cont[T, J, x, B]](Lift[T, J, B](guarded(u.g.ret(v))))
+    case none => none.flip.liftCo[[x] =>> Cont[T, x, Nothing, B]](guarded(u.g.ret(v)))
 
   /** a cancel asked at the top, no mask between: true once — the ask taken */
   @tailrec private def cancelAsked(m: Meta[?, ?, ?, ?, ?]): Boolean = m match
@@ -96,7 +103,7 @@ object Machine:
       val asked = t.cancelAsked
       t.cancelAsked = false
       asked
-    case u: Meta.UnderGuard[t, v, b, n, v2, j2, o2, z] => !u.g.masked && cancelAsked(u.m)
+    case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] => !u.g.masked && cancelAsked(u.m)
     case _ => m.outer match
       case null => false
       case o => cancelAsked(o)
@@ -146,9 +153,10 @@ object Machine:
     final class UnderView[E[_], R <: Row, T <: Row, V, J, V2, J2, O, Z](val rm: Removed[E, R, T],
         val k: Frame[E +: T, V, J, V2, J2], val m: Meta[E +: T, V2, J2, O, Z]) extends Meta[R, V, J, O, Z]:
       def outer = m
-    /** a guard's level: the row the same in it */
-    final class UnderGuard[T <: Row, V, B, N, V2, J2, O2, Z](val g: Guard[T, V, B], val k: Frame[T, B, N, V2, J2],
-        val m: Meta[T, V2, J2, O2, Z], val none: N =:= Nothing) extends Meta[T, V, N, N, Z]:
+    /** a guard's level: the row the same in it, the answers through as `Through`'s; `none`, no answer at its
+     * bottom, for a `Recovering` guard's */
+    final class UnderGuard[T <: Row, V, B, J, V2, J2, O, Z](val g: Guard[T, V, B], val k: Frame[T, B, J, V2, J2],
+        val m: Meta[T, V2, J2, O, Z], val none: (J =:= Nothing) | Null) extends Meta[T, V, J, O, Z]:
       def outer = m
       override def passed = m
     /** a program of effects at the answer `S`: its value to the frames outside it */
@@ -205,16 +213,24 @@ object Machine:
         case null => unwind(e, u.m)
         case p => Eff(u.none.flip.liftCo[[x] =>> Cont[t, x, Nothing, b]](p), u.k, u.m)
       case _ => unwind(e, u.m)
-    case u: Meta.UnderGuard[t, v, b, n, v2, j2, o2, z] =>
-      val recovered: (b ! t) | Null = e match
-        case _: Exit => null
-        case _ => try u.g.recover(e) catch case e2: Throwable => raised[t, Nothing, Nothing, b](e2)
-      if recovered != null then Eff(u.none.flip.liftCo[[x] =>> Cont[t, x, Nothing, b]](recovered), u.k, u.m)
-      else u.g.finalizer match
-        case null => unwind(e, u.m)
-        // the finalizer where the guard was, the frames outside it dropped; then the unwinding on
-        case fin => Eff[t, j2, o2, v2, v2, j2, Z](Bind(fin, (_: Unit) => Raise[t, j2, Nothing, v2](e)),
-          Frame.End(), u.m)
+    case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] =>
+      // a recovering guard: its program in the body's place, a program of effects as the body is (`none`, by the types)
+      val recovered: Cont[t, j, Nothing, b] | Null = u.none match
+        case null => null
+        case none => u.g match
+          case r: Recovering[t, v, b] => e match
+            case _: Exit => null
+            case _ => (try r.recover(e) catch case e2: Throwable => raised[t, Nothing, Nothing, b](e2)) match
+              case null => null
+              case p => none.flip.liftCo[[x] =>> Cont[t, x, Nothing, b]](p)
+          case _ => null
+      recovered match
+        case null => u.g.finalizer match
+          case null => unwind(e, u.m)
+          // the finalizer where the guard was, the frames outside it dropped; then the unwinding on
+          case fin => Eff[t, j2, o, v2, v2, j2, Z](Bind(fin, (_: Unit) => Raise[t, j2, Nothing, v2](e)),
+            Frame.End(), u.m)
+        case p => Eff[t, j, o, b, v2, j2, Z](p, u.k, u.m)
     case t: Meta.Top[r, v, z] => Done(t.fail(e))
     case t: Meta.Through[e2, t2, v, b, j, v2, j2, o, z] => unwind(e, t.m)
     case u: Meta.UnderState[e2, t, s, v, b, j, v2, j2, o, z] => unwind(e, u.m)
@@ -321,7 +337,7 @@ object Machine:
   @tailrec private def guardsTo(m: Meta[?, ?, ?, ?, ?] | Null, to: AnyRef): Boolean = m match
     case null => false
     case _ if m eq to => false
-    case _: Meta.UnderGuard[t, v, b, n, v2, j2, o2, z] => true
+    case _: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] => true
     case n: Meta[?, ?, ?, ?, ?] => guardsTo(n.outer, to)
 
   /** a clause of a handler taking the rest, at its level: `Deep`'s with `k`, `Aborting`'s without — its program at the
@@ -445,7 +461,7 @@ object Machine:
       // a shift0: out to its `$` as an operation goes out to its handler, the levels passed into its `k`
       case s: Shift0[r, t, i1, o1, x1, o, a] =>
         shifted(s.at, s.f, (y: a) => Return[r, Cont[t, i1, o1, x1], a](y), null, k, m)
-      case g: Guarded[t, x, i, a, b] => Eff(g.body, g.k, Meta.UnderGuard(g.g, k, m, summon[I =:= Nothing]))
+      case g: Guarded[t, x, i, a, j, o, b] => Eff(g.body, g.k, Meta.UnderGuard(g.g, k, m, g.none))
       case fl: Fail[t, i, o, b] => failIn(fl, k, m)
       case Raise(e) => unwind(e, m)
       case _ => Eff(c, k, m)
@@ -460,9 +476,9 @@ object Machine:
       catch case NonFatal(e) => unwind(e, m)
     case r: Meta.Reset[r2, s, o, n, v2, j2, o2, z] =>
       Eff[r2, n, o2, o, v2, j2, Z](r.none.flip.liftCo[[x] =>> Cont[r2, x, Nothing, o]](Return[r2, Nothing, o](up(a))), r.k, r.m)
-    case u: Meta.UnderGuard[t, v, b, n, v2, j2, o2, z] =>
-      if u.g.masked then maskLeft(u, a)
-      else Eff[t, n, o2, b, v2, j2, Z](u.none.flip.liftCo[[x] =>> Cont[t, x, Nothing, b]](guarded(u.g.ret(a))), u.k, u.m)
+    case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] =>
+      if u.g.masked then maskLeft(u, a, up)
+      else Eff[t, j, o, b, v2, j2, Z](left(u, a, up), u.k, u.m)
     case u: Meta.UnderView[e, r, t, v, j, v2, j2, o, z] =>
       Eff[e +: t, j, o, v, v2, j2, Z](up.liftCo[[x] =>> Cont[e +: t, j, x, v]](Return(a)), u.k, u.m)
     case t: Meta.Top[r, v, z] => Done(t.k(a))
@@ -484,8 +500,8 @@ object Machine:
       Eff[Control[t2] +: t2, i2, Cont[t2, i3, O2, b2], x, a, j, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Dollar(cn.ret, k, m))
     case cn: Rest.UnderReset[y2, r, x, i2, s, o2, n] =>
       Eff[Control[r] +: r, i2, o2, x, s, s, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Reset(k, m, cn.none))
-    case cn: Rest.UnderGuard[y2, t2, x, i2, a, b2, n] =>
-      Eff[t2, i2, n, x, a, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.UnderGuard(cn.g, k, m, cn.none))
+    case cn: Rest.UnderGuard[y2, t2, x, i2, a, j, o2, b2] =>
+      Eff[t2, i2, O2, x, a, j, Z](guarded(cn.inner(rs.y)), cn.k, Meta.UnderGuard(cn.g, k, m, cn.none))
     case cn: Rest.Under[y2, e, t2, x, i2, a, b2, n] =>
       Eff[e +: t2, i2, n, x, a, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Under(cn.h, k, m, cn.none))
     case cn: Rest.Through[y2, e, t2, x, i2, a, j, o2, b2] =>
@@ -504,8 +520,8 @@ object Machine:
       Eff[e +: t2, i2, O2, x, a, j, Z](failed(cn.fails, fl.e), cn.k, Meta.UnderState(cn.h, cn.s, k, m))
     case cn: Rest.UnderView[y, e, r, t2, x, i2, a, j, o2] =>
       Eff[r, i2, O2, x, a, j, Z](failed(cn.fails, fl.e), cn.k, Meta.UnderView(cn.rm, k, m))
-    case cn: Rest.UnderGuard[y, t2, x, i2, a, b2, n] =>
-      Eff[t2, i2, n, x, a, n, Z](failed(cn.fails, fl.e), cn.k, Meta.UnderGuard(cn.g, k, m, cn.none))
+    case cn: Rest.UnderGuard[y, t2, x, i2, a, j, o2, b2] =>
+      Eff[t2, i2, O2, x, a, j, Z](failed(cn.fails, fl.e), cn.k, Meta.UnderGuard(cn.g, k, m, cn.none))
     case cn: Rest.UnderLifted[y, r, x, i2, a, s] =>
       Eff[r, i2, Nothing, x, a, Nothing, Z](failed(cn.fails, fl.e), cn.k, Meta.Lifted[r, a, s, V, J, O2, Z](k, m, summon[s <:< O2]))
     case cn: Rest.UnderDollar[y, t2, x, i2, a, j, i3, o3, b2] =>
@@ -538,9 +554,9 @@ object Machine:
     case u: Meta.UnderView[e, r, t, v, j, v2, j2, o, z] =>
       val c = Rest.UnderView(u.rm, k, g, gf)
       outE(op, Removed.relocate(in, u.rm), c, c, u.k, u.m)
-    case u: Meta.UnderGuard[t, v, b, n, v2, j2, o2, z] =>
-      val c = u.none.liftCo[[x] =>> Rest[Y, t, n, x, b]](Rest.UnderGuard(u.g, k, g, gf, u.none))
-      outE[E, Y, t, n, o2, b, v2, j2, Z](op, in, c, c, u.k, u.m)
+    case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] =>
+      val c = Rest.UnderGuard(u.g, k, g, gf, u.none)
+      outE(op, in, c, c, u.k, u.m)
     case l: Meta.Lifted[r, a, s, v, j, o, z] =>
       val c = l.up.liftCo[[x] =>> Rest[Y, r, s, x, a]](Rest.UnderLifted[Y, r, A, I, a, s](k, g, gf))
       outE[E, Y, r, s, o, a, v, j, Z](op, in, c, c, l.k, l.m)
@@ -597,12 +613,14 @@ object Machine:
           catch case NonFatal(e) => unwind(e, m)
         case Nearest.There(at1) => Nearest.absurd(at)
       case u: Meta.Under[e, t, v, b, n, v2, j2, o2, z] => never(u.none.liftCo[[x] =>> (Y => Cont[T, I1, O1, X1]) => x](f), m)
-      case u: Meta.UnderGuard[t, v, b, n, v2, j2, o2, z] => never(u.none.liftCo[[x] =>> (Y => Cont[T, I1, O1, X1]) => x](f), m)
+      case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] =>
+        val c = Rest.UnderGuard[Y, t, X, I, v, j, Cont[T, I1, O1, X1], b](u.g, k, g, gf, u.none)
+        shifted(at, f, c, c, u.k, u.m)
       case l: Meta.Lifted[r, a, s, v, j, o, z] => never(f, m)
       case t: Meta.Top[r, v, z] => never(f, m)
 
   /** a shift0 whose body cannot return: `f` given a `k` that raises */
   private def never[T <: Row, I1, O1, X1, Y, Z](f: (Y => Cont[T, I1, O1, X1]) => Nothing, m: Meta[?, ?, ?, ?, Z]): Next[Z] =
     try f((y: Y) => Raise[T, I1, O1, X1](IllegalStateException(
-      "a shift0 with no answer, under a handler taking the rest, a guard or a lift: its k resumed")))
+      "a shift0 with no answer, under a handler taking the rest or a lift: its k resumed")))
     catch case NonFatal(e) => unwind(e, m)

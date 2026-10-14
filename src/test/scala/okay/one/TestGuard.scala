@@ -77,6 +77,55 @@ class TestGuard extends munit.FunSuite:
   }
 
 /** a step failed, cancelled: the error raised inside the rest's levels — their guards asked */
+  // -- a guard at answers: under a `$`, a shift0 passing it, its `k` holding it
+
+  test("ensure under a $: a shift0 passes the guard, k resumed twice runs the finalizer twice, the value through") {
+    type R = W +: Pure
+    val r = Cont.rows[Delim[R]]
+    val body: Cont[Delim[R], Int ! R, Int ! R, Int] = for
+      x <- r.shift0[Int, Int](k => k(1).flatMap(a => k(2).map(b => a + b)))
+      _ <- Writer.tell[String, Delim[R]](s"got $x")
+    yield x * 10
+    val guarded = body.ensure(tell[Delim[R]]("fin"))
+    val p: Int ! R = Cont.dollar(guarded)((a: Int) => pure(a))
+    assertEquals(p.handle(Writer.collect).run, (List("got 1", "fin", "got 2", "fin"), 30))
+  }
+
+  test("ensure under a $ and a throw in the rest: the finalizer, the error out") {
+    type R = W +: Pure
+    val r = Cont.rows[Delim[R]]
+    val body: Cont[Delim[R], Int ! R, Int ! R, Int] = for
+      x <- r.shift0[Int, Int](k => k(1))
+      _ <- Writer.tell[String, Delim[R]]("rest")
+    yield if x == 1 then throw boom else x
+    var log = List.empty[String]
+    val cell = new okay.one.handler.Answering[W, Pure, Int, Int]:
+      def ret(a: Int) = pure(a)
+      def value[X](op: Writer[String, X]): X = op match { case Writer.Tell(m) => log = m :: log }
+    Cont.dollar(body.ensure(tell[Delim[R]]("fin")))((a: Int) => pure(a)).handle(cell).step match
+      case Step.Failed(e) =>
+        assertEquals(e, boom)
+        assertEquals(log.reverse, List("rest", "fin"))
+      case other => fail(s"not failed: $other")
+  }
+
+  test("uncancelable under a $: the mask held through the shift0, the finalizer run when it is left") {
+    type R = W +: Pure
+    val r = Cont.rows[Delim[R]]
+    val body: Cont[Delim[R], Int ! R, Int ! R, Int] =
+      r.shift0[Int, Int](k => k(1).flatMap(a => k(2).map(b => a + b))).uncancelable.ensure(tell[Delim[R]]("fin"))
+    assertEquals(Cont.dollar(body)((a: Int) => pure(a)).handle(Writer.collect).run, (List("fin", "fin"), 3))
+  }
+
+  test("recover at answers does not compile: what it recovers with is a program of effects") {
+    val errors = compileErrors("""
+      type R = Pure
+      val r = Cont.rows[Delim[R]]
+      r.shift0[Int, Int](k => k(1)).guard(okay.one.handler.Guard.recover[Delim[R], Int](_ => pure(0)))""")
+    assert(errors.contains("a recovering guard around a program at answers"), errors)
+    assert(compileErrors("""pure[Pure, Int](1).guard(okay.one.handler.Guard.recover[Pure, Int](_ => pure(0)))""").isEmpty)
+  }
+
 class TestGuardStep extends munit.FunSuite:
   type W = Writer % String
   val boom = RuntimeException("boom")
