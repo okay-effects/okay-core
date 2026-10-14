@@ -212,8 +212,23 @@ Steps 1–3, 5, 6 and 7's Scala 2 are done on the branch (changelog.d/one-monad-
 `scripts/import-one.sh` (its HEAD, re-run per commit); `okay.core` over it — `A ! E1 + E2` by `Needs`/`Place`, `Path`
 found from the place first, `Op`, the handler sugar, control's two faces, `RowEffects[Eff]`; one std; `OnCore` the
 kernel's `one/` bridge; the suites re-written (JVM 208, kernel 30, async 19, cats 2, tofu 9, Scala 2 6); the guide,
-the docs. Not passed: §4 H — forwarded16 3×, captures 2×, generate +46%, the mixed program +25% against
-okay-core-zero's last, the kernel's items (changelog.d/one-monad-step2-3.md). Deferred: `PState` (okay-one's, in
+the docs. Not passed: §4 H — captures 2×, generate +40%, the mixed program +70% against
+okay-core-zero's last (forwarded16 met since okay-one 0ff6e5e: 5.7), the kernel's items (changelog.d/one-monad-step2-3.md).
+
+**The mixed program's regression, pinned (2026-10-14).** `MixedBenchmark.orders` (state), the facade at 2ef1dd5 on
+each kernel, one machine, back to back: okay-one c7af924 158.8 µs, ee7812a 173, cec1b6a 221.5, 0ff6e5e 218.6,
+feb703d 218.6; the facade at HEAD on c95137d 227–232. So the step is cec1b6a (a `k` failed or cancelled: `Fail`/`FailC`
+nodes, `fails` on every `Cont`, `guardsTo` walked at every abort, the `none` evidence in `clausing`); the look-up kept
+on the path (0ff6e5e) and the reset's view (feb703d) cost nothing here; 2742dfe's inline `flatMap` (`Lifts.down` and
+`<:<` plumbing at every bind of user code) the last +5%. Allocation moved +3% only (1.39 → 1.43 MB a run): code
+shape, not objects. By `-XX:+LogCompilation`, C2's inline budget for `eval` (its own 4420 bytes plus callees, 8000)
+runs out earlier on c95137d: the second `clausing` site (`InjectHere` under `Meta.Under` — the road of every `Deep`
+handler, which the facade's all are: `handleIn`) and after it `Meta.Under`'s accessors, `Cont.Under.apply`,
+`InjectHere.op`/`g`, `lookUp` stay out of line; on c7af924 both `clause` sites were inlined. `-XX:-ClipInlining`
+does not mend it (240), so the cliff is not the whole account. okay-bench's `OneMixed` on the kernel's own std
+(`Aborting`, `Answering`) is flat across these commits — it does not take the `Deep` road. A look-up that allocates
+no `Found` on a miss was tried and dropped: no change on mixed, forwarded16 worse. The fix is the kernel's
+(okay-one), on the `Deep` road of cec1b6a; re-import when it lands. Deferred: `PState` (okay-one's, in
 control, to be imported), Scala.js tests (the bridge does not link on master either), `Removed.Again` — an
 interceptor's relocation in the kernel, so `Intercept.at` (tofu's `local`, `handleWith` on an effect anywhere in a
 row) runs in the machine, not by stepping.
