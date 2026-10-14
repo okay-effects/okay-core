@@ -20,5 +20,5 @@ class TestPState extends munit.FunSuite:
   test("pstate under an effect of the row: an operation between the moves, answered by the handler around"):
     type R = Reader % Int +: Pure
     val r: (String, Int) = run(reader(5)(pstate[R, Int, String, Int](1)(st =>
-      st.get[Int].flatMap(n => ask[Int].at[R].cont[st.P[Int]].flatMap(a => st.put[Int]((n + a).toString))).map(_ => 0))))
+      st.get[Int].flatMap(n => ask[Int].at[Control.Delim[R]].cont[st.P[Int]].flatMap(a => st.put[Int]((n + a).toString))).map(_ => 0))))
     assertEquals(r, ("6", 0))

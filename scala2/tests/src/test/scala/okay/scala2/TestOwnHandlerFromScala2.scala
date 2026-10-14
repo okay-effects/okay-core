@@ -30,7 +30,7 @@ class TestOwnHandlerFromScala2 extends munit.FunSuite {
   test("Scala 2: an effect and its handler of its own") {
     type R = +:[Counter, Pure]
     val p: P[R, Int] =
-      okay.core.Ops.perform[Counter, R, Unit](Tick).flatMap[Nothing, Unit](_ => okay.core.Ops.perform[Counter, R, Unit](Tick)).flatMap[Nothing, Int](_ => okay.core.Ops.perform[Counter, R, Int](Peek))
+      okay.core.Ops.flatMap(okay.core.Ops.flatMap(okay.core.Ops.perform[Counter, R, Unit](Tick))(_ => okay.core.Ops.perform[Counter, R, Unit](Tick)))(_ => okay.core.Ops.perform[Counter, R, Int](Peek))
     assertEquals(okay.core.Ops.run(okay.core.Ops.handle(p)(counting[Pure, Int](0))), (2, 2))
   }
 
@@ -41,10 +41,10 @@ class TestOwnHandlerFromScala2 extends munit.FunSuite {
     val logging = new Deep[Counter, O, Int, Int] {
       def ret(a: Int): P[O, Int] = Cont0.pure(a)
       def apply[X](op: Counter[X], k: X => P[O, Int]): P[O, Int] =
-        if (op == Peek) okay.core.Ops.perform[Log, O, Unit](Writer.Tell("peeked")).flatMap[Nothing, Int](_ => k(op.answer(7)))
+        if (op == Peek) okay.core.Ops.flatMap(okay.core.Ops.perform[Log, O, Unit](Writer.Tell("peeked")))(_ => k(op.answer(7)))
         else k(op.answer(0))
     }
-    val p: P[R, Int] = okay.core.Ops.perform[Counter, R, Int](Peek).map(_ * 2)
+    val p: P[R, Int] = okay.core.Ops.map(okay.core.Ops.perform[Counter, R, Int](Peek))(_ * 2)
     assertEquals(okay.core.Ops.run(okay.core.Ops.handle(okay.core.Ops.handle(p)(logging))(Writer.collect[String, Pure, Int])), (List("peeked"), 14))
   }
 }

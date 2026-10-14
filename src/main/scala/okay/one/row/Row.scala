@@ -36,7 +36,7 @@ enum Removed[E[_], R <: Row, T <: Row]:
   case Absent[E[_], T <: Row]() extends Removed[E, T, T]
 
 object Removed extends RemovedLow:
-  given head[E[_], T <: Row]: Removed[E, E +: T, T] = Head()
+  given head[E[_], T <: Row](using NotControl[E]): Removed[E, E +: T, T] = Head()
 
   /** a place in `R` SEEN in `E +: T`, `E` taken out of `R` by `rm` and put first: a handler of `E` at any place in the
    * row is the handler at its head, over the row seen so. `Head`: the place itself, nothing made */
@@ -50,7 +50,9 @@ object Removed extends RemovedLow:
         case In.There(in) => In.There[f, e, g +: t1](In.There[f, g, t1](in))
 
 trait RemovedLow:
-  given next[E[_], G[_], R <: Row, T <: Row](using rm: Removed[E, R, T]): Removed[E, G +: R, G +: T] = Removed.Next(rm)
+  /** never past a `Control`: a handler takes its effect from inside its `$` */
+  given next[E[_], G[_], R <: Row, T <: Row](using nc: NotControl[G], rm: Removed[E, R, T]): Removed[E, G +: R, G +: T] =
+    Removed.Next(rm)
 
 /** an operation of `F` LOCATED by a handler of `E` removed from its row: its own (`F` is `E`), or another's, its place
  * in the row outside the handler */

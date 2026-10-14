@@ -1,9 +1,10 @@
 package okay.core
 
-import okay.one.Cont0
-import okay.one.Cont0.{Dollar, Shift0}
+import okay.one.{Cont0, Delim}
+import okay.one.Cont0.Shift0
+import okay.one.row.Nearest
 import okay.std.*
-import okay.core.Control.{lower, reset, shift, shift0}
+import okay.core.Control.{reset, shift, shift0}
 
 /** CONTROL'S TWO FACES: `Shift % S`, shift and reset as an effect of the row — Danvy–Filinski's shift in a shift's
  * body, k lazy, k data; and `Control[R]`, the answer type modified — printf, nested delimiters */
@@ -51,22 +52,21 @@ class TestControl extends munit.FunSuite:
       case Kept.Rest(k) => assertEquals(run(k(21)), Kept.Value(42))
       case v => fail(s"no k: $v")
 
-  // -- the answer moved: Control[R]
+  // -- the answer moved: under a `$`
 
-  /** a program of control over `R` at the answer `L`, unmoved */
-  type C[R <: Row, L, A] = Cont0[okay.one.Control[R], L, L, A]
-
-  test("the answer type modified: printf — an Int hole, the reset's answer a function; an effect asked in it"):
+  test("the answer type modified: printf — an Int hole, the $'s answer a function; an effect asked in it"):
     type R = Reader % Int +: Pure
-    type F = Int => String
-    val body: Cont0[okay.one.Control[R], C[R, String, String], C[R, F, F], Int] =
-      Shift0[R, String, String, String, C[R, F, F], Int](k => Cont0.Return((x: Int) => lower(k(x)).handle(okay.one.std.Reader[Int, Pure, String](0)).run))
-    val p: C[R, F, F] = Dollar[R, C[R, String, String], F, F, F, String](
-      ask[Int].at[R].cont[C[R, F, F]].flatMap(n => body.map(x => s"$n:$x")), (s: String) => Cont0.Return("got " + s))
-    assertEquals(run(reader(1)(lower(p)))(42), "got 1:42")
+    type K = Eff[R, String]
+    type F = Int => K
+    // `$ (ask >>= n => s"$n:" + shift0(k => pure(x => k(x))))`: the answer `String` turned `Int => K`
+    val body: Cont0[Delim[R], K, Eff[R, F], Int] =
+      Shift0[Delim[R], R, Nothing, Nothing, String, Eff[R, F], Int](Nearest.Here(), k => Cont0.Return((x: Int) => k(x)))
+    val p: Eff[R, F] = Cont0.dollar[R, K, Nothing, Nothing, F, String](
+      ask[Int].at[Delim[R]].cont[Eff[R, F]].flatMap(n => body.map(x => s"$n:$x")))((s: String) => Cont0.Return("got " + s))
+    assertEquals(run(run(reader(1)(p))(42).handle(okay.one.std.Reader[Int, Pure, String](7))), "got 1:42")
 
-  test("a handler over a reset: its k taken past the $, the $ put back each time it is resumed"):
+  test("a handler over a $: its k taken past the $, the $ put back each time it is resumed"):
     type R = Choose +: Pure
-    val p: C[R, Int, Int] = Dollar[R, C[R, Int, Int], Int, Int, Int, Int](
-      among(Seq(1, 2)).at[R].cont[C[R, Int, Int]].map(_ * 10), (a: Int) => Cont0.Return(a + 1))
-    assertEquals(run(choose(lower(p))), Seq(11, 21))
+    val p: Eff[R, Int] = Cont0.dollar[R, Eff[R, Int], Nothing, Nothing, Int, Int](
+      among(Seq(1, 2)).at[Delim[R]].cont[Eff[R, Int]].map(_ * 10))((a: Int) => Cont0.Return(a + 1))
+    assertEquals(run(choose(p)), Seq(11, 21))

@@ -50,10 +50,10 @@ class TestRaise extends munit.FunSuite:
   }
 
   test("a throw in control: a shift0's body, a $'s ret — out of the reset") {
-    type L = Cont0[Control[Pure], Int, Int, Int]
-    val inShift: Int ! Pure = reset(Dollar[Pure, L, Int, Int, Int, Int](
-      Shift0[Pure, Int, Int, Int, L, Int](_ => throw boom), (a: Int) => Return(a)))
-    val inRet: Int ! Pure = reset(Dollar[Pure, L, Int, Int, Int, Int](Return(1), (_: Int) => throw boom))
+    type L = Int ! Pure
+    val inShift: Int ! Pure = Dollar[Pure, L, Nothing, Nothing, Int, Int](
+      Shift0[Delim[Pure], Pure, Nothing, Nothing, Int, L, Int](Nearest.Here(), _ => throw boom), (a: Int) => Return(a))
+    val inRet: Int ! Pure = Dollar[Pure, L, Nothing, Nothing, Int, Int](Return(1), (_: Int) => throw boom)
     assertEquals(failed(inShift.step), boom)
     assertEquals(failed(inRet.step), boom)
   }

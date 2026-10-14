@@ -17,7 +17,7 @@ object TofuProgram {
     def functor: Functor[Of[R]#L] = CatsProgram.monad[R]
     def context: P[R, C] = okay.core.Ops.perform[ReaderOf[C]#L, R, C](Reader.Ask[C]())(in)
     def local[A](fa: P[R, A])(project: C => C): P[R, A] =
-      context.flatMap[Nothing, A]((c: C) => Intercept.by[ReaderOf[C]#L, R, A](in)(fa)(new Intercept.Clause[ReaderOf[C]#L, R, A] {
+      okay.core.Ops.flatMap(context)((c: C) => Intercept.by[ReaderOf[C]#L, R, A](in)(fa)(new Intercept.Clause[ReaderOf[C]#L, R, A] {
         def apply[X](op: Reader[C, X], k: X => P[R, A]): P[R, A] = op match { case _: Reader.Ask[c] => k(project(c)) }
       }))
   }
@@ -29,7 +29,7 @@ object TofuProgram {
         def apply[X](op: Throws[E, X], k: X => P[R, A]): P[R, A] = op match { case r: Throws.Raise[e] => f(r.e).getOrElse(raise[A](r.e)) }
       })
     def restore[A](fa: P[R, A]): P[R, Option[A]] =
-      Intercept.by[ThrowsOf[E]#L, R, Option[A]](in)(fa.map(a => Option(a)))(new Intercept.Clause[ThrowsOf[E]#L, R, Option[A]] {
+      Intercept.by[ThrowsOf[E]#L, R, Option[A]](in)(okay.core.Ops.map(fa)(a => Option(a)))(new Intercept.Clause[ThrowsOf[E]#L, R, Option[A]] {
         def apply[X](op: Throws[E, X], k: X => P[R, Option[A]]): P[R, Option[A]] = Cont0.pure[R, Option[A]](None)
       })
     def lift[A](fa: P[R, A]): P[R, A] = fa

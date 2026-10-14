@@ -48,7 +48,7 @@ class TestTofuFromScala2 extends munit.FunSuite {
   test("Scala 2: tailRecM and a left-nested chain of 100 000 binds in constant stack") {
     val m = Monad[F]
     assertEquals(run(Cfg("a", 0))(m.tailRecM(0)(i => m.pure(if (i < 100000) Left(i + 1) else Right(i)))), Right(100000))
-    val p = (1 to 100000).foldLeft(m.pure(0))((acc, i) => acc.flatMap[Nothing, Int](a => m.pure(a + i)))
+    val p = (1 to 100000).foldLeft(m.pure(0))((acc, i) => m.flatMap(acc)(a => m.pure(a + i)))
     assertEquals(run(Cfg("a", 0))(p), Right(5000050000L.toInt))
   }
 
@@ -56,8 +56,9 @@ class TestTofuFromScala2 extends munit.FunSuite {
     type R = +:[StateOf[Int]#L, +:[WriterOf[String]#L, Pure]]
     type W = +:[WriterOf[String]#L, Pure]
     val p: Cont0[R, Nothing, Nothing, Int] =
-      okay.core.Ops.perform[StateOf[Int]#L, R, Int](State.Get[Int]()).flatMap[Nothing, Int](s => okay.core.Ops.perform[StateOf[Int]#L, R, Unit](State.Put[Int](s + 1))
-        .flatMap[Nothing, Int](_ => okay.core.Ops.perform[WriterOf[String]#L, R, Unit](Writer.Tell(s"was $s")).map(_ => s)))
+      okay.core.Ops.flatMap(okay.core.Ops.perform[StateOf[Int]#L, R, Int](State.Get[Int]()))(s =>
+        okay.core.Ops.flatMap(okay.core.Ops.perform[StateOf[Int]#L, R, Unit](State.Put[Int](s + 1)))(_ =>
+          okay.core.Ops.map(okay.core.Ops.perform[WriterOf[String]#L, R, Unit](Writer.Tell(s"was $s")))(_ => s)))
     val run2 = okay.core.Ops.handle(okay.core.Ops.handle(p)(State[Int, W, Int](41)))(Writer.collect[String, Pure, (Int, Int)])
     assertEquals(okay.core.Ops.run(run2), (List("was 41"), (42, 41)))
   }

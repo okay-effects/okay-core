@@ -65,20 +65,21 @@ class TestCont extends munit.FunSuite:
 
   test("a compiled program run twice: its state each run its own") {
     val p = for s <- perform[St, St +: Pure, Int](St.Get); _ <- perform[St, St +: Pure, Unit](St.Put(s + 1)) yield s
-    val c = p.handle(state(0)).cont[(Int, Int)]
-    assertEquals(c.run(identity), (1, 0))
-    assertEquals(c.run(identity), (1, 0))
+    val c = p.handle(state(0))
+    assertEquals(c.run, (1, 0))
+    assertEquals(c.run, (1, 0))
   }
 
   test("answer type modification in Cont0, around compiled programs: a shift0 turning String into Int => String, its k a compiled program, resumed twice") {
     type S = Int => String
     type C = Cont[String, String]
-    val body: Cont0[Control[Pure], C, Cont[S, S], String] =
-      Cont0.Shift0[Pure, String, String, String, Cont[S, S], Int](k =>
-        Cont0.Return((x: Int) => k(x).run(identity) + " / " + k(x + 1).run(identity)))
-      .flatMap((x: Int) => asked[Ask +: Log +: Pure].handle(reader(x)).handle(log).cont[C].map(_.toString))
-    val p: Cont[S, S] = Cont0.Dollar(body, (s: String) => Cont0.Return[Control[Pure], String, String]("got " + s))
-    assertEquals(p.run(identity)(41), "got (List(got 41),42) / got (List(got 42),43)")
+    val body: Cont0[Delim[Pure], String ! Pure, S ! Pure, String] =
+      Cont0.Shift0[Delim[Pure], Pure, Nothing, Nothing, String, S ! Pure, Int](Nearest.Here(), k =>
+        Cont0.Return((x: Int) => k(x).run + " / " + k(x + 1).run))
+      .flatMap((x: Int) => asked[Ask +: Log +: Delim[Pure]].handle(reader(x)).handle(log).cont[String ! Pure].map(_.toString))
+    val p: S ! Pure = Cont0.Dollar[Pure, String ! Pure, Nothing, Nothing, S, String](body,
+      (s: String) => Cont0.Return[Pure, Nothing, String]("got " + s))
+    assertEquals(p.run(41), "got (List(got 41),42) / got (List(got 42),43)")
   }
 
   test("a handler in the program: its parameter a value of the program") {

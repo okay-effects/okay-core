@@ -25,6 +25,9 @@ object Ops:
     okay.one.Cont0.handle(p)(h)
   /** a program with nothing left to handle, run */
   def run[A](p: Eff[Pure, A]): A = okay.one.Cont0.run(p)
+  /** the binds, which the kernel inlines */
+  def flatMap[R <: Row, A, B](p: Eff[R, A])(f: A => Eff[R, B]): Eff[R, B] = p.flatMap(f)
+  def map[R <: Row, A, B](p: Eff[R, A])(f: A => B): Eff[R, B] = p.map(f)
   given here[E[_], T <: Row]: In[E, E +: T] = okay.one.row.In.Here()
   given there[E[_], F[_], T <: Row](using in: In[E, T]): In[E, F +: T] = okay.one.row.In.There(in)
 

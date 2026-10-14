@@ -9,6 +9,6 @@ import okay.one.row.Row
 object CatsProgram {
   implicit def monad[R <: Row]: StackSafeMonad[Of[R]#L] = new StackSafeMonad[Of[R]#L] {
     def pure[A](a: A): Cont0[R, Nothing, Nothing, A] = Cont0.pure(a)
-    def flatMap[A, B](fa: Cont0[R, Nothing, Nothing, A])(f: A => Cont0[R, Nothing, Nothing, B]): Cont0[R, Nothing, Nothing, B] = fa.flatMap[Nothing, B](f)
+    def flatMap[A, B](fa: Cont0[R, Nothing, Nothing, A])(f: A => Cont0[R, Nothing, Nothing, B]): Cont0[R, Nothing, Nothing, B] = okay.core.Ops.flatMap(fa)(f)
   }
 }

@@ -26,6 +26,6 @@ object Step:
      * fired when the program leaves the mask */
     def cancel(): Step[R, A] = cancelling()
 
-  extension [R <: Row, I0, O0, A](p: Cont0[R, I0, O0, A])
+  extension [R <: Row, A](p: A ! R)
     /** `p` run to its value or its first operation of `R` */
     def step: Step[R, A] = Machine.stepped(p)

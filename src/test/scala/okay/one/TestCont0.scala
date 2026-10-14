@@ -1,28 +1,37 @@
 package okay.one
 
 import Cont0.*
-import okay.one.row.Pure
+import okay.one.row.*
 
 class TestCont0 extends munit.FunSuite:
-  /** `n` handlers, each installed in the rest its outer handler resumed: an operation, then the next */
-  def nest[R](n: Int): Cont[R, Int] =
-    type L = Cont[R, Int]
+  /** `n` `$`s, each in the rest its outer `$`'s shift0 resumed: an operation, then the next — each a row deeper, the
+   * function one over any row */
+  def nest[R <: Row](n: Int): Int ! R =
     if n == 0 then Return(0)
-    else Dollar[Pure, L, R, R, Int, Int](
-      Bind(Shift0[Pure, R, R, Int, L, Unit](k => k(())), (_: Unit) => nest[L](n - 1)),
+    else Dollar[R, Int ! R, Nothing, Nothing, Int, Int](
+      Bind(Shift0[Delim[R], R, Nothing, Nothing, Int, Int ! R, Unit](Nearest.Here(), k => k(())),
+        (_: Unit) => nest[Delim[R]](n - 1).cont[Int ! R]),
       a => Return(a + 1))
 
-  test("stack safe: handlers nested in the resumed rests") {
-    assertEquals(nest[Int](100000).run(identity), 100000)
+  test("stack safe: $s nested in the resumed rests") {
+    assertEquals(nest[Pure](100000).run, 100000)
   }
 
   test("answer type modification: the shift0 turns the answer String into Int => String (printf)") {
     type S = Int => String
-    // `$ ("Hello " + shift0(k => x => k(x)))`: the body's rest answers `Cont[String, String]`, the body `Cont[S, S]`
-    val body: Cont0[Control[Pure], Cont[String, String], Cont[S, S], Int] =
-      Shift0[Pure, String, String, String, Cont[S, S], Int](k => Return((x: Int) => k(x).run(identity)))
-    val p: Cont[S, S] = Dollar(Bind(body, (n: Int) => Return[Control[Pure], Cont[String, String], String](n.toString)),
-      (s: String) => Return[Control[Pure], String, String]("Hello " + s))
-    assertEquals(p.run(identity)(42), "Hello 42")
+    // `$ ("Hello " + shift0(k => x => k(x)))`: the body's rest answers a String, the body a function — each a program
+    // over the row outside the `$`, Pure: run as any program of effects
+    val body: Cont0[Delim[Pure], String ! Pure, S ! Pure, Int] =
+      Shift0[Delim[Pure], Pure, Nothing, Nothing, String, S ! Pure, Int](Nearest.Here(), k => Return((x: Int) => k(x).run))
+    val p: S ! Pure = Dollar[Pure, String ! Pure, Nothing, Nothing, S, String](
+      Bind(body, (n: Int) => Return[Delim[Pure], String ! Pure, String](n.toString)),
+      (s: String) => Return[Pure, Nothing, String]("Hello " + s))
+    assertEquals(p.run(42), "Hello 42")
   }
 
+  test("the same by shift0 and dollar: the path to the $ found, its row outside inferred") {
+    type S = Int => String
+    val p: S ! Pure = dollar(shift0[Pure, Nothing, Nothing, String, S ! Pure, Int, Delim[Pure]](k =>
+      Return((x: Int) => k(x).run)).map(_.toString))((s: String) => Return("Hello " + s))
+    assertEquals(p.run(42), "Hello 42")
+  }

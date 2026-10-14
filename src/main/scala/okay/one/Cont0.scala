@@ -3,38 +3,38 @@ package okay.one
 import okay.one.handler.*
 import okay.one.machine.Machine
 import okay.one.row.*
+import scala.compiletime.{error, summonFrom}
 
-/** DELIMITED CONTROL over the row `R`: shift0 and `$`, and the effects of `R` — a program of effects over `R` put in
- * it by `cont`, its operations going out past the `$`s to their handlers, around the `reset` that makes the program of
- * control one of effects again. Not a row of effects: a program over one never meets a shift0 or a `$` */
-sealed trait Control[R <: Row]
+/** the row under a `$`, `T` outside it */
+type Delim[T <: Row] = Control[T] +: T
 
-/** a program of delimited control with no effect, its answer unmoved */
-type Cont[L, A] = Cont0[Control[Pure], L, L, A]
+/** a program of delimited control with no effect, under one `$`, its answer unmoved */
+type Cont[L, A] = Cont0[Delim[Pure], L, L, A]
 
 /** a PROGRAM OF EFFECTS over the row `R`: no answers — its handlers' `k` its rest, data */
 infix type ![+A, R <: Row] = Cont0[R, Nothing, Nothing, A]
 
-/** A PROGRAM OF `A` over the row `R`, data: `I` the answer of its rest, `O` what it answers. Its nodes:
+/** A PROGRAM OF `A` over the row `R`, data: `I` the answer of its rest, `O` what it answers — the state of the nearest
+ * `Control` in `R`, the `$` it is under; none in `R`, inert. Its nodes:
  *
- *  - the monad's, over any row: `Return`, `Bind`, `Map`, `Defer`;
- *  - effects', over a row of them: an operation (`Perform`, `PerformHere`; with its rest, `Inject`, `InjectHere`), a
- *    handler around a program (`Handle`, `HandleState`, at any place in its row by `View`), a `k` resumed (`Resume`)
- *    — the answers through them unmoved, none of the machine's;
- *  - delimited control's, over `Control[R]`: `Shift0`, `Dollar` — the answer type modified; `Lift`, a program of
- *    effects over `R` in it; `Continue`, a shift0's `k` resumed; and back, over `R`: `Lower`, a `reset` — a closed
- *    program of control a program of effects.
+ *  - the monad's: `Return`, `Bind`, `Map`, `Defer`, `Raise`;
+ *  - effects': an operation (`Perform`, `PerformHere`; with its rest, `Inject`, `InjectHere`), a handler around a
+ *    program (`Handle`, `HandleState`, the answers through it; `HandleK`, the rest taken — a program of effects only;
+ *    at any place in its row by `View`), a guard (`Guarded`), a `k` resumed (`Resume`, `Fail`), a program of effects
+ *    at any answer (`Lift`);
+ *  - control's: `Shift0`, up to the nearest `$`, the answer type modified; `Dollar`, the `$`, its answer a program run
+ *    outside it; `Lower`, a `reset` — its answer a value.
  *
  * A handler's frames `k` and a `k` as data the machine's: where it has run a program, it is put back */
-enum Cont0[R, I, +O, +A]:
-  case Return[R, S, A](a: A) extends Cont0[R, S, S, A]
-  case Bind[R, I, T, O, X, A](m: Cont0[R, T, O, X], f: X => Cont0[R, I, T, A]) extends Cont0[R, I, O, A]
-  case Map[R, I, O, X, A](m: Cont0[R, I, O, X], f: X => A) extends Cont0[R, I, O, A]
+enum Cont0[R <: Row, I, +O, +A]:
+  case Return[R <: Row, S, A](a: A) extends Cont0[R, S, S, A]
+  case Bind[R <: Row, I, T, O, X, A](m: Cont0[R, T, O, X], f: X => Cont0[R, I, T, A]) extends Cont0[R, I, O, A]
+  case Map[R <: Row, I, O, X, A](m: Cont0[R, I, O, X], f: X => A) extends Cont0[R, I, O, A]
   /** `c` made when the run gets to it */
-  case Defer[R, I, O, A](c: () => Cont0[R, I, O, A]) extends Cont0[R, I, O, A]
+  case Defer[R <: Row, I, O, A](c: () => Cont0[R, I, O, A]) extends Cont0[R, I, O, A]
   /** AN ERROR RAISED, what user code threw: the frames of its level dropped, the levels unwound to the top — a node,
    * never an exception through the machine */
-  case Raise[R, I, O, A] private[one] (e: Throwable) extends Cont0[R, I, O, A]
+  case Raise[R <: Row, I, O, A] private[one] (e: Throwable) extends Cont0[R, I, O, A]
 
   /** an operation of `E`, `in` its place in `R` — not the head */
   case Perform[R <: Row, E[_], S, X] private[one] (op: E[X], in: In[E, R]) extends Cont0[R, S, S, X]
@@ -46,44 +46,55 @@ enum Cont0[R, I, +O, +A]:
   /** an operation of the row's head, `g` its rest */
   case InjectHere[E[_], T <: Row, Y, I, O, A] private[one] (op: E[Y], g: Y => Cont0[E +: T, I, O, A])
       extends Cont0[E +: T, I, O, A]
-  /** `body`, then its frames `k`, with the row's head `E` handled by `h` */
-  case Handle[E[_], T <: Row, S, X, A, B] private[one] (h: Stateless[E, T, A, B], k: Machine.Frame[E +: T, X, A],
-      body: Cont0[E +: T, ?, ?, X]) extends Cont0[T, S, S, B]
+  /** `body`, then its frames `k`, with the row's head `E` handled by `h` — the rest left where it is, the answers
+   * through: `J` the rest's, `O` the body's */
+  case Handle[E[_], T <: Row, X, I, A, J, O, B] private[one] (h: Passing[E, T, A, B],
+      k: Machine.Frame[E +: T, X, I, A, J], body: Cont0[E +: T, I, O, X]) extends Cont0[T, J, O, B]
   /** `body`, then its frames `k`, with the row's head `E` handled by `h` from the state `s` */
-  case HandleState[E[_], T <: Row, St, S, X, A, B] private[one] (h: Stateful[E, T, St, A, B], s: St,
-      k: Machine.Frame[E +: T, X, A], body: Cont0[E +: T, ?, ?, X]) extends Cont0[T, S, S, B]
+  case HandleState[E[_], T <: Row, St, X, I, A, J, O, B] private[one] (h: Stateful[E, T, St, A, B], s: St,
+      k: Machine.Frame[E +: T, X, I, A, J], body: Cont0[E +: T, I, O, X]) extends Cont0[T, J, O, B]
+  /** `body`, then its frames `k`, with the row's head `E` handled by `h` — the rest taken: a program of effects */
+  case HandleK[E[_], T <: Row, X, I, A, B] private[one] (h: Taking[E, T, A, B],
+      k: Machine.Frame[E +: T, X, I, A, Nothing], body: Cont0[E +: T, I, Nothing, X]) extends Cont0[T, Nothing, Nothing, B]
   /** `body`, over `R`, then its frames `k`, SEEN over `E +: T` — `E` taken out of `R` by `rm`, put first: for a handler
    * of `E` at any place in the row, the handler at its head */
-  case View[E[_], R <: Row, T <: Row, S, X, A] private[one] (rm: Removed[E, R, T], k: Machine.Frame[R, X, A],
-      body: Cont0[R, ?, ?, X]) extends Cont0[E +: T, S, S, A]
+  case View[E[_], R <: Row, T <: Row, X, I, A, J, O] private[one] (rm: Removed[E, R, T],
+      k: Machine.Frame[R, X, I, A, J], body: Cont0[R, I, O, X]) extends Cont0[E +: T, J, O, A]
   /** `body`, then its frames `k`, under the guard `g`: a level of no effect, the row the same in it */
-  case Guarded[T <: Row, S, X, A, B] private[one] (g: Guard[T, A, B], k: Machine.Frame[T, X, A],
-      body: Cont0[T, ?, ?, X]) extends Cont0[T, S, S, B]
+  case Guarded[T <: Row, X, I, A, B] private[one] (g: Guard[T, A, B], k: Machine.Frame[T, X, I, A, Nothing],
+      body: Cont0[T, I, Nothing, X]) extends Cont0[T, Nothing, Nothing, B]
   /** a `k` resumed with `y`: its levels put back, outermost first, then its rest with `y` under them */
-  case Resume[Y, T <: Row, S, B] private[one] (c: Machine.Cont[Y, T, B], y: Y) extends Cont0[T, S, S, B]
+  case Resume[Y, T <: Row, I, O, B] private[one] (c: Machine.Cont[Y, T, I, O, B], y: Y) extends Cont0[T, I, O, B]
   /** a `k` failed with `e`: its levels put back, then `e` raised inside them */
-  case Fail[T <: Row, S, B] private[one] (c: Machine.Cont[Nothing, T, B], e: Throwable) extends Cont0[T, S, S, B]
+  case Fail[T <: Row, I, O, B] private[one] (c: Machine.Cont[Nothing, T, I, O, B], e: Throwable) extends Cont0[T, I, O, B]
+  /** `p`, a program of effects, at any answer: none of its own to move */
+  case Lift[R <: Row, S, A] private[one] (p: A ! R) extends Cont0[R, S, S, A]
 
-  case Shift0[R <: Row, I1, O1, X1, O, A](f: (A => Cont0[Control[R], I1, O1, X1]) => O)
-      extends Cont0[Control[R], Cont0[Control[R], I1, O1, X1], O, A]
-  case Dollar[R <: Row, I, I2, O2, B, A](body: Cont0[Control[R], I, Cont0[Control[R], I2, O2, B], A], ret: A => I)
-      extends Cont0[Control[R], I2, O2, B]
-  /** `p`, a program of effects over `R`, in control: its operations answered in place, by the handlers around */
-  case Lift[R <: Row, I0, O0, S, A] private[one] (p: Cont0[R, I0, O0, A]) extends Cont0[Control[R], S, S, A]
-  /** a shift0's `k` resumed with `a`: its frames a level of their own under the place it is resumed at */
-  case Continue[R <: Row, A, I, O, B] private[one] (k: Machine.CFrame[R, A, Cont0[Control[R], I, O, B]], a: A)
-      extends Cont0[Control[R], I, O, B]
-  /** a handler's `k` resumed in control: its levels with control outside them put back, then its rest */
-  case ResumeC[Y, R <: Row, I, O, A] private[one] (c: Machine.ContC[Y, R, I, O, A], y: Y)
-      extends Cont0[Control[R], I, O, A]
-  /** a handler's `k` failed in control: its levels put back, then the error raised inside them */
-  case FailC[R <: Row, I, O, A] private[one] (c: Machine.ContC[Nothing, R, I, O, A], e: Throwable)
-      extends Cont0[Control[R], I, O, A]
-  /** `reset(c)`: `c`, a closed program of control — its value its initial answer — under a `$` of its own, the rest
-   * the identity: a program of effects over `R`, its answer `O` the value */
-  case Lower[R <: Row, S, O, S2] private[one] (c: Cont0[Control[R], S, O, S]) extends Cont0[R, S2, S2, O]
+  /** shift0: `f` given `k`, the rest up to the nearest `$` in the row — `at` its path, the handlers before the `$` in
+   * `k` — `T` the row outside the `$`, `k`'s; the answer turned from the rest's to what `f` makes */
+  case Shift0[R <: Row, T <: Row, I1, O1, X1, O, A](at: Nearest[T, R], f: (A => Cont0[T, I1, O1, X1]) => O)
+      extends Cont0[R, Cont0[T, I1, O1, X1], O, A]
+  /** `$`: `body` under it, its value through `ret`; its answer a program over the row outside, run there */
+  case Dollar[T <: Row, I, I2, O2, B, A](body: Cont0[Control[T] +: T, I, Cont0[T, I2, O2, B], A], ret: A => I)
+      extends Cont0[T, I2, O2, B]
+  /** `reset(c)`: `c` closed — its value its initial answer — under a `$` of its own, the rest the identity: a program of
+   * effects over `R`, its answer `O` the value */
+  case Lower[R <: Row, S, O] private[one] (c: Cont0[Control[R] +: R, S, O, S]) extends Cont0[R, Nothing, Nothing, O]
 
-  def flatMap[I2, B](f: A => Cont0[R, I2, I, B]): Cont0[R, I2, O, B] = this match
+  /** `f` bound: at the answers met (`Lifts`) — the same, a bind; a program of effects, this or `f`'s, bound to one
+   * moving the answer, at the answers of the other, lifted */
+  inline def flatMap[I2, T, I3, O2, B](f: A => Cont0[R, I2, T, B])(using inline l: Lifts[I, O, I2, T, I3, O2])
+      : Cont0[R, I3, O2, B] =
+    inline l match
+      case _: Lifts.Down[?, ?] => summonFrom {
+        case ev: (I =:= Nothing) =>
+          ev.flip.liftCo[[x] =>> Cont0[R, x, O, B]](bound(ev.flip.liftCo[[x] =>> A => Cont0[R, Nothing, x, B]](f)))
+        case _ => Bind(this, (x: A) => Lift[R, I, B](f(x))) }
+      case _: Lifts.Same[?, ?, ?] => bound(f)
+      case _: Lifts.Up[?, ?] => Bind(Lift[R, T, A](this), f)
+
+  /** `f` bound at the answers the same: on an operation, its rest */
+  private[one] def bound[I2, B](f: A => Cont0[R, I2, I, B]): Cont0[R, I2, O, B] = this match
     case p: Perform[r, e, s, x] => Inject[r, e, x, I2, s, B](p.op, p.in, f)
     case p: PerformHere[e, t, s, x] => InjectHere[e, t, x, I2, s, B](p.op, f)
     case _ => Bind(this, f)
@@ -91,6 +102,24 @@ enum Cont0[R, I, +O, +A]:
     case p: Perform[r, e, s, x] => Inject[r, e, x, I, O, B](p.op, p.in, (y: x) => Return[r, s, B](f(y)))
     case p: PerformHere[e, t, s, x] => InjectHere[e, t, x, I, O, B](p.op, (y: x) => Return[R, s, B](f(y)))
     case _ => Map(this, f)
+
+/** THE ANSWERS MET at a bind, a program's `I`, `O` and its continuation's `I2`, `T`; those of the bind `I3`, `O2`:
+ * the continuation a program of effects, no answer of its own — lifted to the program's (`Down`, first: a program of
+ * effects bound to one the same); the same (`Same`); the program one of effects, the continuation moving the answer
+ * — the program lifted to its answers (`Up`). Given */
+enum Lifts[I, -O, I2, T, I3, +O2]:
+  case Down[I, O]() extends Lifts[I, O, Nothing, Nothing, I, O]
+  case Same[I, O, I2]() extends Lifts[I, O, I2, I, I2, O]
+  case Up[I2, T]() extends Lifts[Nothing, Nothing, I2, T, I2, T]
+
+object Lifts extends LiftsSame:
+  given down[I, O]: Lifts.Down[I, O] = Down()
+
+trait LiftsSame extends LiftsUp:
+  given same[I, O, I2]: Lifts.Same[I, O, I2] = Lifts.Same()
+
+trait LiftsUp:
+  given up[I2, T]: Lifts.Up[I2, T] = Lifts.Up()
 
 object Cont0:
   /** `a`, a program of effects over any row */
@@ -112,19 +141,72 @@ object Cont0:
     case _: In.Here[e, t] => PerformHere[e, t, Nothing, X](op)
     case _ => Perform(op, in)
 
-  /** the programs over the row `R`, named: `rows[R].perform(op)` */
+  /** the programs over the row `R`, named: `rows[R].perform(op)`, `rows[R].shift0[X](k => …)` */
   def rows[R <: Row]: Rows[R] = Rows()
   final class Rows[R <: Row]:
     inline def perform[E[_], X](op: E[X])(using inline in: In[E, R]): X ! R = operation(op)
+    /** shift0 up to the nearest `$` in `R`, of `A`: its rest a program of effects over `T`, the row outside the `$`,
+     * of `X`; its body one too — the row found, the rest inferred: `rows[R].shift0[X, A](k => …)` */
+    def shift0[X, A]: Shift0Of[R, X, A] = Shift0Of()
+  final class Shift0Of[R <: Row, X, A]:
+    def apply[T <: Row, O](using at: Nearest[T, R])(f: (A => X ! T) => O ! T): Cont0[R, X ! T, O ! T, A] =
+      Shift0(at, f)
 
-  extension [R <: Row, I0, O0, A](p: Cont0[R, I0, O0, A])
-    /** `p` with its effect `E` handled by `h` — any place in the row, `T` the row without it, the row `h` is over.
-     * `T` with no bound here, `& Row` where it is used: so it is found by `Removed`, not fixed to its bound first */
-    def handle[E[_], T, B](h: Handler[E, T & Row, A, B])(using rm: Removed[E, R, T & Row]): B ! (T & Row) =
-      h match
-        case h: Stateless[E, T & Row, A, B] => Handle(h, Machine.Frame.End(), view(rm, p))
-        case h: Stateful[E, T & Row, s, A, B] => HandleState(h, h.initial, Machine.Frame.End(), view(rm, p))
+  /** shift0 up to the nearest `$` in `R`, `T` the row outside it: `f` given `k`, the rest — the handlers between in it
+   * — a program over `T`; the answer turned from the rest's to what `f` makes */
+  def shift0[T <: Row, I1, O1, X1, O, A, R <: Row](f: (A => Cont0[T, I1, O1, X1]) => O)(using at: Nearest[T, R])
+      : Cont0[R, Cont0[T, I1, O1, X1], O, A] = Shift0(at, f)
 
+  /** `$`: `body` delimited, its value through `ret`; its answer a program over `T`, run outside */
+  def dollar[T <: Row, I, I2, O2, B, A](body: Cont0[Control[T] +: T, I, Cont0[T, I2, O2, B], A])(ret: A => I)
+      : Cont0[T, I2, O2, B] = Dollar(body, ret)
+
+  /** `reset(body)`: `body` closed — its value its initial answer, the rest the identity — under a `$`: a program of
+   * effects over `R`, its answer `O` the value. Its operations not answered in it go out, past the `$`, to the
+   * handlers around; a handler's `k` taken past it holds the `$`, put back when resumed */
+  def reset[R <: Row, S, O](body: Cont0[Control[R] +: R, S, O, S]): O ! R = Lower(body)
+
+  extension [R <: Row, I, O, A](p: Cont0[R, I, O, A])
+    /** `p` with its effect `E` handled by `h` — any place in the row, `T` the row without it, the row `h` is over. `T`
+     * with no bound here, `& Row` where it is used: so it is found by `Removed`, not fixed to its bound first. By the
+     * kind of `h` where it is written: one leaving the rest — `Passing`, `Stateful` — at any answers, a `$` around, a
+     * shift0 under it in its `k`; one taking the rest — `Taking` — only on a program of effects, its answers none; a
+     * kind not known there, the same, by a type test */
+    inline def handle[E[_], T, B, H <: Handler[E, T & Row, A, B]](h: H)(using rm: Removed[E, R, T & Row])
+        : Cont0[T & Row, I, O, B] =
+      summonFrom {
+        case ev: (H <:< Passing[E, T & Row, A, B]) => Handle(ev(h), Machine.Frame.End(), view(rm, p))
+        case ev: (H <:< Stateful[E, T & Row, ?, A, B]) => stateful(ev(h), rm, p)
+        case ev: (H <:< Taking[E, T & Row, A, B]) => summonFrom {
+          case ni: (I =:= Nothing) => summonFrom {
+            case no: (O <:< Nothing) =>
+              ni.flip.liftCo[[x] =>> Cont0[T & Row, x, Nothing, B]](HandleK(ev(h), Machine.Frame.End(), view(rm, effects(p, ni, no))))
+            case _ => error("a handler taking the rest: only on a program of effects, its answers none") }
+          case _ => error("a handler taking the rest: only on a program of effects, its answers none") }
+        case _ => summonFrom {
+          case ni: (I =:= Nothing) => summonFrom {
+            case no: (O <:< Nothing) => ni.flip.liftCo[[x] =>> Cont0[T & Row, x, Nothing, B]](kinds(h, rm, effects(p, ni, no)))
+            case _ => error("a handler of a kind not known where it is written: only on a program of effects") }
+          case _ => error("a handler of a kind not known where it is written: only on a program of effects") }
+      }
+
+  /** a handler with a state around `p`, its state's type its own */
+  private def stateful[E[_], R <: Row, T <: Row, I, O, A, B](h: Stateful[E, T, ?, A, B], rm: Removed[E, R, T],
+      p: Cont0[R, I, O, A]): Cont0[T, I, O, B] = h match
+    case st: Stateful[E, T, s, A, B] => HandleState(st, st.initial, Machine.Frame.End(), view(rm, p))
+
+  /** `p` a program of effects, its answers none */
+  private[one] def effects[R <: Row, I, O, A](p: Cont0[R, I, O, A], ni: I =:= Nothing, no: O <:< Nothing): A ! R =
+    no.liftCo[[x] =>> Cont0[R, Nothing, x, A]](ni.liftCo[[x] =>> Cont0[R, x, O, A]](p))
+
+  /** a handler of a kind not known where it is written, around `p`: by a type test */
+  private def kinds[E[_], R <: Row, T <: Row, A, B](h: Handler[E, T, A, B], rm: Removed[E, R, T], p: A ! R): B ! T =
+    h match
+      case ps: Passing[E, T, A, B] => Handle(ps, Machine.Frame.End(), view(rm, p))
+      case st: Stateful[E, T, ?, A, B] => stateful(st, rm, p)
+      case tk: Taking[E, T, A, B] => HandleK(tk, Machine.Frame.End(), view(rm, p))
+
+  extension [R <: Row, A](p: A ! R)
     /** `p` under the guard `g` */
     def guard[B](g: Guard[R, A, B]): B ! R = Guarded(g, Machine.Frame.End(), p)
     /** `fin` after `p`, whatever way it is left: an end, an error, an abort, a cancel */
@@ -134,28 +216,22 @@ object Cont0:
     /** a cancel at a step of `p` kept for when it is left */
     def uncancelable: A ! R = guard(Guard.uncancelable)
 
-    /** `p` a program of control at any answer: to put under its `$`s and `shift0`s, its effects handled around it in
-     * place */
-    def cont[S]: Cont0[Control[R], S, S, A] = Lift(p)
+    /** `p` at any answer `S`: to put under a `$`, among programs moving the answer — none of its own to move */
+    def cont[S]: Cont0[R, S, S, A] = Lift(p)
 
   /** `p` seen with `E` first: itself, if it is there already */
-  private def view[E[_], R <: Row, T <: Row, I0, O0, A](rm: Removed[E, R, T], p: Cont0[R, I0, O0, A])
-      : Cont0[E +: T, ?, ?, A] = rm match
+  private def view[E[_], R <: Row, T <: Row, I, O, A](rm: Removed[E, R, T], p: Cont0[R, I, O, A])
+      : Cont0[E +: T, I, O, A] = rm match
     case _: Removed.Head[e, t] => p
-    case _ => View[E, R, T, Nothing, A, A](rm, Machine.Frame.End(), p)
+    case _ => View(rm, Machine.Frame.End(), p)
 
   /** `p`, a program over `T`, seen over `E +: T`: its operations past the head */
   def widen[E[_], T <: Row, A](p: A ! T): A ! (E +: T) = View(Removed.Absent[E, T](), Machine.Frame.End(), p)
 
-  /** `reset(body)`: a closed program of control over `R` — its value its initial answer, the rest the identity — a
-   * program of effects over `R`: its operations not answered in it go out, past its `$`, to the handlers around it;
-   * a handler's `k` taken past it holds the `$`, put back when resumed */
-  def reset[R <: Row, S, O](body: Cont0[Control[R], S, O, S]): O ! R = Lower(body)
-
-  extension [I0, O0, A](p: Cont0[Pure, I0, O0, A])
+  extension [A](p: A ! Pure)
     /** `p`, its effects all handled: its value */
     def run: A = Machine.run(p)
 
-  extension [I, O, A](c: Cont0[Control[Pure], I, O, A])
+  extension [I, O, A](c: Cont0[Control[Pure] +: Pure, I, O, A])
     /** a program of control with no effect run, its rest `k`: its answer */
-    def run(k: A => I): O = Machine.control(c, k)
+    def run(k: A => I): O = Machine.run(Lower(c.map(k)))
