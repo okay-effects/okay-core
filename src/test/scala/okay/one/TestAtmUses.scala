@@ -12,6 +12,11 @@ class TestAtmUses extends munit.FunSuite:
   type R = Log +: Ask +: Pure
   val r = rows[Delim[R]]
 
+  /** a program refused by the compiler for its answers not meeting, the message naming the states that do not */
+  def doesNotMeet(errors: String, states: String*): Unit =
+    assert(errors.contains("the answers do not meet"), errors)
+    states.foreach(st => assert(errors.contains(st), errors))
+
   // A PROTOCOL: a connection closed, open, logged in — each step its state before and after in its type
 
   final case class Closed()
@@ -45,21 +50,21 @@ class TestAtmUses extends munit.FunSuite:
   }
 
   test("a protocol: a query before the login does not compile") {
-    assert(compileErrors("""
+    doesNotMeet(compileErrors("""
       pstate[R, Nothing, Closed, Closed, Int](Closed())(st => for
         _ <- connect(st)("db")
         n <- query(st)("select 1")
         _ <- close(st)
-      yield n)""").nonEmpty)
+      yield n)"""), "Open", "Authed")
   }
 
   test("a protocol: a session left open does not compile — it must end closed") {
-    assert(compileErrors("""
+    doesNotMeet(compileErrors("""
       pstate[R, Nothing, Closed, Closed, Int](Closed())(st => for
         _ <- connect(st)("db")
         _ <- login(st)("sergii")
         n <- query(st)("select 1")
-      yield n)""").nonEmpty)
+      yield n)"""), "Authed", "Closed")
   }
 
   // A PIPELINE: the rows' schema the state's type — each stage adds its columns, a stage needing a column runs only
@@ -100,9 +105,9 @@ class TestAtmUses extends munit.FunSuite:
   }
 
   test("a pipeline: scoring before enriching does not compile — no country yet") {
-    assert(compileErrors("""
+    doesNotMeet(compileErrors("""
       pstate[R, Nothing, Unit, Vector[Scored], Int](())(st => for
         _ <- load(st)(raw)
         n <- score(st)
-      yield n)""").nonEmpty)
+      yield n)"""), "Raw] =>", "Enriched] =>")
   }

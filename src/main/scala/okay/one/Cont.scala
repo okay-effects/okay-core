@@ -3,6 +3,7 @@ package okay.one
 import okay.one.handler.*
 import okay.one.machine.Machine
 import okay.one.row.*
+import scala.annotation.implicitNotFound
 import scala.compiletime.{error, summonFrom}
 
 /** the row under a `$`, `T` outside it */
@@ -113,7 +114,8 @@ enum Cont[R <: Row, I, +O, +A]:
 /** THE ANSWERS MET at a bind, a program's `I`, `O` and its continuation's `I2`, `T`; those of the bind `I3`, `O2`:
  * the continuation a program of effects, no answer of its own — lifted to the program's (`Down`, first: a program of
  * effects bound to one the same); the same (`Same`); the program one of effects, the continuation moving the answer
- * — the program lifted to its answers (`Up`). Given */
+ * — the program lifted to its answers (`Up`). Given; none, the answers do not meet: the message names both */
+@implicitNotFound("the answers do not meet at this bind —\nthe program before it wants its rest at\n  ${I}\nits rest is at\n  ${T}\nand wants its own rest at\n  ${I2}\nwhere the bind is wanted at\n  ${I3}")
 enum Lifts[I, -O, I2, T, I3, +O2]:
   case Down[I, O]() extends Lifts[I, O, Nothing, Nothing, I, O]
   case Same[I, O, I2]() extends Lifts[I, O, I2, I, I2, O]
