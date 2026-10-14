@@ -69,6 +69,17 @@ class TestGuide extends munit.FunSuite:
     // reset(shift0(k => k(1) + 1) * 10): k = _ * 10, the body outside the reset
     assertEquals(run(reset[Int, Pure](shift0[Int, Pure, Int](k => k(1).map(_ + 1)).at[Shifts[Int, Pure] +: Pure].map(_ * 10))), 11)
 
+  // -- the answer moved, the row not named
+  def printf: Atm[String, String, [T <: Row] =>> Int => Eff[T, String], Reader % Int] = for
+    n <- ask[Int]
+    x <- Atm.shift0[String, Int](k => pure((x: Int) => k(x)))
+    m <- ask[Int]
+  yield s"$n $x $m"
+
+  test("guide: Atm — printf, the reader inside the $"):
+    val hole: Eff[Pure, Int => Eff[Pure, String]] = Atm.dollar(handleAt(Reader(5))(printf))(s => pure("<" + s + ">"))
+    assertEquals(run(run(hole)(42)), "<5 42 5>")
+
   test("guide: choose, multi-shot"):
     def pairs: (Int, Char) ! Choose = among(Seq(1, 2)).flatMap(n => among(Seq('a', 'b')).map(ch => (n, ch)))
     assertEquals(run(choose(pairs)), Seq((1, 'a'), (1, 'b'), (2, 'a'), (2, 'b')))

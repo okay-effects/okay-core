@@ -5,6 +5,7 @@ import okay.one.Cont.Shift0
 import okay.one.row.Nearest
 import okay.std.*
 import okay.core.Control.{reset, shift, shift0}
+import okay.one.std.{Reader as ReaderH, State as StateH}
 
 /** CONTROL'S TWO FACES: `Shift % S`, shift and reset as an effect of the row — Danvy–Filinski's shift in a shift's
  * body, k lazy, k data; and `Control[R]`, the answer type modified — printf, nested delimiters */
@@ -70,3 +71,34 @@ class TestControl extends munit.FunSuite:
     val p: Eff[R, Int] = Cont.dollar[R, Eff[R, Int], Nothing, Nothing, Int, Int](
       among(Seq(1, 2)).at[Delim[R]].cont[Eff[R, Int]].map(_ * 10))((a: Int) => Cont.Return(a + 1))
     assertEquals(run(choose(p)), Seq(11, 21))
+
+  // -- the answer moved, the row not named: Atm
+
+  test("Atm: ATM in a for of three lines, no row named — printf, the reader inside the $"):
+    val body: Atm[String, String, [T <: Row] =>> Int => Eff[T, String], Reader % Int] = for
+      n <- ask[Int]
+      x <- Atm.shift0[String, Int](k => pure((x: Int) => k(x)))
+      m <- ask[Int]
+    yield s"$n $x $m"
+    val p: Eff[Pure, Int => Eff[Pure, String]] = Atm.dollar(handleAt(ReaderH(5))(body))(s => pure("<" + s + ">"))
+    assertEquals(run(run(p)(42)), "<5 42 5>")
+
+  test("Atm: a program needing effects bound in it, lifted; a state inside the $, k resumed twice from the state as it was"):
+    def incr: Int ! State % Int = get[Int].flatMap(n => put(n + 1).map(_ => n))
+    val body: Atm[String, String, [T <: Row] =>> String, State % Int] = for
+      a <- incr
+      x <- Atm.shift0[String, Int](k => k(1).flatMap(s => k(2).map(t => s + t)))
+      b <- incr
+    yield s"[$a $x $b]"
+    val p: Eff[Pure, String] = Atm.dollar(handleAt(StateH(10))(body).map(_._2))(s => pure(s))
+    assertEquals(run(p), "[10 1 11][10 2 11]")
+
+  test("Atm: the reader outside the $, k passing it — the ask of the rest answered where k is run"):
+    val body: Atm[String, String, [T <: Row] =>> Int => Eff[T, String], Reader % Int] = for
+      n <- ask[Int]
+      x <- Atm.shift0[String, Int](k => pure((x: Int) => k(x)))
+      m <- ask[Int]
+    yield s"$n $x $m"
+    type R = Reader % Int +: Pure
+    val p: Eff[R, Int => Eff[R, String]] = Atm.dollar(body)(s => pure("<" + s + ">"))
+    assertEquals(run(reader(5)(run(reader(1)(p))(42))), "<1 42 5>")

@@ -12,7 +12,8 @@ okay.one        THE KERNEL (it lives here; it came from the okay-one repository,
   machine       Machine: one CEK loop over one Meta — handlers' levels and $'s; Step
   std           Reader, State, Writer, Throws, Choose, Shift % S (control as an effect), Async (on Step)
 okay.core       THE FACADE
-  Rows          Eff[R, A] (the kernel's A ! R); %, +, :?, Has; Path, Req, Paths, Needs, Place; A ! E1 + E2; Under
+  Rows          Eff[R, A] (the kernel's A ! R); %, +, :?, Has; Path, Req, Paths, Needs, Place; A ! E1 + E2; Under;
+                Delimited, Atm[A, X, Y, Es] (the answer moved, no row named), UnderAt
   Effects       Op (an operation bound where used), Handler, Answering; handle, handleIn, translate, intercept, run
   Control       reset/shift/shift0 over Shifts[S, T]; cont/lower for Control[R]
   RowEffects    okay's Effects[M] over Eff

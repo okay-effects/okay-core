@@ -247,10 +247,30 @@ run(reader(3)(twice[Reader % Int +: Pure].flatMap(x => ask[Int].at[Reader % Int 
   it, in its place.
 - Effects and control compose: a `reset` passes every operation on; a shift's body and `k` may perform.
 
-**The answer moved, `Control[R]`** — `shift0` and `$` with the answer type modified (Materzok–Biernacki, typed as
-Asai–Kameyama): the kernel's own nodes, `okay.one.Cont.{Shift0, Dollar}`, for printf and the like; a program of
-effects enters control by `cont`, a closed program of control is one of effects again by `lower`. See
-`TestControl`.
+**The answer moved, `Atm[A, X, Y, Es]`** — `shift0` and `$` with the answer type modified (Materzok–Biernacki,
+typed as Asai–Kameyama), for printf and the like. Written as `A ! Es` is, no row named: a program of `A` needing
+`Es`, under a `$`; `X` the value of the rest up to the `$`, `Y[T]` the `$`'s answer — a constructor over `T`, the
+row outside the `$`, for an answer holding `k`, a program over that row. Operations and programs needing effects
+are bound in it as they are, lifted to the answers; `Atm.shift0[X, A](k => …)` captures up to the `$`;
+`Atm.dollar(body)(ret)` is the `$`, a program of effects over `T`; a handler inside the `$` is `handleAt(h)(body)`,
+`h` the kernel's `Answering`/`Stateful`/… (the std's `Reader(e)`, `State(s0)`) — a `shift0` passes it, its `k` holds
+it:
+
+```scala
+def printf: Atm[String, String, [T <: Row] =>> Int => Eff[T, String], Reader % Int] =
+  for
+    n <- ask[Int]
+    x <- Atm.shift0[String, Int](k => pure((x: Int) => k(x)))
+    m <- ask[Int]
+  yield s"$n $x $m"
+
+def hole: Eff[Pure, Int => Eff[Pure, String]] = Atm.dollar(handleAt(Reader(5))(printf))(s => pure("<" + s + ">"))
+
+run(run(hole)(42))      // "<5 42 5>"
+```
+
+The kernel's own form is `okay.one.Cont.{Shift0, Dollar}` over a row named; a program of effects enters control by
+`cont`, a closed program of control is one of effects again by `lower`. See `TestControl`.
 
 ## Streams
 

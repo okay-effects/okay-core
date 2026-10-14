@@ -1,14 +1,15 @@
 package okay.core
 
 import okay.one.Cont
-import okay.one.handler.{Answering as OneAnswering, Deep, Handler as OneHandler, Translating}
+import okay.one.handler.{Answering as OneAnswering, Deep, Handler as OneHandler, Passing, Stateful, Translating}
 
 /** AN OPERATION, not yet a program: of the row where it is bound — `for n <- ask[Int]; _ <- tell(n) yield n`, the
  * row the expected type's, so a program needing effects names no row; or named, `at[R]`, `perform[R]` */
 final class Op[E[_], X](val op: E[X]) extends AnyVal:
   def at[R <: Row](using p: Path[E, R]): Eff[R, X] = Cont.perform[E, R, X](op)(using p.in)
   def perform[R <: Row](using Path[E, R]): Eff[R, X] = at[R]
-  def flatMap[R <: Row, B](f: X => Eff[R, B])(using Path[E, R]): Eff[R, B] = at[R].flatMap(f)
+  /** bound into a rest at any answers: a program of effects, or one under a `$` moving the answer */
+  def flatMap[R <: Row, I, O, B](f: X => Cont[R, I, O, B])(using Path[E, R]): Cont[R, I, O, B] = at[R].flatMap(f)
   def map[R <: Row, B](f: X => B)(using Path[E, R]): Eff[R, B] = at[R].map(f)
 object Op:
   /** an operation where a program is expected: performed there, in the row expected */
@@ -56,6 +57,14 @@ def handle[E[_], A, Ans, T <: Row](h: Handler[E, A, Ans])(body: Under[E, T, A]):
 def handleIn[E[_], T <: Row, A, Ans](h: OneHandler[E, T, A, Ans])(body: Under[E, T, A]): Eff[T, Ans] =
   // the body built when the run enters the handler: a handler installed by a recursive call costs no stack
   defer(body(using Place.head).handle(h))
+
+/** `handleAt(h)(body)`: a handler LEAVING THE REST — the kernel's `Passing` (`Answering`, `Translating`, `Linear`) or
+ * `Stateful` — at any answers: the body a program moving the answer, under a `$` outside; a `shift0` in it passes
+ * the handler, its `k` holding it (a `Stateful` one with the state as it is). `Atm.dollar(handleAt(Reader(5))(body))` */
+def handleAt[E[_], T <: Row, I, O, A, Ans](h: Passing[E, T, A, Ans])(body: UnderAt[E, T, I, O, A]): Cont[T, I, O, Ans] =
+  Cont.Defer(() => body(using Place.head).handle(h))
+def handleAt[E[_], T <: Row, S, I, O, A, Ans](h: Stateful[E, T, S, A, Ans])(body: UnderAt[E, T, I, O, A]): Cont[T, I, O, Ans] =
+  Cont.Defer(() => body(using Place.head).handle(h))
 
 /** `translate(f)(body)`: `E`'s operations each a program over the row outside, run where it is performed, the body
  * resumed with its value — no `k`, no delimiter (the kernel's `Translating`) */

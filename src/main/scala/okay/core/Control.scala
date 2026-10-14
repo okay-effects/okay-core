@@ -35,3 +35,18 @@ object Control:
   /** `lower(c)`: a closed program of control under a `$` — its value its initial answer, the rest the identity — a
    * program of effects over `R`: its operations go out past the `$` to the handlers around */
   def lower[R <: Row, S, O](c: Cont[Delim[R], S, O, S]): Eff[R, O] = Cont.reset(c)
+
+/** THE ANSWER MOVED, THE ROW NOT NAMED: `Atm[A, X, Y, Es]` written as `A ! Es` is — `shift0[X, A](k => …)` to the
+ * nearest `$`, `dollar(body)(ret)` the `$`, the handlers inside it by `handleAt` */
+object Atm:
+  /** `shift0[X, A](k => …)`: up to the nearest `$`, `k` the rest, a program of `X` over the row outside; the body
+   * what the `$` answers, a program over it too */
+  final class Shift0Of[X, A]:
+    def apply[Y, Es[_]](using d: Delimited[Es])(f: (A => Eff[d.T, X]) => Eff[d.T, Y]): Cont[d.R, Eff[d.T, X], Eff[d.T, Y], A] =
+      Cont.Shift0(d.at, f)
+  def shift0[X, A]: Shift0Of[X, A] = Shift0Of()
+
+  /** `dollar(body)(ret)`: the `$` — the body at the place under it, `T` the row outside; its value through `ret`
+   * to the rest's answer; the `$`'s answer a program over `T`, the `$` one of effects there */
+  def dollar[T <: Row, A, X, Y](body: Place[Control.Delim[T]] ?=> Cont[Control.Delim[T], Eff[T, X], Eff[T, Y], A])(ret: A => Eff[T, X])
+      : Eff[T, Y] = Cont.dollar(body(using Place.at[Control.Delim[T]]))(ret)

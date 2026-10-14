@@ -1,6 +1,7 @@
 package okay.core
 
-import okay.one.row.{+:, In, Pure, Row}
+import okay.one.Cont
+import okay.one.row.{+:, In, Nearest, Pure, Row}
 
 /** THE KERNEL'S ROWS, as they are: `Pure`, `E +: T`; an effect's place `In[E, R]`; `Removed[E, R, T]` — aliases,
  * not exports: scalac 2.13's TASTy reader cannot read an export of a sealed trait (`addChild inapplicable`) */
@@ -98,7 +99,7 @@ sealed trait PathsLow:
 sealed abstract class Needs[Es[_]]:
   type R <: Row
   def paths: Paths[Es, R]
-object Needs extends NeedsMore:
+object Needs extends NeedsDelimited:
   def of[Es[_], R0 <: Row](p: Paths[Es, R0]): Needs[Es] { type R = R0 } = new Needs[Es]:
     type R = R0
     def paths: Paths[Es, R0] = p
@@ -107,6 +108,9 @@ object Needs extends NeedsMore:
   given under[Es[_], R0 <: Row](using h: Place[R0], p: Paths[Es, R0]): (Needs[Es] { type R = R0 }) = of(p)
   /** an effect needed: its path in the place's row — what `perform` finds in a program needing effects */
   given found[E[_], Es[_]](using n: Needs[Es], r: Req[E, Es]): In[E, n.R] = n.paths.find(r)
+sealed trait NeedsDelimited extends NeedsMore:
+  /** under a `$`, no place: the `Delimited`'s own `Needs` — after the place's, before another program's */
+  given delimited[Es[_]](using d: Delimited[Es]): (Needs[Es] { type R = d.R }) = d.needs
 sealed trait NeedsMore:
   /** in a program's place with more effects: its row, the paths of these in it */
   given more[Es[_], Fs[_]](using c: Needs[Fs], p: Paths[Es, c.R]): (Needs[Es] { type R = c.R }) = Needs.of(p)
@@ -128,9 +132,34 @@ object Place:
  * `A ! Choose + State % Int`. A program over a row named is `Eff[R, A]` */
 infix type ![+A, Es[_]] = (c: Needs[Es]) ?=> Eff[c.R, A]
 
+/** A PLACE UNDER A `$` WITH THE EFFECTS `Es`: its row `R`, and `T`, the row outside the nearest `$` in `R` — where a
+ * program moving the answer runs, its answers programs over `T`. One object a fitting, as `Needs`; a `Needs` itself
+ * (`Needs.delimited`), so a program needing effects is bound in it as it is, lifted to the answers */
+sealed abstract class Delimited[Es[_]]:
+  type R <: Row
+  type T <: Row
+  def needs: Needs[Es] { type R = Delimited.this.R }
+  def at: Nearest[T, R]
+object Delimited:
+  /** at a place with the effects, a `$` in its row: the nearest one, `T` outside it */
+  given of[Es[_], T0 <: Row](using c: Needs[Es], n: Nearest[T0, c.R]): (Delimited[Es] { type R = c.R; type T = T0 }) =
+    new Delimited[Es]:
+      type R = c.R
+      type T = T0
+      def needs: Needs[Es] { type R = c.R } = c
+      def at: Nearest[T0, c.R] = n
+
+/** `Atm[A, X, Y, Es]`: A PROGRAM OF `A` NEEDING THE EFFECTS `Es`, UNDER A `$`, ITS ANSWER MOVED — the rest up to the
+ * `$` a program of `X` over the row outside it, `T`; the `$`'s answer one of `Y[T]`, a constructor over that row,
+ * for an answer holding `k` (printf: `[T] =>> Int => Eff[T, String]`). No row named, as `A ! Es`; the `$` and the
+ * handlers inside it make the row: `Atm.dollar(handleAt(Reader(5))(body))(ret)` */
+type Atm[+A, X, Y[_ <: Row], Es[_]] = (c: Delimited[Es]) ?=> Cont[c.R, Eff[c.T, X], Eff[c.T, Y[c.T]], A]
+
 /** a program's body at a handler's place: over `E +: T`, the handler's effect at the head — what a handler takes; a
  * program needing effects is fitted to it; built when the run enters the handler */
 type Under[E[_], T <: Row, A] = Place[E +: T] ?=> Eff[E +: T, A]
+/** the same at any answers: the body a program moving the answer, under a handler leaving the rest (`handleAt`) */
+type UnderAt[E[_], T <: Row, I, O, A] = Place[E +: T] ?=> Cont[E +: T, I, O, A]
 
 /** the effect of the shifts of answer `S`, the row outside their `reset` `T`: control as an effect of the row */
 type Shifts[S, T <: Row] = okay.one.std.Shifts[S, T]

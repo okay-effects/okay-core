@@ -23,8 +23,12 @@ infix type +:[E[_], T <: okay.core.Row] = okay.core.+:[E, T]
 type Pure = okay.core.Pure
 type Eff[R <: okay.core.Row, +A] = okay.core.Eff[R, A]
 type Shifts[S, T <: okay.core.Row] = okay.core.Shifts[S, T]
-export okay.core.{perform, pure, unit, defer, handle, handleIn, translate, intercept, run, Handler, Answering, Value,
-  Under, Place, Needs, Path, RowEffects, Op}
+/** `Atm[A, X, Y, Es]`: a program needing effects under a `$`, its answer moved; `Atm.shift0`, `Atm.dollar` */
+type Atm[+A, X, Y[_ <: okay.core.Row], Es[_]] = okay.core.Atm[A, X, Y, Es]
+val Atm: okay.core.Atm.type = okay.core.Atm
+type UnderAt[E[_], T <: okay.core.Row, I, O, A] = okay.core.UnderAt[E, T, I, O, A]
+export okay.core.{perform, pure, unit, defer, handle, handleIn, handleAt, translate, intercept, run, Handler, Answering,
+  Value, Under, Place, Needs, Delimited, Path, RowEffects, Op}
 export okay.core.Control.{reset, shift, shift0, lower}
 
 /** `effect(op)`: an operation of one's own effect, a program — okay's word for `perform` */

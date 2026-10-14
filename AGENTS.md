@@ -43,6 +43,12 @@ are compiled and checked by `TestGuide`).
 - `A ! Es` is `(c: Needs[Es]) ?=> Eff[c.R, A]`: a program fitted where it runs (`Place`, `Needs`, `Paths`); `Path`
   is found from the place first (docs/architecture.md). Two `@unchecked` matches, named there — no others.
 - Handler bodies are deferred (`handleIn`): a handler installed by a recursive call costs no stack (`TestNesting`).
+- The answer moved with no row named: `Atm[A, X, Y, Es]` is `(c: Delimited[Es]) ?=> Cont[c.R, Eff[c.T, X], Eff[c.T, Y[c.T]], A]`
+  — one context parameter (a function type may not have one parameter depend on another), `Delimited` a `Needs`
+  with the row outside the nearest `$`, `T`; `Needs.delimited` is below `Needs.under` (both apply at a place with a
+  `$`). `Op.flatMap` binds into a rest at any answers (`Cont[R, I, O, B]`): a member that applies is never passed
+  over for an extension, even when its lambda fails inside. `handleAt(h)(body)`: `Passing`/`Stateful` at answers,
+  two overloads by the handler's class.
 - Scala 2 reads this artifact through TASTy (`scala2/`): no inline, no opaque types in what it reads — `Ops`.
 
 ## Benchmarks, commits
