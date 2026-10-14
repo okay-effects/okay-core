@@ -36,6 +36,9 @@ are compiled and checked by `TestGuide`).
   clipped by `size > DesiredMethodLimit`) and A/B every change on `MixedBenchmark` (state) and the lanes.
 - A handler is over the row `T` outside it; a `Deep` clause's `k` data, a program over `T`, kept and resumed anywhere.
   `handle`'s `T` unbounded (`& Row` at its uses): a bounded one is fixed to `Row` before `Removed` is searched.
+- `k.failed(e)` (`Cont`): a clause answering an operation with a FAILURE, raised inside `k`'s levels — the program's
+  own `recover` around the operation sees it (`tx/`'s handlers use it). One type test on a `k`,
+  `Machine.Fails`, of the class: the machine's `k` is one; a function (the reference's) raises where the clause is.
 - No casts; no exception at run time for a program that type checks (`In.absurd` matches only `null`). The one
   exception, named: A PLACE BY KEY, `In.At(ref)` — the protocol's (okay-kernel's handlers are found by identity at
   run time), a case of `In` beside the paths; a handler says which keys are its own (`Handler.at`), `level` and

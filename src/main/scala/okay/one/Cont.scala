@@ -267,6 +267,16 @@ object Cont:
   /** `p`, a program over `T`, seen over `E +: T`: its operations past the head */
   def widen[E[_], T <: Row, A](p: A ! T): A ! (E +: T) = View(Removed.Absent[E, T](), Machine.Frame.End(), p)
 
+  extension [X, T <: Row, B](k: X => B ! T)
+    /** THE REST FAILED: `e` raised where the operation was, inside the levels `k` holds — what a clause answers when
+     * the operation has no value to be answered with (a transaction rolled back, a request refused), so that the
+     * program's own `recover` around the operation sees it, as a step's `fail`. The machine's `k` is such; a `k` of
+     * another interpreter (the reference's, a function) raises where the clause is. The one type test the kernel
+     * makes on a `k`: of the class, its type the function's */
+    def failed(e: Throwable): B ! T = k match
+      case f: Machine.Fails[B ! T] @unchecked => f.fail(e)
+      case _ => Defer(() => throw e)
+
   extension [A](p: A ! Pure)
     /** `p`, its effects all handled: its value */
     def run: A = Machine.run(p)
