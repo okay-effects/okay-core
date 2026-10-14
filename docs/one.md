@@ -216,19 +216,24 @@ the docs. Not passed: §4 H — captures 2×, generate +40%, the mixed program +
 okay-core-zero's last (forwarded16 met since okay-one 0ff6e5e: 5.7), the kernel's items (changelog.d/one-monad-step2-3.md).
 
 **The mixed program's regression, pinned (2026-10-14).** `MixedBenchmark.orders` (state), the facade at 2ef1dd5 on
-each kernel, one machine, back to back: okay-one c7af924 158.8 µs, ee7812a 173, cec1b6a 221.5, 0ff6e5e 218.6,
-feb703d 218.6; the facade at HEAD on c95137d 227–232. So the step is cec1b6a (a `k` failed or cancelled: `Fail`/`FailC`
-nodes, `fails` on every `Rest`, `guardsTo` walked at every abort, the `none` evidence in `clausing`); the look-up kept
-on the path (0ff6e5e) and the reset's view (feb703d) cost nothing here; 2742dfe's inline `flatMap` (`Lifts.down` and
-`<:<` plumbing at every bind of user code) the last +5%. Allocation moved +3% only (1.39 → 1.43 MB a run): code
-shape, not objects. By `-XX:+LogCompilation`, C2's inline budget for `eval` (its own 4420 bytes plus callees, 8000)
-runs out earlier on c95137d: the second `clausing` site (`InjectHere` under `Meta.Under` — the road of every `Deep`
-handler, which the facade's all are: `handleIn`) and after it `Meta.Under`'s accessors, `Cont.Under.apply`,
-`InjectHere.op`/`g`, `lookUp` stay out of line; on c7af924 both `clause` sites were inlined. `-XX:-ClipInlining`
-does not mend it (240), so the cliff is not the whole account. okay-bench's `OneMixed` on the kernel's own std
-(`Aborting`, `Answering`) is flat across these commits — it does not take the `Deep` road. A look-up that allocates
-no `Found` on a miss was tried and dropped: no change on mixed, forwarded16 worse. The fix is the kernel's
-(okay-one), on the `Deep` road of cec1b6a; re-import when it lands. Deferred: `PState` (okay-one's, in
-control, to be imported), Scala.js tests (the bridge does not link on master either), `Removed.Again` — an
+each kernel, one machine, back to back: okay-one c7af924 158.8 µs, ee7812a (Guard) 171, cec1b6a (a `k` failed or
+cancelled) 221.5, 0ff6e5e 218.6, feb703d 218.6. So the step is cec1b6a; the look-up kept on the path and the reset's
+view cost nothing here; 2742dfe's inline `flatMap` the last +5% (`Lifts.down` allocated and `<:<` plumbing at every
+bind of user code — mended: the givens inline, the `Down` branch one call). Allocation moved +3% only: code shape,
+not objects. What is known: eval's bytecode grew 4361 → 5110 at cec1b6a (3693 now — the abort's match in `aborted`,
+`found` off the loop for a place made in it), and C2's budget for inlining into `eval` (its own bytecode plus the
+callees, 8000) then clipped the second `clause` site (`InjectHere` under `Meta.Under`, the road of every `Deep`
+handler — the facade's all are) and the accessors after it; on the kernel as it is now both sites are inlined again
+and the accessors forced in by `CompileCommand` give 220 → 211 only, the facade's own `Choose` clause kept out of
+inlining gives 357 — the JIT's choices are a part of it, not the account. okay-bench's `OneMixed` on the kernel's
+own std (`Aborting`, `Answering`) is flat across these commits: it does not take the `Deep` road. Tried and dropped:
+a look-up allocating no `Found` on a miss (no change, forwarded16 worse), the loop's arms reordered (worse: both
+roads are hot). The allocation profile of the facade's program (1.45 MB a run of 1000 orders, ~45 objects an order):
+the program's own nodes 37% (`Return`, `Bind`, `Frame.Bind`, `InjectHere`, `PerformHere`, `Map`), the machine's
+levels and rests on the `Deep` road 20% (`Meta.Under`, `Rest.Under`, `Resume`, `HandleK`, `Frame.End`, `Defer`),
+the facade's fitting 10% (`handleIn`'s closure, `Needs`, `Paths.One`, `Removed.Head`, `Req`, `In.Here`), the
+program's closures 10%. Open.
+
+Deferred: Scala.js tests (the bridge does not link on master either), `Removed.Again` — an
 interceptor's relocation in the kernel, so `Intercept.at` (tofu's `local`, `handleWith` on an effect anywhere in a
 row) runs in the machine, not by stepping.
