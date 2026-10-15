@@ -95,17 +95,20 @@ object Split extends SplitEdge:
   /** `Es` is `E` alone: nothing left — one shared, it holds nothing */
   given whole[E[_]]: (Split[E, E] { type Rest[x] = NoEffects[x] }) =
     Whole.asInstanceOf[Split[E, E] { type Rest[x] = NoEffects[x] }]
-sealed trait SplitEdge extends SplitDeep:
+sealed trait SplitEdge extends SplitEdgeLast:
   private object Head extends Split[Split.K, Split.K]:
     type Rest[x] = Any
     def paths[T <: Row](rest: Paths[Split.K, T]): Paths[Split.K, Split.K +: T] =
       Paths.Both(Paths.One(In.Here()), rest.under[Split.K]).asInstanceOf[Paths[Split.K, Split.K +: T]]
+  /** `E` the left of two: the rest the right — one shared */
+  given head[E[_], G[_]]: (Split[E + G, E] { type Rest[x] = G[x] }) = Head.asInstanceOf[Split[E + G, E] { type Rest[x] = G[x] }]
+/** `E` the right of two, below `head`: of `E + E` the left is taken — the nearer place, as a handler of `E` takes
+ * the nearer operation */
+sealed trait SplitEdgeLast extends SplitDeep:
   private object Last extends Split[Split.K, Split.K]:
     type Rest[x] = Any
     def paths[T <: Row](rest: Paths[Split.K, T]): Paths[Split.K, Split.K +: T] =
       Paths.Both(rest.under[Split.K], Paths.One(In.Here())).asInstanceOf[Paths[Split.K, Split.K +: T]]
-  /** `E` the left of two: the rest the right — one shared */
-  given head[E[_], G[_]]: (Split[E + G, E] { type Rest[x] = G[x] }) = Head.asInstanceOf[Split[E + G, E] { type Rest[x] = G[x] }]
   /** `E` the right of two: the rest the left — one shared */
   given last[F[_], E[_]]: (Split[F + E, E] { type Rest[x] = F[x] }) = Last.asInstanceOf[Split[F + E, E] { type Rest[x] = F[x] }]
 sealed trait SplitDeep extends SplitDeepRight:
