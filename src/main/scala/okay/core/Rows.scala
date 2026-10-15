@@ -74,6 +74,48 @@ object Req extends ReqLow:
 sealed trait ReqLow:
   given right[E[_], F[_], G[_]](using r: Req[E, G]): Req[E, F + G] = Req.Right(r)
 
+/** NO EFFECTS: what a program needs that needs nothing — the rest when a runner took a program's only effect */
+sealed trait NoEffects[X]
+
+/** `E` TAKEN FROM THE EFFECTS `Es`, wherever it is among them, in any order — what is left, `Rest`, and how the paths
+ * of the rest in a row `T` with `E` put at its head are the paths of `Es` there. Found where a runner is called,
+ * from the program's own effects: a runner `def run[Es[_]](p: A ! Es)(using s: Split[Es, E]): B ! s.Rest` takes
+ * `E` off a program whatever the order its effects were written in — what a union gave, with a path for every
+ * operation. Over a rest named abstractly, `E + F`, it is `F` itself (`head`) */
+sealed abstract class Split[Es[_], E[_]]:
+  type Rest[_]
+  def paths[T <: Row](rest: Paths[Rest, T]): Paths[Es, E +: T]
+  /** `p` fitted under a handler of `E` at the head of the rest's place: a runner's body is `handler(s.fit(p))` */
+  def fit[A](p: A ! Es)(using c: Needs[Rest]): Eff[E +: c.R, A] = p(using Needs.of(paths(c.paths)))
+object Split extends SplitEdge:
+  /** `Es` is `E` alone: nothing left */
+  given whole[E[_]]: (Split[E, E] { type Rest[x] = NoEffects[x] }) = new Split[E, E]:
+    type Rest[x] = NoEffects[x]
+    def paths[T <: Row](rest: Paths[NoEffects, T]): Paths[E, E +: T] = Paths.One(In.Here())
+sealed trait SplitEdge extends SplitDeep:
+  /** `E` the left of two: the rest the right */
+  given head[E[_], G[_]]: (Split[E + G, E] { type Rest[x] = G[x] }) = new Split[E + G, E]:
+    type Rest[x] = G[x]
+    def paths[T <: Row](rest: Paths[G, T]): Paths[E + G, E +: T] = Paths.Both(Paths.One(In.Here()), rest.under[E])
+  /** `E` the right of two: the rest the left */
+  given last[F[_], E[_]]: (Split[F + E, E] { type Rest[x] = F[x] }) = new Split[F + E, E]:
+    type Rest[x] = F[x]
+    def paths[T <: Row](rest: Paths[F, T]): Paths[F + E, E +: T] = Paths.Both(rest.under[E], Paths.One(In.Here()))
+sealed trait SplitDeep extends SplitDeepRight:
+  /** `E` deeper in the left: the rest the left's rest joined to the right */
+  given left[F[_], G[_], E[_]](using s: Split[F, E]): (Split[F + G, E] { type Rest[x] = Both[s.Rest, G, x] }) =
+    new Split[F + G, E]:
+      type Rest[x] = Both[s.Rest, G, x]
+      def paths[T <: Row](rest: Paths[s.Rest + G, T]): Paths[F + G, E +: T] = (rest: @unchecked) match
+        case b: Paths.Both[l, r, t] => Paths.Both(s.paths(b.left), b.right.under[E])
+sealed trait SplitDeepRight:
+  /** `E` deeper in the right: the left joined to the right's rest */
+  given right[F[_], G[_], E[_]](using s: Split[G, E]): (Split[F + G, E] { type Rest[x] = Both[F, s.Rest, x] }) =
+    new Split[F + G, E]:
+      type Rest[x] = Both[F, s.Rest, x]
+      def paths[T <: Row](rest: Paths[F + s.Rest, T]): Paths[F + G, E +: T] = (rest: @unchecked) match
+        case b: Paths.Both[l, r, t] => Paths.Both(b.left.under[E], s.paths(b.right))
+
 /** THE PATHS of the effects a program needs, `Es`, in the row `R`: one effect's, or of two joined each side's — the
  * compiler builds them where the program is placed (`Needs`); an effect among them found by its `Req` */
 sealed abstract class Paths[Es[_], R <: Row]:
@@ -104,6 +146,12 @@ object Paths extends PathsRest:
       case Req.Left(l) => left.sub(l)
       case Req.Right(g) => right.sub(g)
   given both[F[_], G[_], R <: Row](using left: Paths[F, R], right: Paths[G, R]): Paths[F + G, R] = Both(left, right)
+  /** no effects: no path to find — `Req[E, NoEffects]` there is none */
+  final class None[R <: Row] extends Paths[NoEffects, R]:
+    def find[E[_]](r: Req[E, NoEffects]): In[E, R] = throw MatchError(r)
+    def under[E[_]]: Paths[NoEffects, E +: R] = None()
+    def sub[E[_]](r: Req[E, NoEffects]): Paths[E, R] = throw MatchError(r)
+  given none[R <: Row]: Paths[NoEffects, R] = None()
 sealed trait PathsRest extends PathsLow:
   /** at a place with the effects `E` themselves, `c`: its own paths — so a rest named abstractly, `F` in
    * `A ! Reader % R + F`, is fitted by the paths it came with, a sum at the call as it may be (an `In` for `F`
