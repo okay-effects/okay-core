@@ -14,3 +14,10 @@
 - `TestTx` (7) and `TestTxWords`: brackets inside brackets one BEGIN one COMMIT, the resource read at any
   depth; a rollback in the inner bracket; a failure; an abort crossing; the owner's retry; a recover around the
   bracket; a rollback with none open.
+- The JVM's own, `Jdbc[T](connect, isolation, readOnly, retries)`: a `Transactor` over a JDBC connection from a pool's
+  `connect` — auto-commit off at the isolation, the driver's commit and rollback, the connection closed after either,
+  a serialization failure or a deadlock (40001, 40P01) running the bracket again; `Jdbc.execute`, `Jdbc.queryInt`
+  on the bracket's connection. `TestJdbc` on H2: nested brackets one connection one commit, a rollback leaves
+  nothing, a 40001 runs the bracket again on a fresh connection, the isolation asked is the connection's. The
+  platform's `Typed.transact` (okay-sql) is on okay-freer's words still: its owner on this module comes with the
+  platform's move to the core's words.

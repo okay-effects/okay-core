@@ -102,6 +102,12 @@ lazy val tx = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name := "okay-core-tx",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.2.3" % Test
   )
+  .jvmSettings(
+    // the JVM's own: a transactor over JDBC, its test on H2
+    Compile / unmanagedSourceDirectories ++= platformDirs("main", "jvm").value,
+    Test / unmanagedSourceDirectories ++= platformDirs("test", "jvm").value,
+    libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test
+  )
 
 /**
  * ASYNC, A MODULE OF ITS OWN (okay.async), cross-built as the core: `async`, `await`, `Async.run`, asynchronous
