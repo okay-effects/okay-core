@@ -20,11 +20,11 @@ import scala.util.control.NonFatal
 object Machine:
   /** `p`, no effects left: its value */
   def run[A](p: A ! Pure): A =
-    drive(eval(p, Frame.End(), Meta.Top(identity[A], (e: Throwable) => throw e, Out.none[A])))
+    drive(eval(p, Frame.end, Meta.Top(identity[A], (e: Throwable) => throw e, Out.none[A])))
 
   /** `p` stepped: to its value, or to its first operation of `R` come to the top — given back with its rest */
   def stepped[R <: Row, A](p: A ! R): Step[R, A] =
-    drive(eval(p, Frame.End(), Meta.Top((a: A) => Step.Done(a),
+    drive(eval(p, Frame.end, Meta.Top((a: A) => Step.Done(a),
       (e: Throwable) => if e eq Cancelled then Step.Cancelled() else Step.Failed(e),
       Out.Given[R, Step[R, A]]([E[_], Y] => (op: E[Y], in: In[E, R], resume: Y => Step[R, A],
         fail: Throwable => Step[R, A], cancel: () => Step[R, A]) => Step.Yield(op, in, Step.Resume(resume, fail, cancel))))))
@@ -37,6 +37,11 @@ object Machine:
     case Bind[R <: Row, X, I, T, A, V, J](f: X => Cont[R, I, T, A], rest: Frame[R, A, I, V, J]) extends Frame[R, X, T, V, J]
     case Map[R <: Row, X, I, A, V, J](f: X => A, rest: Frame[R, A, I, V, J]) extends Frame[R, X, I, V, J]
     case End[R <: Row, V, J]() extends Frame[R, V, J, V, J]
+
+  object Frame:
+    private val theEnd: End[Pure, Any, Any] = End()
+    /** the end of the frames: one shared, it holds nothing */
+    def end[R <: Row, V, J]: Frame[R, V, J, V, J] = theEnd.asInstanceOf[Frame[R, V, J, V, J]]
 
   /** A REST GIVEN AN ERROR: a `k`'s levels put back, the error raised inside them — their finalizers run, their
    * recovers asked; `null`, raised where the rest is */
@@ -92,7 +97,7 @@ object Machine:
 
   /** a mask left: a cancel asked under it fired, if no mask is left outside it — unwound from outside it */
   private def maskLeft[T <: Row, V, B, J, V2, J2, O, Z](u: Meta.UnderGuard[T, V, B, J, V2, J2, O, Z], v: V, up: J <:< O): Next[Z] =
-    if cancelAsked(u.m) then Eff[T, J2, O, V2, V2, J2, Z](Raise(Cancelled), Frame.End(), u.m)
+    if cancelAsked(u.m) then Eff[T, J2, O, V2, V2, J2, Z](Raise(Cancelled), Frame.end, u.m)
     else Eff[T, J, O, B, V2, J2, Z](left(u, v, up), u.k, u.m)
 
   /** a guard's `ret` at its bottom: a program of effects, as it is where the level has no answer (`none`), lifted
@@ -125,7 +130,9 @@ object Machine:
         extends Out[R, Z]
 
   object Out:
-    def none[Z]: Out[Pure, Z] = None()
+    private val theNone: None[Any] = None()
+    /** one shared: it holds nothing */
+    def none[Z]: Out[Pure, Z] = theNone.asInstanceOf[Out[Pure, Z]]
 
   /** THE LEVELS in force: what takes a level's value `V` at its bottom, at the answer `J` there, then the frames
    * outside it, and the levels outside those; each with the row of the code inside it, `R`, and its final answer `O`.
@@ -244,7 +251,7 @@ object Machine:
           case null => unwind(e, u.m)
           // the finalizer where the guard was, the frames outside it dropped; then the unwinding on
           case fin => Eff[t, j2, o, v2, v2, j2, Z](Bind(fin, (_: Unit) => Raise[t, j2, Nothing, v2](e)),
-            Frame.End(), u.m)
+            Frame.end, u.m)
         case p => Eff[t, j, o, b, v2, j2, Z](p, u.k, u.m)
     case t: Meta.Top[r, v, z] => Done(t.fail(e))
     case t: Meta.Through[e2, t2, v, b, j, v2, j2, o, z] => unwind(e, t.m)
@@ -499,10 +506,10 @@ object Machine:
     c match
       case v: View[e, r, t, x, i, a, j, o] => Eff(v.body, v.k, Meta.UnderView(v.rm, k, m))
       // a program of effects at an answer: its level, no answer inside
-      case l: Lift[r, s, a] => Eff(l.p, Frame.End(), Meta.Lifted[r, a, s, V, J, O, Z](k, m, summon[s <:< O]))
+      case l: Lift[r, s, a] => Eff(l.p, Frame.end, Meta.Lifted[r, a, s, V, J, O, Z](k, m, summon[s <:< O]))
       // a `$`: its level, its body on its own frames, the `ret` at its bottom; a `reset`'s the same, the identity
-      case d: Dollar[t, i, i2, o2, b, a] => Eff(d.body, Frame.End(), Meta.Dollar(d.ret, k, m))
-      case l: Lower[r, s, o] => Eff(l.c, Frame.End(), Meta.Reset(k, m, summon[I =:= Nothing]))
+      case d: Dollar[t, i, i2, o2, b, a] => Eff(d.body, Frame.end, Meta.Dollar(d.ret, k, m))
+      case l: Lower[r, s, o] => Eff(l.c, Frame.end, Meta.Reset(k, m, summon[I =:= Nothing]))
       // a shift0: out to its `$` as an operation goes out to its handler, the levels passed into its `k`
       case s: Shift0[r, t, i1, o1, x1, o, a] =>
         shifted(s.at, s.f, (y: a) => Return[r, Cont[t, i1, o1, x1], a](y), null, k, m)

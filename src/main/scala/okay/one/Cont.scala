@@ -202,12 +202,12 @@ object Cont:
         plain: Plain[E])
         : Cont[T & Row, I, O, B] =
       summonFrom {
-        case ev: (H <:< Passing[E, T & Row, A, B]) => Handle(ev(h), Machine.Frame.End(), view(rm, p))
+        case ev: (H <:< Passing[E, T & Row, A, B]) => Handle(ev(h), Machine.Frame.end, view(rm, p))
         case ev: (H <:< Stateful[E, T & Row, ?, A, B]) => stateful(ev(h), rm, p)
         case ev: (H <:< Taking[E, T & Row, A, B]) => summonFrom {
           case ni: (I =:= Nothing) => summonFrom {
             case no: (O <:< Nothing) =>
-              ni.flip.liftCo[[x] =>> Cont[T & Row, x, Nothing, B]](HandleK(ev(h), Machine.Frame.End(), view(rm, effects(p, ni, no))))
+              ni.flip.liftCo[[x] =>> Cont[T & Row, x, Nothing, B]](HandleK(ev(h), Machine.Frame.end, view(rm, effects(p, ni, no))))
             case _ => error("a handler taking the rest: only on a program of effects, its answers none") }
           case _ => error("a handler taking the rest: only on a program of effects, its answers none") }
         case _ => summonFrom {
@@ -220,7 +220,7 @@ object Cont:
   /** a handler with a state around `p`, its state's type its own */
   private def stateful[E[_], R <: Row, T <: Row, I, O, A, B](h: Stateful[E, T, ?, A, B], rm: Removed[E, R, T],
       p: Cont[R, I, O, A]): Cont[T, I, O, B] = h match
-    case st: Stateful[E, T, s, A, B] => HandleState(st, st.initial, Machine.Frame.End(), view(rm, p))
+    case st: Stateful[E, T, s, A, B] => HandleState(st, st.initial, Machine.Frame.end, view(rm, p))
 
   /** `p` a program of effects, its answers none */
   private[one] def effects[R <: Row, I, O, A](p: Cont[R, I, O, A], ni: I =:= Nothing, no: O <:< Nothing): A ! R =
@@ -229,43 +229,43 @@ object Cont:
   /** a handler of a kind not known where it is written, around `p`: by a type test */
   private[one] def kinds[E[_], R <: Row, T <: Row, A, B](h: Handler[E, T, A, B], rm: Removed[E, R, T], p: A ! R): B ! T =
     h match
-      case ps: Passing[E, T, A, B] => Handle(ps, Machine.Frame.End(), view(rm, p))
+      case ps: Passing[E, T, A, B] => Handle(ps, Machine.Frame.end, view(rm, p))
       case st: Stateful[E, T, ?, A, B] => stateful(st, rm, p)
-      case tk: Taking[E, T, A, B] => HandleK(tk, Machine.Frame.End(), view(rm, p))
+      case tk: Taking[E, T, A, B] => HandleK(tk, Machine.Frame.end, view(rm, p))
 
   extension [R <: Row, A](p: A ! R)
     /** `p` at any answer `S`: to put under a `$`, among programs moving the answer — none of its own to move */
     def cont[S]: Cont[R, S, S, A] = Lift(p)
     /** an error thrown in `p` given to `f`: its program in `p`'s place — a program of effects, so `p` is one */
-    def recover(f: Throwable => A ! R): A ! R = Guarded(Guard.recover(f), Machine.Frame.End(), p, summon[Nothing =:= Nothing])
+    def recover(f: Throwable => A ! R): A ! R = Guarded(Guard.recover(f), Machine.Frame.end, p, summon[Nothing =:= Nothing])
 
   extension [R <: Row, I, O, A](p: Cont[R, I, O, A])
     /** `p` under the guard `g`, at any answers; a `Recovering` one on a program of effects only — what it recovers
      * with is one, and `p`'s place is where it goes: the kind by the static type of `g`, as `handle`'s */
     inline def guard[B, G <: Guard[R, A, B]](g: G): Cont[R, I, O, B] = summonFrom {
       case _: (G <:< Recovering[R, A, B]) => summonFrom {
-        case none: (I =:= Nothing) => Guarded(g, Machine.Frame.End(), p, none)
+        case none: (I =:= Nothing) => Guarded(g, Machine.Frame.end, p, none)
         case _ => error("a recovering guard around a program at answers: what it recovers with is a program of " +
           "effects, in the program's place — recover a program of effects; ensure, uncancelable at any answers") }
-      case _ => Guarded(g, Machine.Frame.End(), p, null) }
+      case _ => Guarded(g, Machine.Frame.end, p, null) }
     /** `fin` after `p`, whatever way it is left: an end, an error, an abort, a cancel — once a resumption of a `k`
      * holding it. `none` when `p` is a program of effects: its guard's `ret` run as it was, no lift */
     inline def ensure(fin: Unit ! R): Cont[R, I, O, A] = summonFrom {
-      case none: (I =:= Nothing) => Guarded(Guard.ensuring(fin), Machine.Frame.End(), p, none)
-      case _ => Guarded(Guard.ensuring(fin), Machine.Frame.End(), p, null) }
+      case none: (I =:= Nothing) => Guarded(Guard.ensuring(fin), Machine.Frame.end, p, none)
+      case _ => Guarded(Guard.ensuring(fin), Machine.Frame.end, p, null) }
     /** a cancel at a step of `p` kept for when it is left */
     inline def uncancelable: Cont[R, I, O, A] = summonFrom {
-      case none: (I =:= Nothing) => Guarded(Guard.uncancelable, Machine.Frame.End(), p, none)
-      case _ => Guarded(Guard.uncancelable, Machine.Frame.End(), p, null) }
+      case none: (I =:= Nothing) => Guarded(Guard.uncancelable, Machine.Frame.end, p, none)
+      case _ => Guarded(Guard.uncancelable, Machine.Frame.end, p, null) }
 
   /** `p` seen with `E` first: itself, if it is there already */
   private def view[E[_], R <: Row, T <: Row, I, O, A](rm: Removed[E, R, T], p: Cont[R, I, O, A])
       : Cont[E +: T, I, O, A] = rm match
     case _: Removed.Head[e, t] => p
-    case _ => View(rm, Machine.Frame.End(), p)
+    case _ => View(rm, Machine.Frame.end, p)
 
   /** `p`, a program over `T`, seen over `E +: T`: its operations past the head */
-  def widen[E[_], T <: Row, A](p: A ! T): A ! (E +: T) = View(Removed.Absent[E, T](), Machine.Frame.End(), p)
+  def widen[E[_], T <: Row, A](p: A ! T): A ! (E +: T) = View(Removed.Absent[E, T](), Machine.Frame.end, p)
 
   extension [X, T <: Row, B](k: X => B ! T)
     /** THE REST FAILED: `e` raised where the operation was, inside the levels `k` holds — what a clause answers when

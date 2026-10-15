@@ -88,19 +88,26 @@ sealed abstract class Split[Es[_], E[_]]:
   /** `p` fitted under a handler of `E` at the head of the rest's place: a runner's body is `handler(s.fit(p))` */
   def fit[A](p: A ! Es)(using c: Needs[Rest]): Eff[E +: c.R, A] = p(using Needs.of(paths(c.paths)))
 object Split extends SplitEdge:
-  /** `Es` is `E` alone: nothing left */
-  given whole[E[_]]: (Split[E, E] { type Rest[x] = NoEffects[x] }) = new Split[E, E]:
+  private[core] type K[x] = Any
+  private object Whole extends Split[K, K]:
     type Rest[x] = NoEffects[x]
-    def paths[T <: Row](rest: Paths[NoEffects, T]): Paths[E, E +: T] = Paths.One(In.Here())
+    def paths[T <: Row](rest: Paths[NoEffects, T]): Paths[K, K +: T] = Paths.One(In.Here())
+  /** `Es` is `E` alone: nothing left — one shared, it holds nothing */
+  given whole[E[_]]: (Split[E, E] { type Rest[x] = NoEffects[x] }) =
+    Whole.asInstanceOf[Split[E, E] { type Rest[x] = NoEffects[x] }]
 sealed trait SplitEdge extends SplitDeep:
-  /** `E` the left of two: the rest the right */
-  given head[E[_], G[_]]: (Split[E + G, E] { type Rest[x] = G[x] }) = new Split[E + G, E]:
-    type Rest[x] = G[x]
-    def paths[T <: Row](rest: Paths[G, T]): Paths[E + G, E +: T] = Paths.Both(Paths.One(In.Here()), rest.under[E])
-  /** `E` the right of two: the rest the left */
-  given last[F[_], E[_]]: (Split[F + E, E] { type Rest[x] = F[x] }) = new Split[F + E, E]:
-    type Rest[x] = F[x]
-    def paths[T <: Row](rest: Paths[F, T]): Paths[F + E, E +: T] = Paths.Both(rest.under[E], Paths.One(In.Here()))
+  private object Head extends Split[Split.K, Split.K]:
+    type Rest[x] = Any
+    def paths[T <: Row](rest: Paths[Split.K, T]): Paths[Split.K, Split.K +: T] =
+      Paths.Both(Paths.One(In.Here()), rest.under[Split.K]).asInstanceOf[Paths[Split.K, Split.K +: T]]
+  private object Last extends Split[Split.K, Split.K]:
+    type Rest[x] = Any
+    def paths[T <: Row](rest: Paths[Split.K, T]): Paths[Split.K, Split.K +: T] =
+      Paths.Both(rest.under[Split.K], Paths.One(In.Here())).asInstanceOf[Paths[Split.K, Split.K +: T]]
+  /** `E` the left of two: the rest the right — one shared */
+  given head[E[_], G[_]]: (Split[E + G, E] { type Rest[x] = G[x] }) = Head.asInstanceOf[Split[E + G, E] { type Rest[x] = G[x] }]
+  /** `E` the right of two: the rest the left — one shared */
+  given last[F[_], E[_]]: (Split[F + E, E] { type Rest[x] = F[x] }) = Last.asInstanceOf[Split[F + E, E] { type Rest[x] = F[x] }]
 sealed trait SplitDeep extends SplitDeepRight:
   /** `E` deeper in the left: the rest the left's rest joined to the right */
   given left[F[_], G[_], E[_]](using s: Split[F, E]): (Split[F + G, E] { type Rest[x] = Both[s.Rest, G, x] }) =
@@ -153,7 +160,9 @@ object Paths extends PathsRest:
     /** the whole, no effects, is itself; no effect is among none */
     def sub[E[_]](r: Req[E, NoEffects]): Paths[E, R] = (r: @unchecked) match
       case Req.Only() => this
-  given none[R <: Row]: Paths[NoEffects, R] = None()
+  private val theNone: None[Pure] = None()
+  /** one shared: no effects, no path */
+  given none[R <: Row]: Paths[NoEffects, R] = theNone.asInstanceOf[Paths[NoEffects, R]]
 sealed trait PathsRest extends PathsLow:
   /** at a place with the effects `E` themselves, `c`: its own paths — so a rest named abstractly, `F` in
    * `A ! Reader % R + F`, is fitted by the paths it came with, a sum at the call as it may be (an `In` for `F`

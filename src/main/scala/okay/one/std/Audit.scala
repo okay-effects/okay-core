@@ -43,7 +43,7 @@ object Audit:
    * refused. Outside, the row `T`: `R` with each sensitive effect audited */
   def observe[R <: Row, T <: Row, A, B](o: Observer[T, A, B])(body: A ! R)(using m: Audited.Marks[R, T]): B ! T =
     m match
-      case Audited.Marks.Same() => Observed(o, Machine.Frame.End(), body)
+      case Audited.Marks.Same() => Observed(o, Machine.Frame.end, body)
 
   extension [R <: Row, A](p: A ! R)
     /** a SENSITIVE effect handled — under its audit only: `Audited[S]` in the row. `T` unbounded, as `handle`'s */
