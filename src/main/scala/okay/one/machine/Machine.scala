@@ -163,8 +163,14 @@ object Machine:
   sealed abstract class Meta[R <: Row, -V, J, O, +Z]:
     /** the level outside; none at the top */
     def outer: Meta[?, ?, ?, ?, Z] | Null
-    /** the level outside, if an operation passes this one with its place unchanged: a guard's, a lift's */
+    /** if an operation passes this level with its place unchanged (a guard's, a lift's): the first level outside
+     * that it does not pass — a run of such levels skipped at once, walked when each is made and not by every look-up
+     * (frames nested n deep, each a guard: an operation found in O(1), not O(n)) */
     def passed: Meta[R, ?, ?, ?, Z] | Null = null
+  /** the level a passed one hands a look-up to: `m`, or past it if it is passed too — its own skip, so O(1) */
+  private def passedFrom[R <: Row, Z](m: Meta[R, ?, ?, ?, Z]): Meta[R, ?, ?, ?, Z] = m.passed match
+    case null => m
+    case o => o
   object Meta:
     final class Top[R <: Row, V, Z](val k: V => Z, val fail: Throwable => Z, val out: Out[R, Z])
         extends Meta[R, V, Nothing, Nothing, Z]:
@@ -195,7 +201,7 @@ object Machine:
     final class UnderGuard[T <: Row, V, B, J, V2, J2, O, Z](val g: Guard[T, V, B], val k: Frame[T, B, J, V2, J2],
         val m: Meta[T, V2, J2, O, Z], val none: (J =:= Nothing) | Null) extends Meta[T, V, J, O, Z]:
       def outer = m
-      override def passed = m
+      override val passed: Meta[T, ?, ?, ?, Z] = passedFrom(m)
     /** an observer's level: the row the same in it, no answer (it takes the rest); every operation on its way out stops
      * here — not passed by `level`, so it goes out by `outE` */
     final class UnderObserve[T <: Row, V, B, N, V2, J2, O2, Z](val o: Observer[T, V, B], val k: Frame[T, B, N, V2, J2],
@@ -205,7 +211,7 @@ object Machine:
     final class Lifted[R <: Row, A, S, V, J, O, Z](val k: Frame[R, A, S, V, J], val m: Meta[R, V, J, O, Z], val up: S <:< O)
         extends Meta[R, A, Nothing, Nothing, Z]:
       def outer = m
-      override def passed = m
+      override val passed: Meta[R, ?, ?, ?, Z] = passedFrom(m)
     /** a `$`: its answer, a program over the row outside, run by the frames there */
     final class Dollar[T <: Row, A, J, I2, O2, B, V2, J2, Z](val ret: A => J, val k: Frame[T, B, I2, V2, J2],
         val m: Meta[T, V2, J2, O2, Z]) extends Meta[Control[T] +: T, A, J, Cont[T, I2, O2, B], Z]:
