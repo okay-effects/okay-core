@@ -250,8 +250,15 @@ object Machine:
   /** a cancel, from a step */
   object Cancelled extends Exit
 
+  /** WHAT THE MACHINE RAISES — unwound through the levels, each guard asked — and not thrown on as fatal: what
+   * `NonFatal` lets through, and an INTERRUPT. An interrupt is the cancel of the thread running the program (a fiber's,
+   * on a blocking scheduler: a park or a blocking call in an operation's answer throws it), and a guard's finalizer —
+   * a resource's release — runs for it as Java's `finally` does; `NonFatal` counts it fatal, which let a cancelled
+   * fiber leave its guards unrun (bracket-cancel-releases, okay's TestAsync). It reaches the top as itself */
+  def raisable(e: Throwable): Boolean = NonFatal(e) || e.isInstanceOf[InterruptedException]
+
   /** what user code threw, a `Raise` — a fatal error thrown on: the handler at each call one call, kept small */
-  private def raised[R <: Row, I, O, A](e: Throwable): Cont[R, I, O, A] = if NonFatal(e) then Raise(e) else throw e
+  private def raised[R <: Row, I, O, A](e: Throwable): Cont[R, I, O, A] = if raisable(e) then Raise(e) else throw e
 
   /** AN ERROR RAISED: the frames of each level dropped, the levels unwound innermost first — a state's register gone
    * with its level — to the top, its answer to it */
@@ -555,7 +562,7 @@ object Machine:
       try
         val p: Cont[t, i2, o2, b] = up(d.ret(a))
         Eff[t, i2, o2, b, v2, j2, Z](p, d.k, d.m)
-      catch case NonFatal(e) => unwind(e, m)
+      catch case e: Throwable if raisable(e) => unwind(e, m)
     case r: Meta.Reset[r2, s, o, n, v2, j2, o2, z] =>
       Eff[r2, n, o2, o, v2, j2, Z](r.none.flip.liftCo[[x] =>> Cont[r2, x, Nothing, o]](Return[r2, Nothing, o](up(a))), r.k, r.m)
     case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] =>
@@ -670,7 +677,7 @@ object Machine:
     // a guard: told of the operation — what goes out in its place, what is run at each resumption; what it throws
     // raised where the operation is, inside it
     case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] =>
-      val out: Guard.Out[E, Y] | Throwable = try u.g.passing(op) catch case e: Throwable => if NonFatal(e) then e else throw e
+      val out: Guard.Out[E, Y] | Throwable = try u.g.passing(op) catch case e: Throwable => if raisable(e) then e else throw e
       out match
         case null =>
           val c = Rest.UnderGuard(u.g, k, g, gf, u.none, null)
@@ -741,13 +748,13 @@ object Machine:
       case d: Meta.Dollar[t, a, j, i2, o2, b, v2, j2, z] => at match
         case _: Nearest.Here[t3] =>
           val kk = Rest.UnderDollar[Y, t, X, I, a, j, I1, O1, X1](d.ret, k, g, gf)
-          try Eff[t, i2, o2, b, v2, j2, Z](f(kk), d.k, d.m) catch case NonFatal(e) => unwind(e, m)
+          try Eff[t, i2, o2, b, v2, j2, Z](f(kk), d.k, d.m) catch case e: Throwable if raisable(e) => unwind(e, m)
         case Nearest.There(at1) => Nearest.absurd(at)
       case r: Meta.Reset[r2, s, o, n, v2, j2, o2, z] => at match
         case _: Nearest.Here[t3] =>
           val kk = Rest.UnderDollar[Y, r2, X, I, s, s, I1, O1, X1]((a: s) => a, k, g, gf)
           try Eff[r2, n, o2, o, v2, j2, Z](r.none.flip.liftCo[[x] =>> Cont[r2, x, Nothing, o]](Return[r2, Nothing, o](f(kk))), r.k, r.m)
-          catch case NonFatal(e) => unwind(e, m)
+          catch case e: Throwable if raisable(e) => unwind(e, m)
         case Nearest.There(at1) => Nearest.absurd(at)
       case u: Meta.Under[e, t, v, b, n, v2, j2, o2, z] => never(u.none.liftCo[[x] =>> (Y => Cont[T, I1, O1, X1]) => x](f), m)
       case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] =>
@@ -761,4 +768,4 @@ object Machine:
   private def never[T <: Row, I1, O1, X1, Y, Z](f: (Y => Cont[T, I1, O1, X1]) => Nothing, m: Meta[?, ?, ?, ?, Z]): Next[Z] =
     try f((y: Y) => Raise[T, I1, O1, X1](IllegalStateException(
       "a shift0 with no answer, under a handler taking the rest or a lift: its k resumed")))
-    catch case NonFatal(e) => unwind(e, m)
+    catch case e: Throwable if raisable(e) => unwind(e, m)

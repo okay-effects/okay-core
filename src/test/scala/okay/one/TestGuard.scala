@@ -34,6 +34,23 @@ class TestGuard extends munit.FunSuite:
     assertEquals(log.reverse, List("body", "fin"))
   }
 
+  test("an interrupt thrown by an answering handler's value: the finalizer runs, the interrupt reaches the top as itself") {
+    // a fiber's cancel on a blocking scheduler: its park, in the handler's answer, throws InterruptedException —
+    // which NonFatal counts fatal, and which must not leave the guard unrun (`Machine.raisable`)
+    type R = W +: Pure
+    var log = List.empty[String]
+    val interrupt = InterruptedException("cancelled")
+    val parking = new okay.one.handler.Answering[W, Pure, Int, Int]:
+      def ret(a: Int) = pure(a)
+      def value[X](op: Writer[String, X]): X = op match
+        case t: Writer.Tell[w] => if t.w == "park" then throw interrupt else log = t.w :: log
+    val p = tell[R]("park").map(_ => 1).ensure(tell[R]("fin"))
+    // not munit's `intercept`, which lets through what NonFatal counts fatal
+    val thrown = try { p.handle(parking).run; null } catch case e: InterruptedException => e
+    assertEquals(thrown, interrupt)
+    assertEquals(log, List("fin"))
+  }
+
   test("ensuring under attempt: a raise runs the finalizer, then attempt answers Left") {
     type R = T +: W +: Pure
     val p = tell[R]("body").flatMap(_ => Throws.raise[String, R]("no")).map(_ => 1).ensure(tell[R]("fin"))
@@ -179,6 +196,7 @@ class TestGuardStep extends munit.FunSuite:
       case _: In.Here[f, t] => Step.Resume[Int, Reader % Int +: Pure, A](
         (n: Int) => y.resume(asked(y.op, n)), e => y.resume.fail(e), () => y.resume.cancel())
       case th: In.There[f, g, t] => In.absurd(th.in)
+      case at: In.At[f, t] => throw RuntimeException(s"not at the head: $at")
     case other => throw RuntimeException(s"not a step: $other")
   def asked[X](op: Reader[Int, X], n: Int): X = op match { case _: Reader.Ask[w] => n }
 
