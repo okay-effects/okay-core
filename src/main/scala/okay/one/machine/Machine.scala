@@ -85,7 +85,8 @@ object Machine:
         inner: Y => Cont[R, I, O, X], fails: Fails[Cont[R, I, O, X]] | Null) extends Rest[Y, E +: T, J, O, A]
     /** a guard's level: the answers through, as `Through` */
     case UnderGuard[Y, T <: Row, X, I, A, J, O, B](g: Guard[T, A, B], k: Frame[T, X, I, A, J],
-        inner: Y => Cont[T, I, O, X], fails: Fails[Cont[T, I, O, X]] | Null, none: (J =:= Nothing) | Null) extends Rest[Y, T, J, O, B]
+        inner: Y => Cont[T, I, O, X], fails: Fails[Cont[T, I, O, X]] | Null, none: (J =:= Nothing) | Null,
+        resumed: (() => Unit) | Null) extends Rest[Y, T, J, O, B]
     /** an observer's level: no answer, as a handler's taking the rest */
     case UnderObserve[Y, T <: Row, X, I, A, B, N](o: Observer[T, A, B], k: Frame[T, X, I, A, N],
         inner: Y => Cont[T, I, N, X], fails: Fails[Cont[T, I, N, X]] | Null, none: N =:= Nothing) extends Rest[Y, T, N, N, B]
@@ -566,6 +567,11 @@ object Machine:
     case u: Meta.Under[e, t, v, b, n, v2, j2, o2, z] =>
       Eff[t, n, o2, b, v2, j2, Z](u.none.flip.liftCo[[x] =>> Cont[t, x, Nothing, b]](guarded(u.h.ret(a))), u.k, u.m)
 
+  /** a guard's level put back by a resumption: what the guard asked to be run at each (`Guard.passing`) */
+  private def resuming(r: (() => Unit) | Null): Unit = r match
+    case null => ()
+    case f: (() => Unit) => f()
+
   /** a `k` resumed, its outermost level one not a handler's: put back, the rest under it */
   private def resumed[Y, T <: Row, I, O, B, V, J, O2 >: O, Z](rs: Resume[Y, T, I, O, B], k: Frame[T, B, I, V, J],
       m: Meta[T, V, J, O2, Z]): Next[Z] = rs.c match
@@ -578,7 +584,7 @@ object Machine:
     case cn: Rest.UnderReset[y2, r, x, i2, s, o2, n] =>
       Eff[Control[r] +: r, i2, o2, x, s, s, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Reset(k, m, cn.none))
     case cn: Rest.UnderGuard[y2, t2, x, i2, a, j, o2, b2] =>
-      Eff[t2, i2, O2, x, a, j, Z](guarded(cn.inner(rs.y)), cn.k, Meta.UnderGuard(cn.g, k, m, cn.none))
+      Eff[t2, i2, O2, x, a, j, Z](guarded { resuming(cn.resumed); cn.inner(rs.y) }, cn.k, Meta.UnderGuard(cn.g, k, m, cn.none))
     case cn: Rest.UnderObserve[y2, t2, x, i2, a, b2, n] =>
       Eff[t2, i2, n, x, a, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.UnderObserve(cn.o, k, m, cn.none))
     case cn: Rest.Under[y2, e, t2, x, i2, a, b2, n] =>
@@ -600,7 +606,8 @@ object Machine:
     case cn: Rest.UnderView[y, e, r, t2, x, i2, a, j, o2] =>
       Eff[r, i2, O2, x, a, j, Z](failed(cn.fails, fl.e), cn.k, Meta.UnderView(cn.rm, k, m))
     case cn: Rest.UnderGuard[y, t2, x, i2, a, j, o2, b2] =>
-      Eff[t2, i2, O2, x, a, j, Z](failed(cn.fails, fl.e), cn.k, Meta.UnderGuard(cn.g, k, m, cn.none))
+      Eff[t2, i2, O2, x, a, j, Z](guarded { resuming(cn.resumed); failed(cn.fails, fl.e) }, cn.k,
+        Meta.UnderGuard(cn.g, k, m, cn.none))
     case cn: Rest.UnderObserve[y, t2, x, i2, a, b2, n] =>
       Eff[t2, i2, n, x, a, n, Z](failed(cn.fails, fl.e), cn.k, Meta.UnderObserve(cn.o, k, m, cn.none))
     case cn: Rest.UnderLifted[y, r, x, i2, a, s] =>
@@ -654,9 +661,18 @@ object Machine:
     case u: Meta.UnderView[e, r, t, v, j, v2, j2, o, z] =>
       val c = Rest.UnderView(u.rm, k, g, gf)
       outE(op, Removed.relocate(in, u.rm), c, c, u.k, u.m)
+    // a guard: told of the operation — what goes out in its place, what is run at each resumption; what it throws
+    // raised where the operation is, inside it
     case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] =>
-      val c = Rest.UnderGuard(u.g, k, g, gf, u.none)
-      outE(op, in, c, c, u.k, u.m)
+      val out: Guard.Out[E, Y] | Throwable = try u.g.passing(op) catch case e: Throwable => if NonFatal(e) then e else throw e
+      out match
+        case null =>
+          val c = Rest.UnderGuard(u.g, k, g, gf, u.none, null)
+          outE(op, in, c, c, u.k, u.m)
+        case e: Throwable => Eff(failed(gf, e), k, m)
+        case o: Guard.Out[E, Y] @unchecked =>
+          val c = Rest.UnderGuard(u.g, k, g, gf, u.none, o.resumed)
+          outE(o.op, in, c, c, u.k, u.m)
     case l: Meta.Lifted[r, a, s, v, j, o, z] =>
       val c = l.up.liftCo[[x] =>> Rest[Y, r, s, x, a]](Rest.UnderLifted[Y, r, A, I, a, s](k, g, gf))
       outE[E, Y, r, s, o, a, v, j, Z](op, in, c, c, l.k, l.m)
@@ -729,7 +745,7 @@ object Machine:
         case Nearest.There(at1) => Nearest.absurd(at)
       case u: Meta.Under[e, t, v, b, n, v2, j2, o2, z] => never(u.none.liftCo[[x] =>> (Y => Cont[T, I1, O1, X1]) => x](f), m)
       case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] =>
-        val c = Rest.UnderGuard[Y, t, X, I, v, j, Cont[T, I1, O1, X1], b](u.g, k, g, gf, u.none)
+        val c = Rest.UnderGuard[Y, t, X, I, v, j, Cont[T, I1, O1, X1], b](u.g, k, g, gf, u.none, null)
         shifted(at, f, c, c, u.k, u.m)
       case l: Meta.Lifted[r, a, s, v, j, o, z] => never(f, m)
       case u: Meta.UnderObserve[t, v, b, n, v2, j2, o2, z] => never(u.none.liftCo[[x] =>> (Y => Cont[T, I1, O1, X1]) => x](f), m)

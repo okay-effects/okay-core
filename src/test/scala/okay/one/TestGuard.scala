@@ -46,6 +46,35 @@ class TestGuard extends munit.FunSuite:
     assertEquals(p.handle(Choose.all).handle(Writer.collect).run, (List("fin", "fin"), List(1, 2)))
   }
 
+  test("a guard told of an operation passing out: another sent in its place, a count at each resumption") {
+    type R = Choose +: Pure
+    var resumed = 0
+    var told = List.empty[String]
+    val g = new okay.one.handler.Guard[R, Int, Int]:
+      def ret(a: Int) = pure(a)
+      override def passing[E[_], X](op: E[X]): okay.one.handler.Guard.Out[E, X] = op match
+        case Choose.Among(xs) =>
+          told = xs.mkString(",") :: told
+          // the same effect: a choice of the alternatives reversed
+          okay.one.handler.Guard.Out(Choose.Among(xs.reverse).asInstanceOf[E[X]], () => resumed += 1)
+    val p = Choose.among[Int, R](Seq(1, 2, 3)).guard(g)
+    assertEquals(p.handle(Choose.all).run, List(3, 2, 1))
+    assertEquals((told, resumed), (List("1,2,3"), 3))
+  }
+
+  test("a guard's passing that throws: raised where the operation is, inside the guard") {
+    type R = Choose +: Pure
+    var fin = 0
+    val g = new okay.one.handler.Guard[R, Int, Int]:
+      def ret(a: Int) = pure(a)
+      override def finalizer = Cont.defer { fin += 1; pure(()) }
+      override def passing[E[_], X](op: E[X]): okay.one.handler.Guard.Out[E, X] = throw boom
+    Choose.flip[R].map(_ => 1).guard(g).handle(Choose.all).step match
+      case Step.Failed(e) => assertEquals(e, boom)
+      case other => fail(s"not failed: $other")
+    assertEquals(fin, 1)
+  }
+
   test("recover catches a throw, not a raise") {
     type R = T +: Pure
     val thrown = pure[R, Int](0).map[Int](_ => throw boom).recover(e => pure(if e eq boom then 7 else -1))
