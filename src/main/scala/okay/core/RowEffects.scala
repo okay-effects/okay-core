@@ -15,39 +15,47 @@ trait RowEffects[M[_ <: Row, _]]:
   extension [R <: Row, A](m: M[R, A])
     def flatMap[B](f: A => M[R, B]): M[R, B]
     def map[B](f: A => B): M[R, B] = m.flatMap(a => pure(f(a)))
-  /** `E` handled wherever it is in `m`'s row: the program over the row without it, `O` */
-  def handle[E[_], A, Ans, R <: Row, O <: Row](h: Handler[E, A, Ans])(m: M[R, A])(using rm: Removed[E, R, O]): M[O, Ans]
+  /** `E` handled wherever it is in `m`'s row, the row named: the program over the row without it, `O` */
+  def handleAt[E[_], A, Ans, R <: Row, O <: Row](h: Handler[E, A, Ans])(m: M[R, A])(using rm: Removed[E, R, O]): M[O, Ans]
   /** a program with nothing left to handle, to its value */
   def run[A](m: M[Pure, A]): A
 
-  // -- okay's words, each an alias over the primitives
+  // -- okay's words, each an alias over the primitives — the facade's, over this encoding
 
-  /** `A ! R`: a program of value `A` over the row `R` */
-  infix type ![A, R <: Row] = M[R, A]
-  /** `effect(op)`: an operation, its row the program's it is bound into — taken from the expected type by `flatMap`
-   * and `map`, or given by `at[R]` */
+  /** `A ! Es`: a program of `A` NEEDING the effects `Es`, `Reader % Int + Writer % String` — in any order, among any
+   * others: fitted to the row of the place it runs at (`Needs`), its operations' paths found there. The same
+   * program fits every place that has its effects */
+  infix type ![A, Es[_]] = (c: Needs[Es]) ?=> M[c.R, A]
+  /** a body under a handler of `E`: at the head of the row outside, `T` */
+  type Under[E[_], T <: Row, A] = Place[E +: T] ?=> M[E +: T, A]
+  /** `effect(op)`: an operation, its row the program's it is bound into — found where it is bound (`flatMap`,
+   * `map`), or given, `at[R]` */
   def effect[E[_], X](op: E[X]): Operation[E, X] = new Operation(op)
   extension [E[_], X](op: E[X])
     /** `op.perform`: the same, written after the operation */
     def perform: Operation[E, X] = new Operation(op)
+  /** `handle(h)(body)`: the body at the handler's place, `E` at the head of the row outside, `T` — its value through
+   * `h`, its operations of `E` to `h`'s clauses; `T` the row where the result is used, so the handlers make the row,
+   * the outermost last */
+  def handle[E[_], A, Ans, T <: Row](h: Handler[E, A, Ans])(body: Under[E, T, A])(using rm: Removed[E, E +: T, T]): M[T, Ans] =
+    handleAt[E, A, Ans, E +: T, T](h)(body(using Place.head))
   extension [R <: Row, A](p: M[R, A])
-    /** `p.handle(h)`: `handle(h)(p)` */
-    def handle[E[_], Ans, O <: Row](h: Handler[E, A, Ans])(using rm: Removed[E, R, O]): M[O, Ans] = this.handle[E, A, Ans, R, O](h)(p)
+    /** `p.handle(h)`: `handle(h)(p)` at the row `R` named, `E` wherever it is in it */
+    def handle[E[_], Ans, O <: Row](h: Handler[E, A, Ans])(using rm: Removed[E, R, O]): M[O, Ans] = handleAt[E, A, Ans, R, O](h)(p)
   extension [A](p: M[Pure, A])
     /** `p.value`: `run(p)` */
     def value: A = run(p)
+  /** `run(p)`: a program at the top, the empty row, to its value */
+  def run[A](p: Place[Pure] ?=> M[Pure, A]): A = run(p(using Place.top))
 
-  /** an operation not yet at a row: its path found where it is bound */
+  /** an operation not yet at a row: its path found where it is bound — in a program needing effects, among them
+   * (`Path`, from the place first) */
   final class Operation[E[_], X](val op: E[X]):
-    def flatMap[R <: Row, B](f: X => M[R, B])(using In[E, R]): M[R, B] = perform[E, R, X](op).flatMap(f)
-    def map[R <: Row, B](f: X => B)(using In[E, R]): M[R, B] = perform[E, R, X](op).map(f)
-    def at[R <: Row](using In[E, R]): M[R, X] = perform[E, R, X](op)
+    def flatMap[R <: Row, B](f: X => M[R, B])(using p: Path[E, R]): M[R, B] = perform[E, R, X](op)(using p.in).flatMap(f)
+    def map[R <: Row, B](f: X => B)(using p: Path[E, R]): M[R, B] = perform[E, R, X](op)(using p.in).map(f)
+    def at[R <: Row](using p: Path[E, R]): M[R, X] = perform[E, R, X](op)(using p.in)
 
 object RowEffects:
-  /** okay's other way to write a row: `Pure + Ask + Say`, the effects added one by one — `Say +: Ask +: Pure`; the
-   * order of a row says nothing. `import okay.core.RowEffects.+` (the facade's `+` joins effects, not rows) */
-  infix type +[R <: Row, E[_]] = E +: R
-
   /** okay's interface over the kernel's program itself */
   given eff: RowEffects[Eff] with
     def pure[R <: Row, A](a: A): Eff[R, A] = okay.core.pure(a)
@@ -57,6 +65,6 @@ object RowEffects:
     extension [R <: Row, A](m: Eff[R, A])
       def flatMap[B](f: A => Eff[R, B]): Eff[R, B] = m.flatMap(f)
       override def map[B](f: A => B): Eff[R, B] = m.map(f)
-    def handle[E[_], A, Ans, R <: Row, O <: Row](h: Handler[E, A, Ans])(m: Eff[R, A])(using rm: Removed[E, R, O]): Eff[O, Ans] =
+    def handleAt[E[_], A, Ans, R <: Row, O <: Row](h: Handler[E, A, Ans])(m: Eff[R, A])(using rm: Removed[E, R, O]): Eff[O, Ans] =
       okay.one.Cont.handle(m)(h.at[O])
     def run[A](m: Eff[Pure, A]): A = m.run

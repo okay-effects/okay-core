@@ -30,12 +30,13 @@ class TestAnywhere extends munit.FunSuite:
   val E: RowEffects[Eff] = RowEffects.eff
 
   test("okay's interface over the kernel's program: handlers apply in any order, each takes its effect wherever it is"):
-    assertEquals(E.run(E.handle(writer[Int])(E.handle(reader[Int](41))(prog[Eff]))), (List("41"), 42))
-    assertEquals(E.run(E.handle(reader[(List[String], Int)](41))(E.handle(writer[Int])(prog[Eff]))), (List("41"), 42))
+    assertEquals(E.run(E.handleAt(writer[Int])(E.handleAt(reader[Int](41))(prog[Eff]))), (List("41"), 42))
+    assertEquals(E.run(E.handleAt(reader[(List[String], Int)](41))(E.handleAt(writer[Int])(prog[Eff]))), (List("41"), 42))
 
   test("okay's words: A ! R, an operation at the row expected, handle wherever the effect is, value"):
     import E.*
-    val counting: Int ! (State % Int +: Say +: Pure) =
+    // the row named: a program AT it (the interface's `A ! Es` is a program needing effects, fitted to a place)
+    val counting: Eff[State % Int +: Say +: Pure, Int] =
       for
         n <- effect[State % Int, Int](State.Get())
         _ <- effect[State % Int, Unit](State.Put(n + 1))
@@ -46,11 +47,10 @@ class TestAnywhere extends munit.FunSuite:
     assertEquals(Cont.handle(counting.handle(writer[Int]))(State[Int, Pure, (List[String], Int)](41)).value, (42, (List("41"), 42)))
 
   test("Pure + A + B and A +: B +: Pure are one row; a tail call costs no frame — 100 000 of them"):
-    import RowEffects.+
-    def loop[M[_ <: Row, _]](n: Int, acc: Int)(using E: RowEffects[M]): M[Pure + Ask, Int] =
+    def loop[M[_ <: Row, _]](n: Int, acc: Int)(using E: RowEffects[M]): M[Ask +: Pure, Int] =
       if n == 0 then E.pure(acc)
-      else E.perform[Ask, Pure + Ask, Int](Ask.Number()).flatMap(x => E.tailcall(loop[M](n - 1, acc + x)))
-    assertEquals(E.run(E.handle(reader[Int](1))(loop[Eff](100000, 0))), 100000)
+      else E.perform[Ask, Ask +: Pure, Int](Ask.Number()).flatMap(x => E.tailcall(loop[M](n - 1, acc + x)))
+    assertEquals(E.run(E.handleAt(reader[Int](1))(loop[Eff](100000, 0))), 100000)
 
   // -- the standard effects taken off wherever they are: the kernel's handlers, over a row named
   type Row3 = State % Int +: Writer % String +: Throws % String +: Pure
