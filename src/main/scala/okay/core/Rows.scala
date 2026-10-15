@@ -150,7 +150,9 @@ object Paths extends PathsRest:
   final class None[R <: Row] extends Paths[NoEffects, R]:
     def find[E[_]](r: Req[E, NoEffects]): In[E, R] = throw MatchError(r)
     def under[E[_]]: Paths[NoEffects, E +: R] = None()
-    def sub[E[_]](r: Req[E, NoEffects]): Paths[E, R] = throw MatchError(r)
+    /** the whole, no effects, is itself; no effect is among none */
+    def sub[E[_]](r: Req[E, NoEffects]): Paths[E, R] = (r: @unchecked) match
+      case Req.Only() => this
   given none[R <: Row]: Paths[NoEffects, R] = None()
 sealed trait PathsRest extends PathsLow:
   /** at a place with the effects `E` themselves, `c`: its own paths — so a rest named abstractly, `F` in
