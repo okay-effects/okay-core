@@ -45,8 +45,6 @@ trait RowEffects[M[_ <: Row, _]]:
   extension [A](p: M[Pure, A])
     /** `p.value`: `run(p)` */
     def value: A = run(p)
-  /** `run(p)`: a program at the top, the empty row, to its value */
-  def run[A](p: Place[Pure] ?=> M[Pure, A]): A = run(p(using Place.top))
 
   /** an operation not yet at a row: its path found where it is bound — in a program needing effects, among them
    * (`Path`, from the place first) */
