@@ -79,34 +79,13 @@ lazy val allowUnsafe = javaOptions ++= (if (fork.value) Seq(unsafe) else Nil)
 
 /** the build's root: every platform's core and async, and the Scala 2.13 suites — `sbt test` runs them all */
 lazy val root = (project in file("."))
-  .aggregate(core.jvm, core.js, core.native, words.jvm, words.js, words.native, async.jvm, async.js, async.native, tx.jvm, tx.js, tx.native,
+  .aggregate(core.jvm, core.js, core.native, words.jvm, words.js, words.native, async.jvm, async.js, async.native,
     interopCats.jvm, interopCats.js, interopCats.native, interopTofu, scala2Prelude, scala2Cats, scala2Tofu, scala2, kernel)
   .settings(
     name := "okay-core-root",
     publish / skip := true,
     Compile / sources := Seq(),
     Test / sources := Seq()
-  )
-
-/**
- * TRANSACTIONS, A MODULE OF ITS OWN (okay.tx), cross-built as the core: `Tx`, a transaction as a subtree — `Atomic`
- * a bracket holding its body, `Rollback` a leaf — its handler the resource's owner (`Transactor`), walking the tree
- * with one bit; the words `atomic`, `rollback`, `transactions`. No database in it: an owner for JDBC and the like
- * is the platform's
- */
-lazy val tx = crossProject(JVMPlatform, JSPlatform, NativePlatform)
-  .crossType(CrossType.Pure)
-  .in(file("tx"))
-  .dependsOn(core % "compile->compile;test->test")
-  .settings(
-    name := "okay-core-tx",
-    libraryDependencies += "org.scalameta" %%% "munit" % "1.2.3" % Test
-  )
-  .jvmSettings(
-    // the JVM's own: a transactor over JDBC, its test on H2
-    Compile / unmanagedSourceDirectories ++= platformDirs("main", "jvm").value,
-    Test / unmanagedSourceDirectories ++= platformDirs("test", "jvm").value,
-    libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test
   )
 
 /**
