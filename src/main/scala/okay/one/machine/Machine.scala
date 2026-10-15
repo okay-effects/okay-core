@@ -29,6 +29,26 @@ object Machine:
       Out.Given[R, Step[R, A]]([E[_], Y] => (op: E[Y], in: In[E, R], resume: Y => Step[R, A],
         fail: Throwable => Step[R, A], cancel: () => Step[R, A]) => Step.Yield(op, in, Step.Resume(resume, fail, cancel))))))
 
+  /** `p` run to its value or its first operation of `R` come to the top — handed out as one object, the rest the
+   * machine's own frames and levels: the light form of `stepped` for a driver that pulls (a stream, an iterator) */
+  def head[R <: Row, A](p: A ! R): Head[R, A] =
+    drive(eval(p, Frame.end, Meta.Top[R, A, Head[R, A]]((a: A) => Head.Done(a), (e: Throwable) => throw e, Out.Paused[R, A]())))
+
+  /** A PROGRAM AT ITS HEAD: its value, or an operation of `R` paused with the rest — resumed with the operation's
+   * value, or failed where it was; any number of times, each a run of its own */
+  sealed abstract class Head[R <: Row, A]
+  object Head:
+    final case class Done[R <: Row, A](a: A) extends Head[R, A]
+    final class Paused[R <: Row, A, E[_], Y, I, O, B, V, J] private[Machine] (val op: E[Y], val in: In[E, R],
+        g: Y => Cont[R, I, O, B], gf: Fails[Cont[R, I, O, B]] | Null, k: Frame[R, B, I, V, J],
+        top: Meta.Top[R, V, Head[R, A]]) extends Head[R, A]:
+      /** the rest with the operation's value */
+      def resume(y: Y): Head[R, A] = drive(eval[R, I, O, B, V, J, Head[R, A]](guarded(g(y)), k,
+        top.asInstanceOf[Meta[R, V, J, O, Head[R, A]]]))
+      /** the rest with an error raised where the operation was: its levels' guards asked */
+      def fail(e: Throwable): Head[R, A] = drive(eval[R, I, O, B, V, J, Head[R, A]](failed(gf, e), k,
+        top.asInstanceOf[Meta[R, V, J, O, Head[R, A]]]))
+
   // THE DATA
 
   /** THE FRAMES of a level: a value of `X` to its bottom, the value `V` there; `I` the answer of the rest from here,
@@ -128,6 +148,8 @@ object Machine:
     case None[Z]() extends Out[Pure, Z]
     case Given[R <: Row, Z](give: [E[_], Y] => (E[Y], In[E, R], Y => Z, Throwable => Z, () => Z) => Z)
         extends Out[R, Z]
+    /** the operation handed out as ONE object, its rest the machine's own (`Head.Paused`): no closure a step */
+    case Paused[R <: Row, A]() extends Out[R, Head[R, A]]
 
   object Out:
     private val theNone: None[Any] = None()
@@ -662,6 +684,9 @@ object Machine:
       case _: Out.None[z2] => in match
         case at: In.At[e3, r3] => unwind(IllegalStateException(s"an operation at a place by key with no handler of it in force: ${at.ref}"), m)
         case null => In.absurd(in)
+      case p: Out.Paused[r2, a2] =>
+        Done(Head.Paused[r2, a2, E, Y, I, O, A, V, J](op, in.asInstanceOf[In[E, r2]], g, gf, k,
+          t.asInstanceOf[Meta.Top[R, V, Head[r2, a2]]]).asInstanceOf[z])
       case Out.Given(give) =>
         lazy val back: z = give(op, in, (y: Y) => drive[z](eval[R, I, O, A, V, J, z](guarded(g(y)), k, t)),
           (e: Throwable) => drive[z](eval[R, I, O, A, V, J, z](failed(gf, e), k, t)),

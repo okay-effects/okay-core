@@ -29,3 +29,5 @@ object Step:
   extension [R <: Row, A](p: A ! R)
     /** `p` run to its value or its first operation of `R` */
     def step: Step[R, A] = Machine.stepped(p)
+    /** `p` run to its value or its first operation of `R`, one object a step (`Machine.Head`): a pulling driver's */
+    def head: Machine.Head[R, A] = Machine.head(p)
