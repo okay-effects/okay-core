@@ -496,20 +496,12 @@ object Machine:
    * no `Return` made for it; any other rest called. `v` and the map's function user code, under one guard */
   private inline def fed[Y, R <: Row, I, O, A, V, J, Z](g: Y => Cont[R, I, O, A], inline v: Y, k: Frame[R, A, I, V, J],
       m: Meta[R, V, J, O, Z])(using b: Bounce): Next[Z] = g match
-    // THE CASTS, and why they are sound: the map's value is the rest's `A`, which the frame on top takes; the answers
-    // of a map's rest are the operation's own, the same both sides — the types erased to say it once
-    case mk: MapK[?, ?, ?, ?, ?] =>
-      val f0 = mk.f.asInstanceOf[Any => Any]
-      val m0 = m.asInstanceOf[Meta[R, Any, Any, Any, Z]]
-      k.asInstanceOf[Frame[R, Any, Any, Any, Any]] match
-        case b: Frame.Bind[?, ?, ?, ?, ?, ?, ?] =>
-          val fb = b.f.asInstanceOf[Any => Cont[R, Any, Any, Any]]
-          eval[R, Any, Any, Any, Any, Any, Z](guarded(fb(f0(v))), b.rest.asInstanceOf[Frame[R, Any, Any, Any, Any]], m0)
-        case mf: Frame.Map[?, ?, ?, ?, ?, ?] =>
-          val fm = mf.f.asInstanceOf[Any => Any]
-          eval[R, Any, Any, Any, Any, Any, Z](guarded(Return[R, Any, Any](fm(f0(v)))),
-            mf.rest.asInstanceOf[Frame[R, Any, Any, Any, Any]], m0)
-        case k0 => eval[R, Any, Any, Any, Any, Any, Z](guarded(Return[R, Any, Any](f0(v))), k0, m0)
+    // a map's rest with a bind on top — the common case: the map's value straight to the bind. THE CASTS, and why
+    // they are sound: the map's value is the rest's `A`, which the bind takes; the answers its own, the same both sides
+    case mk: MapK[?, ?, ?, ?, ?] if k.isInstanceOf[Frame.Bind[?, ?, ?, ?, ?, ?, ?]] =>
+      val b = k.asInstanceOf[Frame.Bind[R, Any, Any, Any, Any, Any, Any]]
+      eval[R, Any, Any, Any, Any, Any, Z](guarded(b.f(mk.f.asInstanceOf[Any => Any](v))),
+        b.rest.asInstanceOf[Frame[R, Any, Any, Any, Any]], m.asInstanceOf[Meta[R, Any, Any, Any, Z]])
     case _ => eval(guarded(g(v)), k, m)
 
   /** `found` as a step of its own, out of the loop: for a place made in the loop — an operation at the head seen
