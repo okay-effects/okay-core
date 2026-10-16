@@ -10,3 +10,9 @@ captureDeep 11.68 → 7.41, facade capture 1.025 → 0.849; captureShallow, choo
 their noise. MixedBenchmark makes no chain of maps: its allocation per run is the same to the byte, its single-lane
 time the same (249.8 → 248.6 µs); under BULK its lanes scatter ±25% on either build. `TestFused`: 100 000 maps in
 constant stack, the bound, a throw in a fused chain (the maps after it not run), a shift's `k` under 50 fused maps.
+
+Then two more of the same (bind-fused): a bind of a map is one bind, the map's function before the rest
+(`Bind(m, Fused(f, k))`); an operation mapped twice is one `MapK`, its functions fused. Not a bind of an operation's
+map: there the operation's answers `I`, `O` may differ, and the composition does not type — rightly. `-wm BULK`,
+master → this: kernel capture 0.842 → 0.654, captureShallow 0.278 → 0.247, generate 38.9 → 36.8; facade capture
+0.869 → 0.697; choose, queens, orders within noise (single lane, orders state 250.3 → 249.2 µs, the same bytes).

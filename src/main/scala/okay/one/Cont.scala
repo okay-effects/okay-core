@@ -116,6 +116,8 @@ enum Cont[R <: Row, I, +O, +A] extends okay.kernel.Prog[A @scala.annotation.unch
   private[one] def bound[I2, B](f: A => Cont[R, I2, I, B]): Cont[R, I2, O, B] = this match
     case p: Perform[r, e, s, x] => Inject[r, e, x, I2, s, B](p.op, p.in, f)
     case p: PerformHere[e, t, s, x] => InjectHere[e, t, x, I2, s, B](p.op, f)
+    // a bind of a map: one bind, the map's function before the rest — no frame, no value made a program between them
+    case mp: Map[r, i, o, x, a] => Bind(mp.m, Cont.Fused[x, A, Cont[R, I2, I, B]](mp.f, f, Cont.fused(mp.f) + 1))
     case _ => Bind(this, f)
   def map[B](f: A => B): Cont[R, I, O, B] = this match
     // an operation mapped: its rest a `MapK` — the machine feeds `f`'s value to the frame on top, no `Return` made
@@ -126,6 +128,11 @@ enum Cont[R <: Row, I, +O, +A] extends okay.kernel.Prog[A @scala.annotation.unch
     case mp: Map[r, i, o, x, a] =>
       if Cont.fused(mp.f) < Cont.MaxFused then Map(mp.m, Cont.Fused[x, A, B](mp.f, f, Cont.fused(mp.f) + 1))
       else Map(this, f)
+    // a map of an operation's map: its `MapK` the two functions fused
+    case ih: InjectHere[e, t, y, i, o, a] => ih.g match
+      case mk: Cont.MapK[r2, i2, o2, y2, b2] if Cont.fused(mk.f) < Cont.MaxFused =>
+        InjectHere[e, t, y, I, O, B](ih.op, Cont.MapK[R, I, O, y, B](Cont.Fused[y, b2, B](mk.f, f, Cont.fused(mk.f) + 1)))
+      case _ => Map(this, f)
     case _ => Map(this, f)
 
 /** THE ANSWERS MET at a bind, a program's `I`, `O` and its continuation's `I2`, `T`; those of the bind `I3`, `O2`:
