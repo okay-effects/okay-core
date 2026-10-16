@@ -167,6 +167,37 @@ class KernelBenchmark:
   @Benchmark
   def state(): Int = counting(n).handle(counter(0)).run._1
 
+  // SMALL RUNS (okay-std's `stateSmall`): 100 runs of a program of two operations — what a run costs around them.
+  // `pureSmall` the machine alone (no handler, no operation), `stateSmallCell` a handler answering in place,
+  // `stateSmall` the state's (`Stateful`), the program built per run as okay's lane builds it
+
+  @Benchmark
+  def pureSmall(): Int =
+    var acc = 0
+    var i = 0
+    while i < 100 do
+      acc += Cont.pure(i).flatMap(x => Cont.pure(x + 1)).run
+      i += 1
+    acc
+
+  @Benchmark
+  def stateSmallCell(): Int =
+    var acc = 0
+    var i = 0
+    while i < 100 do
+      acc += rows[Sc].perform(St.Get).flatMap(x => rows[Sc].perform(St.Put(x + 1)).map(_ => x)).handle(cell(i)).run
+      i += 1
+    acc
+
+  @Benchmark
+  def stateSmall(): Int =
+    var acc = 0
+    var i = 0
+    while i < 100 do
+      acc += rows[Sc].perform(St.Get).flatMap(x => rows[Sc].perform(St.Put(x + 1)).map(_ => x)).handle(counter(i)).run._1
+      i += 1
+    acc
+
   type Deep3 = St +: Ask +: Tell +: Pure
   def countingDeep(i: Int): Int ! Deep3 =
     if i == 0 then rows[Deep3].perform(St.Get)

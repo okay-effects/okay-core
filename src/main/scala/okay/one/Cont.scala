@@ -76,6 +76,10 @@ enum Cont[R <: Row, I, +O, +A] extends okay.kernel.Prog[A @scala.annotation.unch
   case Observed[T <: Row, X, I, A, B] private[one] (o: Observer[T, A, B], k: Machine.Frame[T, X, I, A, Nothing],
       body: Cont[T, I, Nothing, X]) extends Cont[T, Nothing, Nothing, B]
   case Resume[Y, T <: Row, I, O, B] private[one] (c: Machine.Rest[Y, T, I, O, B], y: Y) extends Cont[T, I, O, B]
+  /** a `k` resumed with `y` under the handler it was taken from, seen there by `rm` (a `Delimiting`'s `k`): its
+   * levels put back, the outermost merged with the view */
+  case Resumed[Y, E[_], T <: Row, I, O, B] private[one] (rm: Removed[E, T, T], c: Machine.Rest[Y, T, I, O, B], y: Y)
+      extends Cont[E +: T, I, O, B]
   /** a `k` failed with `e`: its levels put back, then `e` raised inside them */
   case Fail[T <: Row, I, O, B] private[one] (c: Machine.Rest[Nothing, T, I, O, B], e: Throwable) extends Cont[T, I, O, B]
   /** `p`, a program of effects, at any answer: none of its own to move */

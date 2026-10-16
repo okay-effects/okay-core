@@ -18,8 +18,54 @@ import scala.util.control.NonFatal
  * passed, put back on the `Meta` in force where it is resumed. A shift0 goes out the same way, by its path, to its
  * `$`: the handlers between in its `k`. A handler's place is in its type: none past the top but those the top takes */
 object Machine:
-  /** `p`, no effects left: its value */
-  def run[A](p: A ! Pure): A =
+  /** `p`, no effects left: its value. A program whose top is ONE stateful handler (`p.handle(State(s)).run`) runs in a
+   * loop of its own (`stateful`): no level, no top made unless the program needs them */
+  def run[A](p: A ! Pure): A = p match
+    case hs: HandleState[e, t, st, x, i, a, j, o, b] => stateful(hs.h, hs.s, hs.body, hs.k)
+    case _ => machine(p)
+
+  /**
+   * A PROGRAM UNDER ONE STATEFUL HANDLER AT THE TOP (small-runs): its own operations answered in this loop, the state
+   * a parameter, its binds and maps on its own frames — what the machine does for them, without the level, the top and
+   * the trampoline a run of the machine starts with. A node it does not take — a handler inside, control, a guard, a
+   * failure, an operation by its path — hands the run to the machine as it stands: the same `HandleState` the program
+   * would be there, its state, its frames, its body; nothing run twice. A user function's throw is a `Raise` there
+   */
+  @tailrec private def stateful[E[_], S, X, I, A, B](h: Stateful[E, Pure, S, A, B], s: S, c: Cont[E +: Pure, I, Nothing, X],
+      k: Frame[E +: Pure, X, I, A, Nothing]): B = c match
+    case Return(x) => k match
+      case Frame.Bind(f, rest) => stateful(h, s, guarded(f(x)), rest)
+      case Frame.Map(f, rest) => stateful(h, s, guarded(Return(f(x))), rest)
+      case Frame.End() => finish(h.ret(s, x))
+    case b: Bind[r, i, t, o, y, a] => stateful(h, s, b.m, Frame.Bind(b.f, k))
+    case mp: Map[r, i, o, y, a] => stateful(h, s, mp.m, Frame.Map(mp.f, k))
+    // the value straight into the frame on top, as the machine's own `PerformHere` under a state does
+    case p: PerformHere[e, t, s2, y] =>
+      var next = s
+      k match
+        case b: Frame.Bind[r2, x2, i2, t2, a2, v2, j2] =>
+          val v: Cont[E +: Pure, i2, t2, a2] = guarded { val value = h.value[y](s, p.op); next = h.next(s, p.op); b.f(value) }
+          stateful(h, next, v, b.rest)
+        case mf: Frame.Map[r2, x2, i2, a2, v2, j2] =>
+          val v: Cont[E +: Pure, i2, i2, a2] = guarded { val value = h.value[y](s, p.op); next = h.next(s, p.op); Return(mf.f(value)) }
+          stateful(h, next, v, mf.rest)
+        case Frame.End() =>
+          val v = guarded { val value = h.value[y](s, p.op); next = h.next(s, p.op); Return[E +: Pure, s2, y](value) }
+          stateful(h, next, v, k)
+    case ih: InjectHere[e, t, y, i, o, a] =>
+      var next = s
+      val v = guarded { val value = h.value[y](s, ih.op); next = h.next(s, ih.op); ih.g(value) }
+      stateful(h, next, v, k)
+    case Defer(p) => stateful(h, s, guarded(p()), k)
+    case _ => machine(HandleState(h, s, k, c): B ! Pure)
+
+  /** a handler's `ret`: a value at once, a program run */
+  private def finish[B](r: B ! Pure): B = r match
+    case Return(b) => b
+    case p => machine(p)
+
+  /** `p` on the machine — not through `run`'s look at its top, which would take a `HandleState` back to `stateful` */
+  private def machine[A](p: A ! Pure): A =
     drive(eval(p, Frame.end, Meta.Top(identity[A], (e: Throwable) => throw e, Out.none[A])))
 
   /** `p` stepped: to its value, or to its first operation of `R` come to the top — given back with its rest */
@@ -68,6 +114,11 @@ object Machine:
   trait Fails[+C]:
     def fail(e: Throwable): C
 
+  /** a `Delimiting`'s `k`: the rest, each `k(y)` one node resumed under the handler (`Resumed`) */
+  private final class Viewed[Y, E[_], T <: Row, B](rm: Removed[E, T, T], c: Rest[Y, T, Nothing, Nothing, B])
+      extends (Y => Cont[E +: T, Nothing, Nothing, B]):
+    def apply(y: Y): Cont[E +: T, Nothing, Nothing, B] = Resumed(rm, c, y)
+
   /** THE REST, `k`, as data: the levels an operation or a shift0 went out past, outermost first, each a level with the
    * frames inside it, the innermost over the rest `inner` — `k(y)` a `Resume`: the machine puts the levels back on
    * the `Meta` where it is resumed, outermost first, then runs `inner(y)` under them. Of each kind of level a case;
@@ -83,6 +134,11 @@ object Machine:
         inner: Y => Cont[E +: T, I, O, X], fails: Fails[Cont[E +: T, I, O, X]] | Null) extends Rest[Y, T, J, O, B]
     case UnderView[Y, E[_], R <: Row, T <: Row, X, I, A, J, O](rm: Removed[E, R, T], k: Frame[R, X, I, A, J],
         inner: Y => Cont[R, I, O, X], fails: Fails[Cont[R, I, O, X]] | Null) extends Rest[Y, E +: T, J, O, A]
+    /** an `UnderViewed` level: a handler taking the rest under its view, put back as one level */
+    case UnderViewed[Y, E[_], T <: Row, X, I, A, B, N, F[_], T2 <: Row](h: Taking[E, T, A, B], rm: Removed[F, T, T2],
+        k: Frame[E +: T, X, I, A, N], inner: Y => Cont[E +: T, I, N, X], fails: Fails[Cont[E +: T, I, N, X]] | Null,
+        none: N =:= Nothing, pending: (B ! T) | Null)
+      extends Rest[Y, F +: T2, N, N, B]
     /** a guard's level: the answers through, as `Through` */
     case UnderGuard[Y, T <: Row, X, I, A, J, O, B](g: Guard[T, A, B], k: Frame[T, X, I, A, J],
         inner: Y => Cont[T, I, O, X], fails: Fails[Cont[T, I, O, X]] | Null, none: (J =:= Nothing) | Null,
@@ -110,6 +166,7 @@ object Machine:
     case cn: Rest.Through[y, e, t, x, i, a, j, o, b] => masked(cn.fails)
     case cn: Rest.UnderState[y, e, t, s, x, i, a, j, o, b] => masked(cn.fails)
     case cn: Rest.UnderView[y, e, r, t, x, i, a, j, o] => masked(cn.fails)
+    case cn: Rest.UnderViewed[y, e, t, x, i, a, b, n, f, t2] => masked(cn.fails)
     case cn: Rest.UnderLifted[y, r, x, i, a, s] => masked(cn.fails)
     case cn: Rest.UnderDollar[y, t, x, i, a, j, i2, o2, b] => masked(cn.fails)
     case cn: Rest.UnderReset[y, r, x, i, s, o, n] => masked(cn.fails)
@@ -195,6 +252,15 @@ object Machine:
       def outer = m
     final class UnderView[E[_], R <: Row, T <: Row, V, J, V2, J2, O, Z](val rm: Removed[E, R, T],
         val k: Frame[E +: T, V, J, V2, J2], val m: Meta[E +: T, V2, J2, O, Z]) extends Meta[R, V, J, O, Z]:
+      def outer = m
+    /** A HANDLER TAKING THE REST, SEEN THROUGH A VIEW — `Under` and the `UnderView` around it as ONE level
+     * (control-thin): a `k` of such a handler resumed under a view, `View(rm, End, k(x))` — a shift's rest in its
+     * body. Its handler's row `T` inside, the view's `F +: T2` outside: a way out relocated by `rm` here, as
+     * `UnderView` would; its value at its bottom the handler's `ret`'s, a value to the frames outside at once */
+    final class UnderViewed[E[_], T <: Row, V, B, N, F[_], T2 <: Row, V2, J2, O2, Z](val h: Taking[E, T, V, B],
+        val rm: Removed[F, T, T2], val k: Frame[F +: T2, B, N, V2, J2], val m: Meta[F +: T2, V2, J2, O2, Z],
+        val none: N =:= Nothing, pending0: (B ! T) | Null) extends Meta[E +: T, V, N, N, Z]:
+      var pending: (B ! T) | Null = pending0
       def outer = m
     /** a guard's level: the row the same in it, the answers through as `Through`'s; `none`, no answer at its
      * bottom, for a `Recovering` guard's */
@@ -293,6 +359,7 @@ object Machine:
     case t: Meta.Through[e2, t2, v, b, j, v2, j2, o, z] => unwind(e, t.m)
     case u: Meta.UnderState[e2, t, s, v, b, j, v2, j2, o, z] => unwind(e, u.m)
     case u: Meta.UnderView[e2, r, t, v, j, v2, j2, o, z] => unwind(e, u.m)
+    case u: Meta.UnderViewed[e2, t, v, b, n, f, t2, v2, j2, o2, z] => unwind(e, u.m)
     case l: Meta.Lifted[r, a, s, v, j, o, z] => unwind(e, l.m)
     case d: Meta.Dollar[t, a, j, i2, o2, b, v2, j2, z] => unwind(e, d.m)
     case r: Meta.Reset[r2, s, o, n, v2, j2, o2, z] => unwind(e, r.m)
@@ -337,6 +404,13 @@ object Machine:
         case s: In.Same[e, E] => s match
           case In.Same.Refl() => u
     case u: Meta.UnderView[e, r, t, v, j, v2, j2, o, z] => level(Removed.relocate(in, u.rm), u.m)
+    // a handler taking the rest, never aborting here (`viewing` merges no other): its own taken out by `outE`
+    case u: Meta.UnderViewed[e, t, v, b, n, f, t2, v2, j2, o2, z] => in match
+      case In.Here() => null
+      case In.There(in) => level(Removed.relocate(in, u.rm), u.m)
+      case at: In.At[e3, r3] => u.h.at(at) match
+        case null => level(Removed.relocate(at.again[t], u.rm), u.m)
+        case _ => null
     case d: Meta.Dollar[t, a, j, i2, o2, b, v2, j2, z] => in match
       case In.Here() => null
       case In.There(in) => level(in, d.m)
@@ -422,14 +496,44 @@ object Machine:
   /** a clause of a handler taking the rest, at its level: `Deep`'s with `k`, `Aborting`'s without — its program at the
    * frames outside the level, at no answer */
   private def clausing[E[_], T <: Row, V, B, N, V2, J2, O2, Z, Y](u: Meta.Under[E, T, V, B, N, V2, J2, O2, Z], op: E[Y],
+      k: Rest[Y, T, N, N, B]): Cont[T, N, Nothing, B] = clause(u.h, u.none, op, k)
+
+  /** a handler taking the rest, its clause given `k`: its program, at the answers none */
+  private def clause[E[_], T <: Row, V, B, N, Y](h: Taking[E, T, V, B], none: N =:= Nothing, op: E[Y],
       k: Rest[Y, T, N, N, B]): Cont[T, N, Nothing, B] =
-    val kk = u.none.liftCo[[x] =>> Rest[Y, T, x, x, B]](k)
+    val kk = none.liftCo[[x] =>> Rest[Y, T, x, x, B]](k)
     val p: B ! T =
-      try u.h match
+      try h match
         case d: Deep[e, t, a, b] => d[Y](op, kk)
         case ab: Aborting[e, t, a, b] => ab.abort[Y](op)
       catch case e: Throwable => raised(e)
-    u.none.flip.liftCo[[x] =>> Cont[T, x, Nothing, B]](p)
+    none.flip.liftCo[[x] =>> Cont[T, x, Nothing, B]](p)
+
+  /** a `Delimiting`'s clause UNDER ITSELF, its `k` the rest seen under it — or null: none, or not a delimiter */
+  private def delimited[E[_], T <: Row, V, B, N, Y](h: Taking[E, T, V, B], none: N =:= Nothing, op: E[Y],
+      k: Rest[Y, T, N, N, B]): Cont[E +: T, N, N, V] | Null = h match
+    case d: Delimiting[e, t, s] =>
+      val kk = none.liftCo[[x] =>> Rest[Y, T, x, x, B]](k)
+      val p: (V ! (E +: T)) | Null =
+        try d.under[Y](op, Viewed[Y, E, T, B](d.absent, kk))
+        catch case e: Throwable => raised(e)
+      if p == null then null else none.flip.liftCo[[x] =>> Cont[E +: T, x, x, V]](p.nn)
+    case _ => null
+
+  /** a handler taking the rest, its own operation at its level: a delimiter's clause on the level as it stands, else
+   * the clause outside it */
+  private def taken[E[_], T <: Row, V, B, N, V2, J2, O2, Z, Y](u: Meta.Under[E, T, V, B, N, V2, J2, O2, Z], op: E[Y],
+      k: Rest[Y, T, N, N, B]): Next[Z] =
+    val p = delimited(u.h, u.none, op, k)
+    if p == null then Eff(clausing(u, op, k), u.k, u.m)
+    else Eff(p.nn, Frame.end, Meta.Under(u.h, u.k, u.m, u.none, null))
+
+  /** the same at a handler's level merged with its view */
+  private def takenViewed[E[_], T <: Row, V, B, N, F[_], T2 <: Row, V2, J2, O2, Z, Y](
+      u: Meta.UnderViewed[E, T, V, B, N, F, T2, V2, J2, O2, Z], op: E[Y], k: Rest[Y, T, N, N, B]): Next[Z] =
+    val p = delimited(u.h, u.none, op, k)
+    if p == null then Eff(clause(u.h, u.none, op, k), Frame.end, Meta.UnderView(u.rm, u.k, u.m))
+    else Eff(p.nn, Frame.end, Meta.UnderViewed(u.h, u.rm, u.k, u.m, u.none, null))
 
   /** a clause of a handler leaving the rest, at its level, the answers through: `Translating`'s program then the
    * rest, `Linear`'s with it, `Answering`'s the rest with its value */
@@ -468,8 +572,14 @@ object Machine:
         case _ => eval(guarded(Return(mf.f(a))), mf.rest, m)
       case Frame.End() => m match
         case t: Meta.Top[r, v, z] => Done(t.k(a))
-        case th: Meta.Through[e, t, v, b, j, v2, j2, o, z] => eval(Lift[t, j, b](guarded(th.h.ret(a))), th.k, th.m)
-        case u: Meta.UnderState[e, t, s, v, b, j, v2, j2, o, z] => eval(Lift[t, j, b](guarded(u.h.ret(u.s, a))), u.k, u.m)
+        // a handler's `ret` a value (State's pair, a cell's): on at once at the answer outside — a value is at any
+        // answer, no `Lift` and its level for it; a program, lifted
+        case th: Meta.Through[e, t, v, b, j, v2, j2, o, z] => guarded(th.h.ret(a)) match
+          case Return(bv) => eval(Return[t, j, b](bv), th.k, th.m)
+          case r => eval(Lift[t, j, b](r), th.k, th.m)
+        case u: Meta.UnderState[e, t, s, v, b, j, v2, j2, o, z] => guarded(u.h.ret(u.s, a)) match
+          case Return(bv) => eval(Return[t, j, b](bv), u.k, u.m)
+          case r => eval(Lift[t, j, b](r), u.k, u.m)
         case u: Meta.Under[e, t, v, b, n, v2, j2, o2, z] =>
           eval[t, n, o2, b, v2, j2, Z](u.none.flip.liftCo[[x] =>> Cont[t, x, Nothing, b]](guarded(u.h.ret(a))), u.k, u.m)
         case u: Meta.UnderView[e, r, t, v, j, v2, j2, o, z] => eval(Return[e +: t, j, v](a), u.k, u.m)
@@ -539,14 +649,38 @@ object Machine:
     case h: Handle[e, t, x, i, a, j, o, b] => eval(h.body, h.k, Meta.Through(h.h, k, m))
     case h: HandleState[e, t, st, x, i, a, j, o, b] => eval(h.body, h.k, Meta.UnderState(h.h, h.s, k, m))
     case h: HandleK[e, t, x, i, a, b] => eval(h.body, h.k, Meta.Under(h.h, k, m, summon[I =:= Nothing], null))
-    case v: View[e, r, t, x, i, a, j, o] => eval(v.body, v.k, Meta.UnderView(v.rm, k, m))
+    case v: View[e, r, t, x, i, a, j, o] => v.body match
+      case _: Resume[?, ?, ?, ?, ?] => viewing(c, k, m)
+      case _ => eval(v.body, v.k, Meta.UnderView(v.rm, k, m))
     case Defer(p) => eval(guarded(p()), k, m)
     case _ => rare(c, k, m)
+
+  /** A VIEW AROUND A RESUMED REST (control-thin): the rest's outermost level a handler taking it, not aborting, and
+   * nothing between it and the view — a shift's `k` in its body — put back as ONE level, `UnderViewed`; else as it
+   * is, the view's level and the rest under it */
+  private def viewing[R <: Row, I, O, A, V, J, Z](c: Cont[R, I, O, A], k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z])
+      : Next[Z] = c match
+    case v: View[e, r, t, x, i, a, j, o] => v.body match
+      case rs: Resume[y, r2, i2, o2, b2] => rs.c match
+        case cn: Rest.Under[y3, e2, t2, x2, i3, a2, b3, n] => v.k match
+          case Frame.End() => cn.h match
+            case _: Aborting[e4, t4, v4, b4] => Eff(v.body, v.k, Meta.UnderView(v.rm, k, m))
+            case _ => Eff[e2 +: t2, i3, n, x2, a2, n, Z](guarded(cn.inner(rs.y)), cn.k,
+              Meta.UnderViewed(cn.h, v.rm, k, m, cn.none, cn.pending))
+          case _ => Eff(v.body, v.k, Meta.UnderView(v.rm, k, m))
+        case _ => Eff(v.body, v.k, Meta.UnderView(v.rm, k, m))
+      case _ => Eff(v.body, v.k, Meta.UnderView(v.rm, k, m))
+    case _ => Eff(c, k, m)
 
   /** the rest of the nodes, out of the loop — control's, a view's, a guard's, a failure's: each a step of its own */
   private def rare[R <: Row, I, O, A, V, J, Z](c: Cont[R, I, O, A], k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z]): Next[Z] =
     c match
       case v: View[e, r, t, x, i, a, j, o] => Eff(v.body, v.k, Meta.UnderView(v.rm, k, m))
+      // a delimiter's `k` resumed under it: the rest's outermost level, its handler, merged with the view
+      case rv: Resumed[y, e, t, i, o, b] => rv.c match
+        case cn: Rest.Under[y2, e2, t2, x, i2, a, b2, n] =>
+          Eff(guarded(cn.inner(rv.y)), cn.k, Meta.UnderViewed(cn.h, rv.rm, k, m, cn.none, cn.pending))
+        case _ => Eff(Resume(rv.c, rv.y), Frame.end, Meta.UnderView(rv.rm, k, m))
       // a program of effects at an answer: its level, no answer inside
       case l: Lift[r, s, a] => Eff(l.p, Frame.end, Meta.Lifted[r, a, s, V, J, O, Z](k, m, summon[s <:< O]))
       // a `$`: its level, its body on its own frames, the `ret` at its bottom; a `reset`'s the same, the identity
@@ -578,6 +712,11 @@ object Machine:
       Eff[e +: t, j, o, v, v2, j2, Z](up.liftCo[[x] =>> Cont[e +: t, j, x, v]](Return(a)), u.k, u.m)
     case u: Meta.UnderObserve[t, v, b, n, v2, j2, o2, z] =>
       Eff[t, n, o2, b, v2, j2, Z](u.none.flip.liftCo[[x] =>> Cont[t, x, Nothing, b]](guarded(u.o.ret(a))), u.k, u.m)
+    case u: Meta.UnderViewed[e, t, v, b, n, f, t2, v2, j2, o2, z] => guarded(u.h.ret(a)) match
+      case Return(bv) => Eff[f +: t2, n, o2, b, v2, j2, Z](
+        u.none.flip.liftCo[[x] =>> Cont[f +: t2, x, Nothing, b]](Return[f +: t2, Nothing, b](bv)), u.k, u.m)
+      case r => Eff[t, n, o2, b, b, n, Z](u.none.flip.liftCo[[x] =>> Cont[t, x, Nothing, b]](r), Frame.end[t, b, n],
+        Meta.UnderView(u.rm, u.k, u.m))
     case t: Meta.Top[r, v, z] => Done(t.k(a))
     case th: Meta.Through[e, t, v, b, j, v2, j2, o, z] =>
       Eff[t, j, o, b, v2, j2, Z](up.liftCo[[x] =>> Cont[t, j, x, b]](Lift[t, j, b](guarded(th.h.ret(a)))), th.k, th.m)
@@ -594,6 +733,8 @@ object Machine:
   /** a `k` resumed, its outermost level one not a handler's: put back, the rest under it */
   private def resumed[Y, T <: Row, I, O, B, V, J, O2 >: O, Z](rs: Resume[Y, T, I, O, B], k: Frame[T, B, I, V, J],
       m: Meta[T, V, J, O2, Z]): Next[Z] = rs.c match
+    case cn: Rest.UnderViewed[y2, e, t2, x, i2, a, b2, n, f, t3] =>
+      Eff[e +: t2, i2, n, x, a, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.UnderViewed(cn.h, cn.rm, k, m, cn.none, cn.pending))
     case cn: Rest.UnderView[y2, e, r, t2, x, i2, a, j, o2] =>
       Eff[r, i2, O2, x, a, j, Z](guarded(cn.inner(rs.y)), cn.k, Meta.UnderView(cn.rm, k, m))
     case cn: Rest.UnderLifted[y2, r, x, i2, a, s] =>
@@ -616,6 +757,8 @@ object Machine:
   /** a `k` failed: its outermost level put back, then the error raised inside the rest — its own levels, or here */
   private def failIn[T <: Row, I, O, B, V, J, O2 >: O, Z](fl: Fail[T, I, O, B], k: Frame[T, B, I, V, J],
       m: Meta[T, V, J, O2, Z]): Next[Z] = fl.c match
+    case cn: Rest.UnderViewed[y, e, t2, x, i2, a, b2, n, f, t3] =>
+      Eff[e +: t2, i2, n, x, a, n, Z](failed(cn.fails, fl.e), cn.k, Meta.UnderViewed(cn.h, cn.rm, k, m, cn.none, cn.pending))
     case cn: Rest.Under[y, e, t2, x, i2, a, b2, n] =>
       Eff[e +: t2, i2, n, x, a, n, Z](failed(cn.fails, fl.e), cn.k, Meta.Under(cn.h, k, m, cn.none, cn.pending))
     case cn: Rest.Through[y, e, t2, x, i2, a, j, o2, b2] =>
@@ -644,7 +787,9 @@ object Machine:
   @tailrec private def outE[E[_], Y, R <: Row, I, O, A, V, J, Z](op: E[Y], in: In[E, R], g: Y => Cont[R, I, O, A],
       gf: Fails[Cont[R, I, O, A]] | Null, k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z]): Next[Z] = m match
     case u: Meta.Under[e, t, v, b, n, v2, j2, o2, z] => in match
-      case In.Here() => Eff(clausing(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending)), u.k, u.m)
+      case In.Here() => 
+        if u.h.isInstanceOf[Delimiting[?, ?, ?]] then taken(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending))
+        else Eff(clausing(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending)), u.k, u.m)
       case In.There(in) =>
         val c = u.none.liftCo[[x] =>> Rest[Y, t, n, x, b]](Rest.Under(u.h, k, g, gf, u.none, u.pending))
         outE[E, Y, t, n, o2, b, v2, j2, Z](op, in, c, c, u.k, u.m)
@@ -654,7 +799,9 @@ object Machine:
           val c = u.none.liftCo[[x] =>> Rest[Y, t, n, x, b]](Rest.Under(u.h, k, g, gf, u.none, u.pending))
           outE[E, Y, t, n, o2, b, v2, j2, Z](op, at.again[t], c, c, u.k, u.m)
         case s: In.Same[e, E] => s match
-          case In.Same.Refl() => Eff(clausing(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending)), u.k, u.m)
+          case In.Same.Refl() => 
+            if u.h.isInstanceOf[Delimiting[?, ?, ?]] then taken(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending))
+            else Eff(clausing(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending)), u.k, u.m)
     case th: Meta.Through[e, t, v, b, j, v2, j2, o, z] => in match
       case In.Here() => Eff(passing(th.h, op, Rest.Through(th.h, k, g, gf)), th.k, th.m)
       case In.There(in) =>
@@ -680,6 +827,20 @@ object Machine:
     case u: Meta.UnderView[e, r, t, v, j, v2, j2, o, z] =>
       val c = Rest.UnderView(u.rm, k, g, gf)
       outE(op, Removed.relocate(in, u.rm), c, c, u.k, u.m)
+    // the handler's own: its clause run under the view, as it was under its `UnderView`; else past it, relocated
+    case u: Meta.UnderViewed[e, t, v, b, n, f, t2, v2, j2, o2, z] => in match
+      case In.Here() =>
+        takenViewed(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending))
+      case In.There(in) =>
+        val c = u.none.liftCo[[x] =>> Rest[Y, f +: t2, n, x, b]](Rest.UnderViewed(u.h, u.rm, k, g, gf, u.none, u.pending))
+        outE[E, Y, f +: t2, n, o2, b, v2, j2, Z](op, Removed.relocate(in, u.rm), c, c, u.k, u.m)
+      case at: In.At[e3, r3] => u.h.at(at) match
+        case null =>
+          val c = u.none.liftCo[[x] =>> Rest[Y, f +: t2, n, x, b]](Rest.UnderViewed(u.h, u.rm, k, g, gf, u.none, u.pending))
+          outE[E, Y, f +: t2, n, o2, b, v2, j2, Z](op, Removed.relocate(at.again[t], u.rm), c, c, u.k, u.m)
+        case sm: In.Same[e, E] => sm match
+          case In.Same.Refl() =>
+            takenViewed(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending))
     // a guard: told of the operation — what goes out in its place, what is run at each resumption; what it throws
     // raised where the operation is, inside it
     case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] =>
@@ -763,6 +924,7 @@ object Machine:
           catch case e: Throwable if raisable(e) => unwind(e, m)
         case Nearest.There(at1) => Nearest.absurd(at)
       case u: Meta.Under[e, t, v, b, n, v2, j2, o2, z] => never(u.none.liftCo[[x] =>> (Y => Cont[T, I1, O1, X1]) => x](f), m)
+      case u: Meta.UnderViewed[e, t, v, b, n, f2, t2, v2, j2, o2, z] => never(u.none.liftCo[[x] =>> (Y => Cont[T, I1, O1, X1]) => x](f), m)
       case u: Meta.UnderGuard[t, v, b, j, v2, j2, o, z] =>
         val c = Rest.UnderGuard[Y, t, X, I, v, j, Cont[T, I1, O1, X1], b](u.g, k, g, gf, u.none, null)
         shifted(at, f, c, c, u.k, u.m)

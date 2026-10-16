@@ -30,7 +30,7 @@ object Ops:
   /** the binds, which the kernel inlines */
   def flatMap[R <: Row, A, B](p: Eff[R, A])(f: A => Eff[R, B]): Eff[R, B] = p.flatMap(f)
   def map[R <: Row, A, B](p: Eff[R, A])(f: A => B): Eff[R, B] = p.map(f)
-  given here[E[_], T <: Row]: In[E, E +: T] = okay.one.row.In.Here()
+  given here[E[_], T <: Row]: In[E, E +: T] = Paths.head[E, T]
   given there[E[_], F[_], T <: Row](using in: In[E, T]): In[E, F +: T] = okay.one.row.In.There(in)
 
 /** an effect of two parameters, its first given: `Reader % Int` is the effect `[X] =>> Reader[Int, X]` */
@@ -46,7 +46,7 @@ object Path extends PathInRow:
   given fromNeeds[E[_], Es[_]](using n: Needs[Es], r: Req[E, Es]): Path[E, n.R] = Path(n.paths.find(r))
 sealed trait PathInRow extends PathGiven:
   /** in a row named: the kernel's path, walked here — the head, or past it */
-  given here[E[_], T <: Row]: Path[E, E +: T] = Path(In.Here())
+  given here[E[_], T <: Row]: Path[E, E +: T] = Path(Paths.head[E, T])
   given there[E[_], F[_], T <: Row](using p: Path[E, T]): Path[E, F +: T] = Path(In.There(p.in))
 sealed trait PathGiven:
   /** the kernel's own evidence, given by hand or by a signature */
@@ -91,7 +91,7 @@ object Split extends SplitEdge:
   private[core] type K[x] = Any
   private object Whole extends Split[K, K]:
     type Rest[x] = NoEffects[x]
-    def paths[T <: Row](rest: Paths[NoEffects, T]): Paths[K, K +: T] = Paths.One(In.Here())
+    def paths[T <: Row](rest: Paths[NoEffects, T]): Paths[K, K +: T] = Paths.of(Paths.head[K, T])
   /** `Es` is `E` alone: nothing left — one shared, it holds nothing */
   given whole[E[_]]: (Split[E, E] { type Rest[x] = NoEffects[x] }) =
     Whole.asInstanceOf[Split[E, E] { type Rest[x] = NoEffects[x] }]
@@ -136,6 +136,16 @@ sealed abstract class Paths[Es[_], R <: Row]:
    * the effects a program names abstractly, `F`: a search would build `One` for what is a sum at the call */
   def sub[E[_]](r: Req[E, Es]): Paths[E, R]
 object Paths extends PathsRest:
+  /** THE HEAD'S PATH, ONE SHARED (small-runs): a given made a new one each operation, and so did `one` around it —
+   * two objects an operation for nothing. It holds no effect: its look-up cache (`In.cache`) is keyed by the level,
+   * where a row's head is one effect, so one path serves every head; a race costs a look-up again, as the cache says */
+  private type AnyE[x] = Any
+  private val anyHead: In[AnyE, AnyE +: Pure] = In.Here[AnyE, Pure]()
+  private val anyHeadOne: One[AnyE, AnyE +: Pure] = One(anyHead)
+  def head[E[_], T <: Row]: In[E, E +: T] = anyHead.asInstanceOf[In[E, E +: T]]
+  /** `One(head)`, the head's shared when it is the head's */
+  def of[E0[_], R <: Row](head: In[E0, R]): Paths[E0, R] =
+    if head eq anyHead then anyHeadOne.asInstanceOf[Paths[E0, R]] else One(head)
   /** one effect, `E0`, at its path. `Only` is its one case: `E0` an effect, not two joined — those have `Both`, by
    * priority — which the checker cannot tell apart, hence unchecked */
   final class One[E0[_], R <: Row](val head: In[E0, R]) extends Paths[E0, R]:
@@ -178,7 +188,7 @@ sealed trait PathsRest extends PathsLow:
   given rest3[E[_], H[_], H2[_], H3[_]](using c: Needs[E], n1: NotGiven[H[Any] =:= E[Any]], n2: NotGiven[H2[Any] =:= E[Any]],
       n3: NotGiven[H3[Any] =:= E[Any]]): Paths[E, H +: H2 +: H3 +: c.R] = c.paths.under[H3].under[H2].under[H]
 sealed trait PathsLow:
-  given one[E0[_], R <: Row](using head: In[E0, R]): Paths[E0, R] = Paths.One(head)
+  given one[E0[_], R <: Row](using head: In[E0, R]): Paths[E0, R] = Paths.of(head)
 
 /** A PLACE WITH THE EFFECTS `Es`: a row that has them, and their paths in it — where a program needing them runs,
  * `A ! Es`. Made where the program is fitted to a row — a handler's body, a program over a row named — or in a

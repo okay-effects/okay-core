@@ -3,7 +3,7 @@ package okay.core
 /** OKAY'S INTERFACE, as okay's root `Effects[M]` has it (okay/src/main/scala/Effects.scala): a program `M[R, A]`, its
  * row `R` in its type; an operation by its path in the row; a handler taking its effect off WHEREVER it is
  * (`Removed`) — the order of effects in a type says nothing, the order of handlers everything. The primitives, then
- * okay's words over them: `A ! R`, `effect`, `op.perform`, `p.handle(h)`, `p.value`. The instance is the kernel's
+ * okay's words over them: `A ! R`, `effect`, `op.perform`, `p.handle(h)`, `p.value`, `reset`, `shift`. The instance is the kernel's
  * program itself, `Eff` — no `Program` built at a row under it any more */
 trait RowEffects[M[_ <: Row, _]]:
   def pure[R <: Row, A](a: A): M[R, A]
@@ -19,6 +19,18 @@ trait RowEffects[M[_ <: Row, _]]:
   def handleAt[E[_], A, Ans, R <: Row, O <: Row](h: Handler[E, A, Ans])(m: M[R, A])(using rm: Removed[E, R, O]): M[O, Ans]
   /** a program with nothing left to handle, to its value */
   def run[A](m: M[Pure, A]): A
+
+  // -- DELIMITED CONTROL, the answer `S` fixed: an effect of the row, `Shifts[S, T]`, `T` the row outside its reset —
+  // under any handlers, in any order; each `k` data, a program over the row, resumed any number of times
+
+  /** `reset[S](body)`: the shifts in the body up to here, each given the rest as `k`; the body's value the answer */
+  def reset[S, T <: Row](body: Under[Shifts[S, T], T, S]): M[T, S]
+  /** a shift by its path: `f` given `k`, the rest up to the reset, the reset included; `f` runs under it again — a
+   * shift in it to the same reset (Danvy–Filinski's) */
+  def shiftAt[S, T <: Row, X, R <: Row](f: (X => M[Shifts[S, T] +: T, S]) => M[Shifts[S, T] +: T, S])
+      (using In[Shifts[S, T], R]): M[R, X]
+  /** a shift0 by its path: the same, `f` run outside the reset, in its place */
+  def shift0At[S, T <: Row, X, R <: Row](f: (X => M[T, S]) => M[T, S])(using In[Shifts[S, T], R]): M[R, X]
 
   // -- okay's words, each an alias over the primitives — the facade's, over this encoding
 
@@ -46,6 +58,21 @@ trait RowEffects[M[_ <: Row, _]]:
     /** `p.value`: `run(p)` */
     def value: A = run(p)
 
+  /** `shift[S, T, X](k => body)`: a shift not yet at a row — its path found where it is bound, as an operation's */
+  def shift[S, T <: Row, X](f: (X => M[Shifts[S, T] +: T, S]) => M[Shifts[S, T] +: T, S]): Shifting[S, T, X] =
+    new Shifting(f)
+  /** `shift0[S, T, X](k => body)`: the same, its body run outside the reset */
+  def shift0[S, T <: Row, X](f: (X => M[T, S]) => M[T, S]): Shifting0[S, T, X] = new Shifting0(f)
+
+  final class Shifting[S, T <: Row, X](val f: (X => M[Shifts[S, T] +: T, S]) => M[Shifts[S, T] +: T, S]):
+    def flatMap[R <: Row, B](g: X => M[R, B])(using p: Path[Shifts[S, T], R]): M[R, B] = at[R].flatMap(g)
+    def map[R <: Row, B](g: X => B)(using p: Path[Shifts[S, T], R]): M[R, B] = at[R].map(g)
+    def at[R <: Row](using p: Path[Shifts[S, T], R]): M[R, X] = shiftAt[S, T, X, R](f)(using p.in)
+  final class Shifting0[S, T <: Row, X](val f: (X => M[T, S]) => M[T, S]):
+    def flatMap[R <: Row, B](g: X => M[R, B])(using p: Path[Shifts[S, T], R]): M[R, B] = at[R].flatMap(g)
+    def map[R <: Row, B](g: X => B)(using p: Path[Shifts[S, T], R]): M[R, B] = at[R].map(g)
+    def at[R <: Row](using p: Path[Shifts[S, T], R]): M[R, X] = shift0At[S, T, X, R](f)(using p.in)
+
   /** an operation not yet at a row: its path found where it is bound — in a program needing effects, among them
    * (`Path`, from the place first) */
   final class Operation[E[_], X](val op: E[X]):
@@ -66,3 +93,9 @@ object RowEffects:
     def handleAt[E[_], A, Ans, R <: Row, O <: Row](h: Handler[E, A, Ans])(m: Eff[R, A])(using rm: Removed[E, R, O]): Eff[O, Ans] =
       okay.one.Cont.handle(m)(h.at[O])
     def run[A](m: Eff[Pure, A]): A = m.run
+    // on the machine's own delimiter: std `reset` a `Delimiting`, a shift's body run on its level, each `k(x)` one node
+    def reset[S, T <: Row](body: Under[Shifts[S, T], T, S]): Eff[T, S] = Control.reset(body)
+    def shiftAt[S, T <: Row, X, R <: Row](f: (X => Eff[Shifts[S, T] +: T, S]) => Eff[Shifts[S, T] +: T, S])
+        (using in: In[Shifts[S, T], R]): Eff[R, X] = okay.one.Cont.perform[Shifts[S, T], R, X](okay.one.std.Shift.Up(f))
+    def shift0At[S, T <: Row, X, R <: Row](f: (X => Eff[T, S]) => Eff[T, S])(using in: In[Shifts[S, T], R]): Eff[R, X] =
+      okay.one.Cont.perform[Shifts[S, T], R, X](okay.one.std.Shift.Up0(f))
