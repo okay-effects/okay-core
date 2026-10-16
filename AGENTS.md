@@ -34,6 +34,12 @@ are compiled and checked by `TestGuide`).
   `case NonFatal(e)`. Moving hot cases out to helpers made it slower; cold ones (`rare`, `foundOff`, `aborted`) out
   is right. Check with `-XX:+UnlockDiagnosticVMOptions -XX:+LogCompilation` (the inline tree of eval: what was
   clipped by `size > DesiredMethodLimit`) and A/B every change on `MixedBenchmark` (state) and the lanes.
+  C2 SPECIALIZES eval TO THE BENCHMARK: the user's lambdas (a lane's `captured`, `shots`, a reset's body) are inlined
+  into it, by the call frequencies at its compile — so one lane alone measures how lucky that specialization was,
+  not the work (shift-here, 2026-10-16: a change with fewer allocations read +11% on one lane and −3× with
+  `-XX:-TieredCompilation`). Decide such a change with `-wm BULK` (every lane of the set warmed in each fork, eval
+  compiled on a mixed profile, as a real program's) beside the single lanes; compare the eval nmethods with
+  `-XX:CompileCommand=print,okay.one.machine.Machine$::eval` (hsdis is installed) when they disagree.
 - A handler is over the row `T` outside it; a `Deep` clause's `k` data, a program over `T`, kept and resumed anywhere.
   `handle`'s `T` unbounded (`& Row` at its uses): a bounded one is fixed to `Row` before `Removed` is searched.
 - `k.failed(e)` (`Cont`): a clause answering an operation with a FAILURE, raised inside `k`'s levels — the program's
