@@ -120,9 +120,15 @@ enum Cont[R <: Row, I, +O, +A] extends okay.kernel.Prog[A @scala.annotation.unch
     case mp: Map[r, i, o, x, a] => Bind(mp.m, Cont.Fused[x, A, Cont[R, I2, I, B]](mp.f, f, Cont.fused(mp.f) + 1))
     case _ => Bind(this, f)
   def map[B](f: A => B): Cont[R, I, O, B] = this match
-    // an operation mapped: its rest a `MapK` — the machine feeds `f`'s value to the frame on top, no `Return` made
+    // an operation mapped: its rest a `MapK` — the machine feeds `f`'s value to the frame on top, no `Return` made.
+    // KEPT SMALL: inlined where the operation is made, the operation node never kept (the JIT's escape analysis);
+    // the fusions out of line (`mapped`)
     case p: Perform[r, e, s, x] => Inject[r, e, x, I, O, B](p.op, p.in, Cont.MapK[r, I, O, x, B](f))
     case p: PerformHere[e, t, s, x] => InjectHere[e, t, x, I, O, B](p.op, Cont.MapK[R, I, O, x, B](f))
+    case _ => mapped(f)
+
+  /** a map of anything but an operation: fused where it can be */
+  private def mapped[B](f: A => B): Cont[R, I, O, B] = this match
     // a map of a map: ONE map, the two functions fused (`Cont.Fused`, bounded) — no frame, no value made a program
     // between them at the run
     case mp: Map[r, i, o, x, a] =>
