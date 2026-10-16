@@ -462,8 +462,14 @@ object Machine:
         case _ => eval(guarded(Return(mf.f(a))), mf.rest, m)
       case Frame.End() => m match
         case t: Meta.Top[r, v, z] => Done(t.k(a))
-        case th: Meta.Through[e, t, v, b, j, v2, j2, o, z] => eval(Lift[t, j, b](guarded(th.h.ret(a))), th.k, th.m)
-        case u: Meta.UnderState[e, t, s, v, b, j, v2, j2, o, z] => eval(Lift[t, j, b](guarded(u.h.ret(u.s, a))), u.k, u.m)
+        // a handler's `ret` a value (State's pair, a cell's): on at once at the answer outside — a value is at any
+        // answer, no `Lift` and its level for it; a program, lifted
+        case th: Meta.Through[e, t, v, b, j, v2, j2, o, z] => guarded(th.h.ret(a)) match
+          case Return(bv) => eval(Return[t, j, b](bv), th.k, th.m)
+          case r => eval(Lift[t, j, b](r), th.k, th.m)
+        case u: Meta.UnderState[e, t, s, v, b, j, v2, j2, o, z] => guarded(u.h.ret(u.s, a)) match
+          case Return(bv) => eval(Return[t, j, b](bv), u.k, u.m)
+          case r => eval(Lift[t, j, b](r), u.k, u.m)
         case u: Meta.Under[e, t, v, b, n, v2, j2, o2, z] =>
           eval[t, n, o2, b, v2, j2, Z](u.none.flip.liftCo[[x] =>> Cont[t, x, Nothing, b]](guarded(u.h.ret(a))), u.k, u.m)
         case u: Meta.UnderView[e, r, t, v, j, v2, j2, o, z] => eval(Return[e +: t, j, v](a), u.k, u.m)
