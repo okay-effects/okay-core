@@ -582,10 +582,18 @@ object Machine:
     val kk = none.liftCo[[x] =>> Rest[Y, T, x, x, B]](k)
     val p: B ! T =
       try h match
+        // a delimiter's clause under itself: on the level made again where it is — eval's own path, untouched
+        case d: Delimiting[e, t, s] => delimiting(d, op, kk)
         case d: Deep[e, t, a, b] => d[Y](op, kk)
         case ab: Aborting[e, t, a, b] => ab.abort[Y](op)
       catch case e: Throwable => raised(e)
     none.flip.liftCo[[x] =>> Cont[T, x, Nothing, B]](p)
+
+  /** a delimiter's clause under itself, its level made again where it is; else its `apply` */
+  private def delimiting[E[_], T <: Row, S, Y](d: Delimiting[E, T, S], op: E[Y], kk: Rest[Y, T, Nothing, Nothing, S])
+      : S ! T =
+    val b = d.under[Y](op, Viewed[Y, E, T, S](d.absent, kk))
+    if b == null then d[Y](op, kk) else HandleK[E, T, S, Nothing, S, S](d, Frame.end, b.nn)
 
   /** a `Delimiting`'s clause UNDER ITSELF, its `k` the rest seen under it — or null: none, or not a delimiter */
   private def delimited[E[_], T <: Row, V, B, N, Y](h: Taking[E, T, V, B], none: N =:= Nothing, op: E[Y],
@@ -730,6 +738,7 @@ object Machine:
     case v: View[e, r, t, x, i, a, j, o] => v.body match
       case _: Resume[?, ?, ?, ?, ?] => viewing(c, k, m)
       case _ => eval(v.body, v.k, Meta.UnderView(v.rm, k, m))
+    case _: Resumed[?, ?, ?, ?, ?, ?] => resuming(c, k, m)
     case Defer(p) => eval(guarded(p()), k, m)
     case _ => rare(c, k, m)
 
@@ -750,15 +759,19 @@ object Machine:
       case _ => Eff(v.body, v.k, Meta.UnderView(v.rm, k, m))
     case _ => Eff(c, k, m)
 
+  /** A DELIMITER'S `k` RESUMED under it: the rest's outermost level, its handler, merged with the view */
+  private def resuming[R <: Row, I, O, A, V, J, Z](c: Cont[R, I, O, A], k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z])
+      (using b: Bounce): Next[Z] = c match
+    case rv: Resumed[y, e, t, i, o, b] => rv.c match
+      case cn: Rest.Under[y2, e2, t2, x, i2, a, b2, n] =>
+        Eff(guarded(cn.inner(rv.y)), cn.k, Meta.UnderViewed(cn.h, rv.rm, k, m, cn.none, cn.pending))
+      case _ => Eff(Resume(rv.c, rv.y), Frame.end, Meta.UnderView(rv.rm, k, m))
+    case _ => Eff(c, k, m)
+
   /** the rest of the nodes, out of the loop — control's, a view's, a guard's, a failure's: each a step of its own */
   private def rare[R <: Row, I, O, A, V, J, Z](c: Cont[R, I, O, A], k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z])(using b: Bounce): Next[Z] =
     c match
       case v: View[e, r, t, x, i, a, j, o] => Eff(v.body, v.k, Meta.UnderView(v.rm, k, m))
-      // a delimiter's `k` resumed under it: the rest's outermost level, its handler, merged with the view
-      case rv: Resumed[y, e, t, i, o, b] => rv.c match
-        case cn: Rest.Under[y2, e2, t2, x, i2, a, b2, n] =>
-          Eff(guarded(cn.inner(rv.y)), cn.k, Meta.UnderViewed(cn.h, rv.rm, k, m, cn.none, cn.pending))
-        case _ => Eff(Resume(rv.c, rv.y), Frame.end, Meta.UnderView(rv.rm, k, m))
       // a program of effects at an answer: its level, no answer inside
       case l: Lift[r, s, a] => Eff(l.p, Frame.end, Meta.Lifted[r, a, s, V, J, O, Z](k, m, summon[s <:< O]))
       // a `$`: its level, its body on its own frames, the `ret` at its bottom; a `reset`'s the same, the identity
