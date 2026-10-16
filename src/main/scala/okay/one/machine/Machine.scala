@@ -639,11 +639,6 @@ object Machine:
       case cn: Rest.UnderState[y2, e, t2, s2, x, i2, a, j, o2, b2] =>
         eval[e +: t2, i2, O, x, a, j, Z](guarded(cn.inner(rs.y)), cn.k, Meta.UnderState(cn.h, cn.s, k, m))
       case _ => resumed(rs, k, m)
-    // a delimiter's `k` resumed under it: the rest's outermost level, its handler, merged with the view
-    case rv: Resumed[y, e, t, i, o, b] => rv.c match
-      case cn: Rest.Under[y2, e2, t2, x, i2, a, b2, n] =>
-        eval(guarded(cn.inner(rv.y)), cn.k, Meta.UnderViewed(cn.h, rv.rm, k, m, cn.none, cn.pending))
-      case _ => eval(Resume(rv.c, rv.y), Frame.end, Meta.UnderView(rv.rm, k, m))
     // a handler entered: its level, the frames outside it those here; its body on its own frames
     case h: Handle[e, t, x, i, a, j, o, b] => eval(h.body, h.k, Meta.Through(h.h, k, m))
     case h: HandleState[e, t, st, x, i, a, j, o, b] => eval(h.body, h.k, Meta.UnderState(h.h, h.s, k, m))
@@ -675,6 +670,11 @@ object Machine:
   private def rare[R <: Row, I, O, A, V, J, Z](c: Cont[R, I, O, A], k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z]): Next[Z] =
     c match
       case v: View[e, r, t, x, i, a, j, o] => Eff(v.body, v.k, Meta.UnderView(v.rm, k, m))
+      // a delimiter's `k` resumed under it: the rest's outermost level, its handler, merged with the view
+      case rv: Resumed[y, e, t, i, o, b] => rv.c match
+        case cn: Rest.Under[y2, e2, t2, x, i2, a, b2, n] =>
+          Eff(guarded(cn.inner(rv.y)), cn.k, Meta.UnderViewed(cn.h, rv.rm, k, m, cn.none, cn.pending))
+        case _ => Eff(Resume(rv.c, rv.y), Frame.end, Meta.UnderView(rv.rm, k, m))
       // a program of effects at an answer: its level, no answer inside
       case l: Lift[r, s, a] => Eff(l.p, Frame.end, Meta.Lifted[r, a, s, V, J, O, Z](k, m, summon[s <:< O]))
       // a `$`: its level, its body on its own frames, the `ret` at its bottom; a `reset`'s the same, the identity
@@ -781,7 +781,9 @@ object Machine:
   @tailrec private def outE[E[_], Y, R <: Row, I, O, A, V, J, Z](op: E[Y], in: In[E, R], g: Y => Cont[R, I, O, A],
       gf: Fails[Cont[R, I, O, A]] | Null, k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z]): Next[Z] = m match
     case u: Meta.Under[e, t, v, b, n, v2, j2, o2, z] => in match
-      case In.Here() => taken(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending))
+      case In.Here() => 
+        if u.h.isInstanceOf[Delimiting[?, ?, ?]] then taken(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending))
+        else Eff(clausing(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending)), u.k, u.m)
       case In.There(in) =>
         val c = u.none.liftCo[[x] =>> Rest[Y, t, n, x, b]](Rest.Under(u.h, k, g, gf, u.none, u.pending))
         outE[E, Y, t, n, o2, b, v2, j2, Z](op, in, c, c, u.k, u.m)
@@ -791,7 +793,9 @@ object Machine:
           val c = u.none.liftCo[[x] =>> Rest[Y, t, n, x, b]](Rest.Under(u.h, k, g, gf, u.none, u.pending))
           outE[E, Y, t, n, o2, b, v2, j2, Z](op, at.again[t], c, c, u.k, u.m)
         case s: In.Same[e, E] => s match
-          case In.Same.Refl() => taken(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending))
+          case In.Same.Refl() => 
+            if u.h.isInstanceOf[Delimiting[?, ?, ?]] then taken(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending))
+            else Eff(clausing(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending)), u.k, u.m)
     case th: Meta.Through[e, t, v, b, j, v2, j2, o, z] => in match
       case In.Here() => Eff(passing(th.h, op, Rest.Through(th.h, k, g, gf)), th.k, th.m)
       case In.There(in) =>
