@@ -6,7 +6,7 @@ import okay.one.row.*
 import okay.one.std.*
 import okay.one.std.Audit.{audit, handleAudited, observe, record}
 
-/** INTERCEPTORS: control and audit of effects — okay-rs's tests/intercept.rs, the same programs. A plain effect
+/** INTERCEPTORS: control and audit of effects — okay-rust's tests/intercept.rs, the same programs. A plain effect
  * intercepted for a part of the program; a sensitive one handled only under its audit, each operation told, passed on,
  * changed or refused */
 class TestIntercept extends munit.FunSuite:

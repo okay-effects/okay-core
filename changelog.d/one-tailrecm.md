@@ -6,4 +6,4 @@
 - Tests: `TestRecursion` — `isEven`/`isOdd` by `defer` a million steps; with a state at each (two million
   operations); by `tailRecM`, a reader at each; a loop under a choice, each path its own. `TestFacadeRecursion` — the
   same in the facade: mutual recursion with an `ask` at each, `tailRecM` with a state at each. On the suites' 512k
-  stack. okay-rs's `tests/recursion.rs` the same programs (`call!`, `tail_rec`).
+  stack. okay-rust's `tests/recursion.rs` the same programs (`call!`, `tail_rec`).

@@ -6,7 +6,7 @@ import okay.one.row.*
 
 /** RECURSION IN CONSTANT STACK: functions calling each other in tail position — through `flatMap` or `defer` — and a
  * loop (`tailRecM`), a million steps, with and without an operation at each, on the suites' 512k stack.
- * okay-rs's tests/recursion.rs, the same programs */
+ * okay-rust's tests/recursion.rs, the same programs */
 class TestRecursion extends munit.FunSuite:
   val million = 1000000
 

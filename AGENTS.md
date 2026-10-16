@@ -51,7 +51,7 @@ are compiled and checked by `TestGuide`).
   `outE` ask it. Its two trusted steps are in `okay.one.row`: `Key.at` (one ref names one effect) and `In.At.again`
   (the row of a place by key is phantom). Nothing of the typed front makes one; the bridge (`okay.core.kernel`) does.
 - `TestReference` checks the machine against the meaning on random programs: run it after any change to the machine.
-- INTERCEPTORS — control and audit of effects (`TestIntercept`; okay-rs's `tests/intercept.rs` the same programs,
+- INTERCEPTORS — control and audit of effects (`TestIntercept`; okay-rust's `tests/intercept.rs` the same programs,
   keep them in step): an effect's author gives `Sensitive[E]`; `handle` asks `Plain[E]`, so a sensitive effect is
   handled only by `okay.one.std.Audit.handleAudited`, which needs `Audited[E]` in the row — opaque, the same
   operations at run time, no `In[E, …]` for it, so no program outside the audit performs `E`. `Audit.audit(i)(body)`:

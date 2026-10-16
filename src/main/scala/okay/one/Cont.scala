@@ -116,11 +116,23 @@ enum Cont[R <: Row, I, +O, +A] extends okay.kernel.Prog[A @scala.annotation.unch
   private[one] def bound[I2, B](f: A => Cont[R, I2, I, B]): Cont[R, I2, O, B] = this match
     case p: Perform[r, e, s, x] => Inject[r, e, x, I2, s, B](p.op, p.in, f)
     case p: PerformHere[e, t, s, x] => InjectHere[e, t, x, I2, s, B](p.op, f)
+    // a bind of a map: one bind, the map's function before the rest — no frame, no value made a program between them
+    case mp: Map[r, i, o, x, a] => Bind(mp.m, Cont.Fused[x, A, Cont[R, I2, I, B]](mp.f, f, Cont.fused(mp.f) + 1))
     case _ => Bind(this, f)
   def map[B](f: A => B): Cont[R, I, O, B] = this match
     // an operation mapped: its rest a `MapK` — the machine feeds `f`'s value to the frame on top, no `Return` made
     case p: Perform[r, e, s, x] => Inject[r, e, x, I, O, B](p.op, p.in, Cont.MapK[r, I, O, x, B](f))
     case p: PerformHere[e, t, s, x] => InjectHere[e, t, x, I, O, B](p.op, Cont.MapK[R, I, O, x, B](f))
+    // a map of a map: ONE map, the two functions fused (`Cont.Fused`, bounded) — no frame, no value made a program
+    // between them at the run
+    case mp: Map[r, i, o, x, a] =>
+      if Cont.fused(mp.f) < Cont.MaxFused then Map(mp.m, Cont.Fused[x, A, B](mp.f, f, Cont.fused(mp.f) + 1))
+      else Map(this, f)
+    // a map of an operation's map: its `MapK` the two functions fused
+    case ih: InjectHere[e, t, y, i, o, a] => ih.g match
+      case mk: Cont.MapK[r2, i2, o2, y2, b2] if Cont.fused(mk.f) < Cont.MaxFused =>
+        InjectHere[e, t, y, I, O, B](ih.op, Cont.MapK[R, I, O, y, B](Cont.Fused[y, b2, B](mk.f, f, Cont.fused(mk.f) + 1)))
+      case _ => Map(this, f)
     case _ => Map(this, f)
 
 /** THE ANSWERS MET at a bind, a program's `I`, `O` and its continuation's `I2`, `T`; those of the bind `I3`, `O2`:
@@ -148,6 +160,17 @@ object Cont:
    * answering the operation in place, gives it to the frame on top instead — no `Return` made a map */
   final class MapK[R <: Row, I, O, Y, B](val f: Y => B) extends (Y => Cont[R, I, O, B]):
     def apply(y: Y): Cont[R, I, O, B] = Return(f(y)).asInstanceOf[Cont[R, I, O, B]]
+
+  /** MAPS FUSED where the program is made: `g` after `f`, `n` functions in all. Bounded (`MaxFused`): the composition
+   * calls nest, one host frame a function */
+  final class Fused[X, Y, B](val f: X => Y, val g: Y => B, val n: Int) extends (X => B):
+    def apply(x: X): B = g(f(x))
+  /** the most functions one map holds fused */
+  final val MaxFused = 32
+  /** how many functions `f` holds fused: one, unless it is a `Fused` */
+  def fused(f: AnyRef): Int = f match
+    case fu: Fused[?, ?, ?] => fu.n
+    case _ => 1
 
   /** `a`, a program of effects over any row */
   def pure[R <: Row, A](a: A): A ! R = Return(a)

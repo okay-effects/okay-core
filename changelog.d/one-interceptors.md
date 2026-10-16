@@ -13,6 +13,6 @@
 - The trail an effect: `Audit` (`record`, `trail`), handled outside the interceptors.
 - Tests: `TestIntercept` — the audit of payments (a limit refused, an account normalized, masked in the trail), a
   plain intercept, every operation of a reader, a state and payments told with its answers, a read-only run, an
-  answer told twice under a choice; five programs refused by the compiler. okay-rs's `tests/intercept.rs` the same.
+  answer told twice under a choice; five programs refused by the compiler. okay-rust's `tests/intercept.rs` the same.
 - Measured: A/B against master, two rounds — the mixed program +1.0 %, the kernel's lanes −2.2 … +0.8 %: noise.
 - Docs: `docs/intercept.md` (the account), the guide's *Control and audit* (checked by `TestGuideDoc`).
