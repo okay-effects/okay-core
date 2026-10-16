@@ -18,8 +18,45 @@ import scala.util.control.NonFatal
  * passed, put back on the `Meta` in force where it is resumed. A shift0 goes out the same way, by its path, to its
  * `$`: the handlers between in its `k`. A handler's place is in its type: none past the top but those the top takes */
 object Machine:
-  /** `p`, no effects left: its value */
-  def run[A](p: A ! Pure): A =
+  /** `p`, no effects left: its value. A program whose top is ONE stateful handler (`p.handle(State(s)).run`) runs in a
+   * loop of its own (`stateful`): no level, no top made unless the program needs them */
+  def run[A](p: A ! Pure): A = p match
+    case hs: HandleState[e, t, st, x, i, a, j, o, b] => stateful(hs.h, hs.s, hs.body, hs.k)
+    case _ => machine(p)
+
+  /**
+   * A PROGRAM UNDER ONE STATEFUL HANDLER AT THE TOP (small-runs): its own operations answered in this loop, the state
+   * a parameter, its binds and maps on its own frames — what the machine does for them, without the level, the top and
+   * the trampoline a run of the machine starts with. A node it does not take — a handler inside, control, a guard, a
+   * failure, an operation by its path — hands the run to the machine as it stands: the same `HandleState` the program
+   * would be there, its state, its frames, its body; nothing run twice. A user function's throw is a `Raise` there
+   */
+  @tailrec private def stateful[E[_], S, X, I, A, B](h: Stateful[E, Pure, S, A, B], s: S, c: Cont[E +: Pure, I, Nothing, X],
+      k: Frame[E +: Pure, X, I, A, Nothing]): B = c match
+    case Return(x) => k match
+      case Frame.Bind(f, rest) => stateful(h, s, guarded(f(x)), rest)
+      case Frame.Map(f, rest) => stateful(h, s, guarded(Return(f(x))), rest)
+      case Frame.End() => finish(h.ret(s, x))
+    case b: Bind[r, i, t, o, y, a] => stateful(h, s, b.m, Frame.Bind(b.f, k))
+    case mp: Map[r, i, o, y, a] => stateful(h, s, mp.m, Frame.Map(mp.f, k))
+    case p: PerformHere[e, t, s2, y] =>
+      var next = s
+      val v = guarded { val value = h.value[y](s, p.op); next = h.next(s, p.op); Return[E +: Pure, s2, y](value) }
+      stateful(h, next, v, k)
+    case ih: InjectHere[e, t, y, i, o, a] =>
+      var next = s
+      val v = guarded { val value = h.value[y](s, ih.op); next = h.next(s, ih.op); ih.g(value) }
+      stateful(h, next, v, k)
+    case Defer(p) => stateful(h, s, guarded(p()), k)
+    case _ => machine(HandleState(h, s, k, c): B ! Pure)
+
+  /** a handler's `ret`: a value at once, a program run */
+  private def finish[B](r: B ! Pure): B = r match
+    case Return(b) => b
+    case p => machine(p)
+
+  /** `p` on the machine — not through `run`'s look at its top, which would take a `HandleState` back to `stateful` */
+  private def machine[A](p: A ! Pure): A =
     drive(eval(p, Frame.end, Meta.Top(identity[A], (e: Throwable) => throw e, Out.none[A])))
 
   /** `p` stepped: to its value, or to its first operation of `R` come to the top — given back with its rest */
