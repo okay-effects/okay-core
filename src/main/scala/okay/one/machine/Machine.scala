@@ -334,21 +334,20 @@ object Machine:
    * read at once by `drive`: the loop's own register, never kept, confined to the thread the loop runs on (a run
    * inside a clause, a `resume`, has its own). THE CASTS, and why they are sound: it holds one step at a time, read
    * back at the types it was written at */
-  final class Eff[R <: Row, I, O, A, V, J, Z] private[Machine] () extends Next[Z]:
+  final class Eff[R <: Row, I, O, A, V, J, Z] () extends Next[Z]:
     var c: Cont[R, I, O, A] = scala.compiletime.uninitialized
     var k: Frame[R, A, I, V, J] = scala.compiletime.uninitialized
     var m: Meta[R, V, J, O, Z] = scala.compiletime.uninitialized
-  /** `f` with a fresh register: a run of the loop */
-  private inline def fresh[T](inline f: Bounce ?=> T): T = f(using Eff.bounce())
-  /** a loop's register */
-  type Bounce = Eff[?, ?, ?, ?, ?, ?, ?]
+  /** `f` with no register yet: the loop's first step made one, the loop's own from then (a run that never bounces —
+   * a step to an operation and back — makes none) */
+  private inline def fresh[T](inline f: Bounce ?=> T): T = f(using null)
+  /** a loop's register, `null` before its first step */
+  type Bounce = Eff[?, ?, ?, ?, ?, ?, ?] | Null
   object Eff:
-    /** a fresh register: one a run of the loop */
-    def bounce(): Bounce = new Eff[Pure, Any, Any, Any, Any, Any, Any]()
-    /** the next step, written to the loop's register */
+    /** the next step, written to the loop's register — made, the first */
     inline def apply[R <: Row, I, O, A, V, J, Z](c: Cont[R, I, O, A], k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z])
         (using b: Bounce): Next[Z] =
-      val e = b.asInstanceOf[Eff[R, I, O, A, V, J, Z]]
+      val e = (if b == null then new Eff[R, I, O, A, V, J, Z]() else b).asInstanceOf[Eff[R, I, O, A, V, J, Z]]
       e.c = c; e.k = k; e.m = m
       e
   /** on the way out to a handler taking `k` */
@@ -358,7 +357,8 @@ object Machine:
 
   /** the loop, to the answer */
   @tailrec def drive[Z](n: Next[Z])(using b: Bounce): Z = n match
-    case e: Eff[r, i, o, a, v, j, z] => drive(eval(e.c, e.k, e.m))
+    // the step: its register the loop's from here
+    case e: Eff[r, i, o, a, v, j, z] => drive(eval(e.c, e.k, e.m)(using e))(using e)
     case w: Way[e, y, r, i, o, a, v, j, z] => drive(outE(w.op, w.in, w.g, w.gf, w.k, w.m))
     case d: Done[z] => d.z
 
