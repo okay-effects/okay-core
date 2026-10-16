@@ -67,6 +67,10 @@ are compiled and checked by `TestGuide`).
   effects a given fits tied to its result type. `F`'s effects go to `F`'s handlers, the paths it came with: a
   handler the runner puts inside does not catch them.
 - Handler bodies are deferred (`handleIn`): a handler installed by a recursive call costs no stack (`TestNesting`).
+- `RowEffects[M]` (okay's `Effects`) is the thin layer's face: `!`, `+`, and the primitives `pure`, `perform`,
+  `flatMap`, `handleAt`, `reset`, `shiftAt`/`shift0At` (by path; `shift`/`shift0` the words, the path found where
+  bound, as an `Operation`'s). For `Eff`, `reset` is std `Shift.reset`, a `Delimiting` — the machine's own delimiter
+  (`TestRowControl`); new control goes there, not into another level.
 - The kernel's `flatMap` and `handle` are inline and decide the answers met (`Lifts`) and the handler's kind where
   they are written: never call them from a facade body whose answers or handler type are abstract — resolved there,
   only `Lifts.Up` fits and every bind gets a `Lift` (8333bf3: the mixed program 222 → 353 µs). Forward the evidence
