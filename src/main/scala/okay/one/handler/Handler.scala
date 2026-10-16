@@ -52,6 +52,16 @@ abstract class Aborting[E[_], T <: Row, A, B] extends Taking[E, T, A, B]:
 abstract class Deep[E[_], T <: Row, A, B] extends Taking[E, T, A, B]:
   def apply[X](op: E[X], k: X => B ! T): B ! T
 
+/** A DELIMITER the machine knows (control-thin): a `Deep` of one answer `S` whose clause may run UNDER ITSELF — the
+ * machine puts it straight on the handler's level, no `handle` around it; `k` given there as it is seen under the
+ * handler, `E` at the head, each `k(x)` one node going straight in as the level it was taken from (std `Shift`'s
+ * `reset`, `shift`'s body). `under` null: the clause as a `Deep`'s, `apply` */
+abstract class Delimiting[E[_], T <: Row, S] extends Deep[E, T, S, S]:
+  /** the view of `k` under this handler, `E` absent from `T`: one, its own */
+  private[one] val absent: Removed[E, T, T] = Removed.Absent[E, T]()
+  def ret(a: S): S ! T = Cont.Return(a)
+  def under[X](op: E[X], k: X => S ! (E +: T)): (S ! (E +: T)) | Null
+
 /** a STATE `S`, each operation answered in place: its value and the next state from the state and the operation, `ret`
  * given the last. A register of the machine's: a `k` taken past it has the state as it was then, each time it is
  * resumed */
