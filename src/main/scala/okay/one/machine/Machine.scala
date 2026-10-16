@@ -39,10 +39,19 @@ object Machine:
       case Frame.End() => finish(h.ret(s, x))
     case b: Bind[r, i, t, o, y, a] => stateful(h, s, b.m, Frame.Bind(b.f, k))
     case mp: Map[r, i, o, y, a] => stateful(h, s, mp.m, Frame.Map(mp.f, k))
+    // the value straight into the frame on top, as the machine's own `PerformHere` under a state does
     case p: PerformHere[e, t, s2, y] =>
       var next = s
-      val v = guarded { val value = h.value[y](s, p.op); next = h.next(s, p.op); Return[E +: Pure, s2, y](value) }
-      stateful(h, next, v, k)
+      k match
+        case b: Frame.Bind[r2, x2, i2, t2, a2, v2, j2] =>
+          val v: Cont[E +: Pure, i2, t2, a2] = guarded { val value = h.value[y](s, p.op); next = h.next(s, p.op); b.f(value) }
+          stateful(h, next, v, b.rest)
+        case mf: Frame.Map[r2, x2, i2, a2, v2, j2] =>
+          val v: Cont[E +: Pure, i2, i2, a2] = guarded { val value = h.value[y](s, p.op); next = h.next(s, p.op); Return(mf.f(value)) }
+          stateful(h, next, v, mf.rest)
+        case Frame.End() =>
+          val v = guarded { val value = h.value[y](s, p.op); next = h.next(s, p.op); Return[E +: Pure, s2, y](value) }
+          stateful(h, next, v, k)
     case ih: InjectHere[e, t, y, i, o, a] =>
       var next = s
       val v = guarded { val value = h.value[y](s, ih.op); next = h.next(s, ih.op); ih.g(value) }
