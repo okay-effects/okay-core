@@ -446,7 +446,13 @@ object Machine:
       : Cont[T, J, O, B] =
     try h match
       case a: Answering[e, t, a1, b] => k(a.value[Y](op))
-      case tr: Translating[e, t, a1, b] => Bind(Lift[T, O, Y](tr[Y](op)), k)
+      // the translation attempted: its value the rest's; its error raised WHERE THE OPERATION WAS — `k` failed with it,
+      // the body's guards asked, as if the operation had thrown (not past them, out of the translating handler)
+      case tr: Translating[e, t, a1, b] =>
+        Bind(Lift[T, O, Either[Throwable, Y]](Guarded(Guard.attempt[T, Y], Frame.end, tr[Y](op), Guard.noAnswers)),
+          (r: Either[Throwable, Y]) => r match
+            case Right(y) => k(y)
+            case Left(e) => Fail(k, e))
       case ln: Linear[e, t, a1, b] => ln[J, O, Y](op, k)
     catch case e: Throwable => raised(e)
 

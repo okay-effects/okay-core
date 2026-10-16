@@ -13,6 +13,16 @@ class TestGuard extends munit.FunSuite:
   val boom = RuntimeException("boom")
   def tell[R <: Row](s: String)(using In[W, R]): Unit ! R = Writer.tell[String, R](s)
 
+  test("a translation's error raised where the operation was: a recover in the body under the translating handler sees it") {
+    // `W` translated into a program over the row outside that throws: the body's own recover, inside the handler,
+    // is asked — not skipped by an error going out of the translating handler
+    type R = W +: Pure
+    val failing = new okay.one.handler.Translate[W, Pure, Int]:
+      def apply[X](op: Writer[String, X]): X ! Pure = Cont.defer[Pure, X](throw boom)
+    val body: Int ! R = tell[R]("x").map(_ => 1).recover(e => pure(if e eq boom then 7 else 0))
+    assertEquals(body.handle(failing).run, 7)
+  }
+
   test("ensuring: the finalizer after the program, its value kept") {
     type R = W +: Pure
     val p = tell[R]("body").map(_ => 1).ensure(tell[R]("fin"))

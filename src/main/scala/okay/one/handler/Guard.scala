@@ -26,6 +26,15 @@ abstract class Recovering[T <: Row, A, B] extends Guard[T, A, B]:
   def recover(e: Throwable): (B ! T) | Null
 
 object Guard:
+  private object Attempt extends Recovering[Pure, Any, Either[Throwable, Any]]:
+    def ret(a: Any) = Cont.Return(Right(a))
+    def recover(e: Throwable) = Cont.Return(Left(e))
+  /** a program ATTEMPTED: its value `Right`, its error `Left` — one, it holds nothing */
+  def attempt[T <: Row, A]: Recovering[T, A, Either[Throwable, A]] =
+    Attempt.asInstanceOf[Recovering[T, A, Either[Throwable, A]]]
+  /** the evidence a program of effects has no answers */
+  val noAnswers: Nothing =:= Nothing = summon[Nothing =:= Nothing]
+
   /** what a guard sends out in an operation's place (`op`, of the same effect at the same place), and runs each time
    * the rest is resumed, with a value or an error (`resumed`) */
   final class Out[E[_], X](val op: E[X], val resumed: () => Unit)
