@@ -8,8 +8,8 @@ are its other half, at run time, in the kernel.
 
 Everything here is the kernel's, `okay.one`: `okay.one.row` (`Sensitive`, `Plain`, `Audited`), `okay.one.handler`
 (`Interceptor`, `Pass`, `Observer`, `Seen`), `okay.one.std.Audit` (`audit`, `handleAudited`, `intercept`, `observe`,
-`record`, `trail`). The programs below are `TestIntercept`'s (src/test/scala/okay/one), run there; okay-rs
-(`~/work/my/okay-rs`, `tests/intercept.rs`) has the same programs in Rust. The guide's section *Control and audit*
+`record`, `trail`). The programs below are `TestIntercept`'s (src/test/scala/okay/one), run there; okay-rust
+(`~/work/my/okay-rust`, `tests/intercept.rs`) has the same programs in Rust. The guide's section *Control and audit*
 has a short one, checked by `TestGuideDoc`.
 
 ## Contents
@@ -24,7 +24,7 @@ has a short one, checked by `TestGuideDoc`.
 8. [The machine](#the-machine)
 9. [Cost](#cost)
 10. [Limits, and what is next](#limits-and-what-is-next)
-11. [The same in Rust: okay-rs](#the-same-in-rust-okay-rs)
+11. [The same in Rust: okay-rust](#the-same-in-rust-okay-rust)
 
 ## Three interceptors
 
@@ -307,12 +307,12 @@ rest taken as `k`, a level a time from the operation to the interceptor, and put
 - `Sensitive[E]` is given by the effect's author; an effect defined elsewhere is made sensitive by a given in scope
   where it is handled — the guarantee holds where that given is.
 
-## The same in Rust: okay-rs
+## The same in Rust: okay-rust
 
-okay-rs (`~/work/my/okay-rs`, its `tests/intercept.rs`) has the same five programs and the same refusals, typed the
+okay-rust (`~/work/my/okay-rust`, its `tests/intercept.rs`) has the same five programs and the same refusals, typed the
 Rust way:
 
-| okay-core | okay-rs |
+| okay-core | okay-rust |
 |---|---|
 | `given Sensitive[Pay]` | `impl Effect for Pay { type Kind = Sensitive; }` |
 | `Plain[E]`, its message | `E::Kind: PlainKind`, `#[diagnostic::on_unimplemented]` |
