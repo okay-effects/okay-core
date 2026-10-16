@@ -37,6 +37,7 @@ object Nearest extends NearestLow:
     rm match
       case Removed.Head() => at
       case _: Removed.Absent[e, t] => There(at)
+      case _: Removed.ByKey[e] => There(at)
       case _: Removed.Again[e, r] => There(at)
       case nx: Removed.Next[e, g, r1, t1] => at match
         case There(at1) => relocate(at1, nx.rm) match

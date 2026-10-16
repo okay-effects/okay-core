@@ -118,8 +118,9 @@ enum Cont[R <: Row, I, +O, +A] extends okay.kernel.Prog[A @scala.annotation.unch
     case p: PerformHere[e, t, s, x] => InjectHere[e, t, x, I2, s, B](p.op, f)
     case _ => Bind(this, f)
   def map[B](f: A => B): Cont[R, I, O, B] = this match
-    case p: Perform[r, e, s, x] => Inject[r, e, x, I, O, B](p.op, p.in, (y: x) => Return[r, s, B](f(y)))
-    case p: PerformHere[e, t, s, x] => InjectHere[e, t, x, I, O, B](p.op, (y: x) => Return[R, s, B](f(y)))
+    // an operation mapped: its rest a `MapK` — the machine feeds `f`'s value to the frame on top, no `Return` made
+    case p: Perform[r, e, s, x] => Inject[r, e, x, I, O, B](p.op, p.in, Cont.MapK[r, I, O, x, B](f))
+    case p: PerformHere[e, t, s, x] => InjectHere[e, t, x, I, O, B](p.op, Cont.MapK[R, I, O, x, B](f))
     case _ => Map(this, f)
 
 /** THE ANSWERS MET at a bind, a program's `I`, `O` and its continuation's `I2`, `T`; those of the bind `I3`, `O2`:
@@ -143,6 +144,11 @@ trait LiftsUp:
   inline given up[I2, T]: Lifts.Up[I2, T] = Lifts.Up()
 
 object Cont:
+  /** AN OPERATION'S REST THAT IS A MAP: its answer `f`'s value. As a function, that value a `Return`; the machine,
+   * answering the operation in place, gives it to the frame on top instead — no `Return` made a map */
+  final class MapK[R <: Row, I, O, Y, B](val f: Y => B) extends (Y => Cont[R, I, O, B]):
+    def apply(y: Y): Cont[R, I, O, B] = Return(f(y)).asInstanceOf[Cont[R, I, O, B]]
+
   /** `a`, a program of effects over any row */
   def pure[R <: Row, A](a: A): A ! R = Return(a)
 
@@ -266,6 +272,8 @@ object Cont:
   private def view[E[_], R <: Row, T <: Row, I, O, A](rm: Removed[E, R, T], p: Cont[R, I, O, A])
       : Cont[E +: T, I, O, A] = rm match
     case _: Removed.Head[e, t] => p
+    // at no row, every operation by key: the program as it is, seen over `E +: Pure` with nothing to move (THE CAST)
+    case _: Removed.ByKey[e] => p.asInstanceOf[Cont[E +: T, I, O, A]]
     case _ => View(rm, Machine.Frame.end, p)
 
   /** `p`, a program over `T`, seen over `E +: T`: its operations past the head */

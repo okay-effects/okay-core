@@ -428,11 +428,31 @@ object Machine:
    * `eval` the loop's tail calls */
   private inline def found[E[_], Y, R <: Row, I, O, A, V, J, Z](op: E[Y], in: In[E, R], g: Y => Cont[R, I, O, A],
       k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z]): Next[Z] = lookUp[E, R, Z](in, m) match
-    case a: Answering[e4, t4, v4, b4] => eval(guarded(g(a.value[Y](op))), k, m)
+    case a: Answering[e4, t4, v4, b4] => fed(g, a.value[Y](op), k, m)
     case null => outE(op, in, g, null, k, m)
     case u: Meta.UnderState[e2, t2, s2, v, b, j, v2, j2, o, z] =>
-      eval(guarded { val value = u.h.value[Y](u.s, op); u.s = u.h.next(u.s, op); g(value) }, k, m)
+      fed(g, { val value = u.h.value[Y](u.s, op); u.s = u.h.next(u.s, op); value }, k, m)
     case u: Meta.Under[e2, t2, v, b, n, v2, j2, o2, z] => aborted(u, op, in, g, k, m)
+
+  /** AN OPERATION'S VALUE `v` TO ITS REST `g`, in the loop: a map's (`Cont.MapK`) value straight into the frame on top —
+   * no `Return` made for it; any other rest called. `v` and the map's function user code, under one guard */
+  private inline def fed[Y, R <: Row, I, O, A, V, J, Z](g: Y => Cont[R, I, O, A], inline v: Y, k: Frame[R, A, I, V, J],
+      m: Meta[R, V, J, O, Z]): Next[Z] = g match
+    // THE CASTS, and why they are sound: the map's value is the rest's `A`, which the frame on top takes; the answers
+    // of a map's rest are the operation's own, the same both sides — the types erased to say it once
+    case mk: MapK[?, ?, ?, ?, ?] =>
+      val f0 = mk.f.asInstanceOf[Any => Any]
+      val m0 = m.asInstanceOf[Meta[R, Any, Any, Any, Z]]
+      k.asInstanceOf[Frame[R, Any, Any, Any, Any]] match
+        case b: Frame.Bind[?, ?, ?, ?, ?, ?, ?] =>
+          val fb = b.f.asInstanceOf[Any => Cont[R, Any, Any, Any]]
+          eval[R, Any, Any, Any, Any, Any, Z](guarded(fb(f0(v))), b.rest.asInstanceOf[Frame[R, Any, Any, Any, Any]], m0)
+        case mf: Frame.Map[?, ?, ?, ?, ?, ?] =>
+          val fm = mf.f.asInstanceOf[Any => Any]
+          eval[R, Any, Any, Any, Any, Any, Z](guarded(Return[R, Any, Any](fm(f0(v)))),
+            mf.rest.asInstanceOf[Frame[R, Any, Any, Any, Any]], m0)
+        case k0 => eval[R, Any, Any, Any, Any, Any, Z](guarded(Return[R, Any, Any](f0(v))), k0, m0)
+    case _ => eval(guarded(g(v)), k, m)
 
   /** `found` as a step of its own, out of the loop: for a place made in the loop — an operation at the head seen
    * from outside its handler, or at the top — not worth the loop's room */
@@ -625,10 +645,10 @@ object Machine:
       case _ => foundOff(p.op, In.Here[e, t](), (y: x) => Return[R, s, x](y), k, m)
     case ih: InjectHere[e, t, y, i, o, a] => m match
       case th: Meta.Through[e2, t2, v, b, j, v2, j2, o2, z] => th.h match
-        case a: Answering[e4, t4, v4, b4] => eval(guarded(ih.g(a.value[y](ih.op))), k, m)
+        case a: Answering[e4, t4, v4, b4] => fed(ih.g, a.value[y](ih.op), k, m)
         case h => eval(passing(h, ih.op, Rest.Through(h, k, ih.g, null)), th.k, th.m)
       case u: Meta.UnderState[e2, t2, s2, v, b, j, v2, j2, o2, z] =>
-        eval(guarded { val value = u.h.value[y](u.s, ih.op); u.s = u.h.next(u.s, ih.op); ih.g(value) }, k, m)
+        fed(ih.g, { val value = u.h.value[y](u.s, ih.op); u.s = u.h.next(u.s, ih.op); value }, k, m)
       case u: Meta.Under[e2, t2, v, b, n, v2, j2, o2, z] =>
         eval(clausing(u, ih.op, Rest.Under(u.h, k, ih.g, null, u.none, u.pending)), u.k, u.m)
       case _ => foundOff(ih.op, In.Here[e, t](), ih.g, k, m)

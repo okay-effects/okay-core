@@ -100,11 +100,18 @@ enum Removed[E[_], R <: Row, T <: Row]:
    * the handler's own clauses' operations of `E` go to the handler of `E` outside, at `at`: an interceptor
    * (`local`, `handleWith`). Not a given: by the place, `Removed.again(at)` */
   case Again[E[_], R <: Row](at: In[E, R]) extends Removed[E, R, R]
+  /** none taken, at NO ROW: a program over `Pure` seen over `E +: Pure` as it is — its every operation by key
+   * (`In[F, Pure]` is only `In.At`), so nothing in it is at a path a view would move: no view made. A handler of `E`
+   * at its key around such a program (okay's root, where every program is one). Not a given: `Removed.byKey` */
+  case ByKey[E[_]]() extends Removed[E, Pure, Pure]
 
 object Removed extends RemovedLow:
   given head[E[_], T <: Row](using NotControl[E]): Removed[E, E +: T, T] = Head()
   /** a handler of `E` where `E` is at `at`, the row kept: an interceptor's */
   def again[E[_], R <: Row](at: In[E, R]): Removed[E, R, R] = Again(at)
+  private val theByKey: ByKey[[x] =>> Any] = ByKey()
+  /** none taken at no row: one, it holds nothing */
+  def byKey[E[_]]: Removed[E, Pure, Pure] = theByKey.asInstanceOf[Removed[E, Pure, Pure]]
 
   /** a place in `R` SEEN in `E +: T`, `E` taken out of `R` by `rm` and put first: a handler of `E` at any place in the
    * row is the handler at its head, over the row seen so. `Head`: the place itself, nothing made */
@@ -116,6 +123,7 @@ object Removed extends RemovedLow:
   private def relocated[F[_], E[_], R <: Row, T <: Row](in: In[F, R], rm: Removed[E, R, T]): In[F, E +: T] = rm match
     case Removed.Head() => in
     case _: Removed.Absent[e, t] => In.There(in)
+    case _: Removed.ByKey[e] => In.There(in)
     // the interceptor's own effect, by the place: the head; any other past it, its place as it was
     case ag: Removed.Again[e, r] => In.same(in, ag.at) match
       case null => In.There(in)
@@ -147,6 +155,7 @@ object Located:
 
   private def located[F[_], E[_], R <: Row, T <: Row](in: In[F, R], rm: Removed[E, R, T]): Located[F, E, T] = rm match
     case _: Removed.Absent[e, t] => Theirs(in)
+    case _: Removed.ByKey[e] => Theirs(in)
     case ag: Removed.Again[e, r] => In.same(in, ag.at) match
       case null => Theirs(in)
       case s: In.Same[F, e] => s match { case In.Same.Refl() => Ours() }
