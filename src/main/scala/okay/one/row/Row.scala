@@ -57,6 +57,11 @@ object In extends InLow:
       case Refl() => op
     def in[R <: Row](p: In[E2, R]): In[E1, R] = this match
       case Refl() => p
+  object Same:
+    private val theRefl: Same[[x] =>> Any, [x] =>> Any] = Refl[[x] =>> Any]()
+    /** the one `Refl`, shared — a key found its own, no object made. THE CAST, and why it is sound: `Refl` holds
+     * nothing, and it is answered only where a key told the two effects one (`Handler.at`, `Key.at`) */
+    def refl[E1[_], E2[_]]: Same[E1, E2] = theRefl.asInstanceOf[Same[E1, E2]]
 
   /** a place in `Pure`: none there but `null` — or a place by key, no handler of it in force */
   def absurd[E[_]](in: In[E, Pure]): Nothing = in match
@@ -72,7 +77,7 @@ final class Key[E[_]] private (val ref: AnyRef):
   def place[R <: Row]: In.At[E, R] = In.At(ref)
   /** the place `in` this key's — then its effect this key's: by the ref, one effect's */
   def at[F[_], R <: Row](in: In.At[F, R]): In.Same[E, F] | Null =
-    if in.ref eq ref then In.Same.Refl[E]().asInstanceOf[In.Same[E, F]] else null
+    if in.ref eq ref then In.Same.refl[E, F] else null
   override def toString: String = s"Key($ref)"
 
 object Key:

@@ -15,7 +15,13 @@ sealed abstract class Handler[E[_], T <: Row, A, B]:
    * (okay-kernel's, `okay.core.kernel`) say which keys are theirs, the evidence a `Key`'s (`Key.at`). Its result
    * not written `| Null`: Scala 2 reads the handler classes through TASTy and cannot read a union in a member's
    * result (`scala2/`, a handler of its own) — `null` all the same, matched by the machine */
-  def at[F[_], R <: Row](in: In.At[F, R]): In.Same[E, F] = null
+  def at[F[_], R <: Row](in: In.At[F, R]): In.Same[E, F] =
+    if (keyRef ne null) && (in.ref eq keyRef) then In.Same.refl[E, F] else null
+  /** THE KEY this handler answers, set once where it is installed (`keyed`): the root's programs perform each
+   * effect at a place by key, its constructor's (okay's `KeyOf`) — `null`, none */
+  private var keyRef: AnyRef = null
+  /** this handler answering the places by `key` (set before it is installed; one key a handler) */
+  final def keyed(key: AnyRef): this.type = { keyRef = key; this }
 
 /** a handler with no state: its `ret` of the value only */
 sealed abstract class Stateless[E[_], T <: Row, A, B] extends Handler[E, T, A, B]:
