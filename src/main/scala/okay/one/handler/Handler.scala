@@ -16,12 +16,18 @@ sealed abstract class Handler[E[_], T <: Row, A, B]:
    * not written `| Null`: Scala 2 reads the handler classes through TASTy and cannot read a union in a member's
    * result (`scala2/`, a handler of its own) — `null` all the same, matched by the machine */
   def at[F[_], R <: Row](in: In.At[F, R]): In.Same[E, F] =
-    if (keyRef ne null) && (in.ref eq keyRef) then In.Same.refl[E, F] else null
+    val k = keyRef
+    if (k ne null) && ((in.ref eq k) || (k eq Handler.anyKey)) then In.Same.refl[E, F] else null
   /** THE KEY this handler answers, set once where it is installed (`keyed`): the root's programs perform each
    * effect at a place by key, its constructor's (okay's `KeyOf`) — `null`, none */
   private var keyRef: AnyRef = null
   /** this handler answering the places by `key` (set before it is installed; one key a handler) */
   final def keyed(key: AnyRef): this.type = { keyRef = key; this }
+
+object Handler:
+  /** THE KEY OF ANY PLACE: a handler keyed so answers every operation by key that comes to it — the one handler of a
+   * program's one effect, whatever its key */
+  val anyKey: AnyRef = new AnyRef { override def toString = "Handler.anyKey" }
 
 /** a handler with no state: its `ret` of the value only */
 sealed abstract class Stateless[E[_], T <: Row, A, B] extends Handler[E, T, A, B]:
