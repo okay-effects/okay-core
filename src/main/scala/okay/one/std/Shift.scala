@@ -26,13 +26,17 @@ object Shift:
   def shift[S, T <: Row, X, R <: Row](body: (X => S ! Shifts[S, T] +: T) => S ! Shifts[S, T] +: T)
       (using In[Shifts[S, T], R]): X ! R = perform[Shifts[S, T], R, X](Up(body))
 
-  /** the `reset`: its handler, `Deep` */
-  def reset[S, T <: Row]: Deep[Shifts[S, T], T, S, S] = new Deep[Shifts[S, T], T, S, S]:
+  /** the `reset`: its handler, `Deep` — ONE, shared: it holds nothing (small-runs; a run made one each) */
+  def reset[S, T <: Row]: Deep[Shifts[S, T], T, S, S] = theReset.asInstanceOf[Deep[Shifts[S, T], T, S, S]]
+
+  private val theReset: Reset[Any, Pure] = Reset[Any, Pure]()
+
+  private final class Reset[S, T <: Row] extends Deep[Shifts[S, T], T, S, S]:
+    /** the view of `k` under the body's reset — its two parts holding nothing, made once */
+    private val rm = Removed.Absent[Shifts[S, T], T]()
+    private val end = Machine.Frame.end[T, S, Nothing]
     def ret(a: S) = pure(a)
     def apply[X](op: Shift[S, T, X], k: X => S ! T) = op match
       case Up0(body) => body(k)
       case Up(body) =>
-        // k seen under the body's reset: the view's two parts made once, not at each k
-        val rm = Removed.Absent[Shifts[S, T], T]()
-        val end = Machine.Frame.end[T, S, Nothing]
         body((x: X) => Cont.View[Shifts[S, T], T, T, S, Nothing, S, Nothing, Nothing](rm, end, k(x))).handle(this)
