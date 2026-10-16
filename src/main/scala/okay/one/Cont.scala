@@ -133,6 +133,11 @@ enum Cont[R <: Row, I, +O, +A] extends okay.kernel.Prog[A @scala.annotation.unch
       case mk: Cont.MapK[r2, i2, o2, y2, b2] if Cont.fused(mk.f) < Cont.MaxFused =>
         InjectHere[e, t, y, I, O, B](ih.op, Cont.MapK[R, I, O, y, B](Cont.Fused[y, b2, B](mk.f, f, Cont.fused(mk.f) + 1)))
       case _ => Map(this, f)
+    // the same at a place (okay's root: every operation by key)
+    case ij: Inject[r, e, y, i, o, a] => ij.g match
+      case mk: Cont.MapK[r2, i2, o2, y2, b2] if Cont.fused(mk.f) < Cont.MaxFused =>
+        Inject[r, e, y, I, O, B](ij.op, ij.in, Cont.MapK[r, I, O, y, B](Cont.Fused[y, b2, B](mk.f, f, Cont.fused(mk.f) + 1)))
+      case _ => Map(this, f)
     case _ => Map(this, f)
 
 /** THE ANSWERS MET at a bind, a program's `I`, `O` and its continuation's `I2`, `T`; those of the bind `I3`, `O2`:

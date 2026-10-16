@@ -55,3 +55,11 @@ class TestFused extends munit.FunSuite:
       case other => fail(s"not one MapK: $other")
     assertEquals(p.handle(choose).run, List(10, 20))
 
+
+  test("an operation BY KEY mapped twice (okay's root): its MapK the functions fused; the handler at its key answers"):
+    val key = Key.fresh[Choose]()
+    val p = perform[Choose, Pure, Boolean](Choose.Flip)(using key.place[Pure]).map(b => if b then 1 else 2).map(_ * 10)
+    p match
+      case Inject(_, _, mk: Cont.MapK[?, ?, ?, ?, ?]) => assert(mk.f.isInstanceOf[Cont.Fused[?, ?, ?]])
+      case other => fail(s"not one MapK: $other")
+    assertEquals(p.handle(choose[Pure, Int].keyed(key.ref))(using Removed.byKey[Choose]).run, List(10, 20))
