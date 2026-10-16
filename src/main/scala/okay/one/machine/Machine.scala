@@ -56,8 +56,47 @@ object Machine:
       var next = s
       val v = guarded { val value = h.value[y](s, ih.op); next = h.next(s, ih.op); ih.g(value) }
       stateful(h, next, v, k)
+    // an operation BY KEY, the handler's own (okay's root: every operation by key): as the head's. THE CASTS, and why
+    // they are sound: the handler said the key is its own (`at`), so the operation is one of `E`'s, its answer `y`
+    case p: Perform[r, e, s2, y] if ownKey(h, p.in) =>
+      var next = s
+      val op = p.op.asInstanceOf[E[y]]
+      k match
+        case b: Frame.Bind[r2, x2, i2, t2, a2, v2, j2] =>
+          val v: Cont[E +: Pure, i2, t2, a2] =
+            guarded { val value = h.value[y](s, op); next = h.next(s, op); b.f(value.asInstanceOf[x2]) }
+          stateful(h, next, v, b.rest)
+        case mf: Frame.Map[r2, x2, i2, a2, v2, j2] =>
+          val v: Cont[E +: Pure, i2, i2, a2] =
+            guarded { val value = h.value[y](s, op); next = h.next(s, op); Return(mf.f(value.asInstanceOf[x2])) }
+          stateful(h, next, v, mf.rest)
+        case Frame.End() =>
+          val v = guarded { val value = h.value[y](s, op); next = h.next(s, op); Return[E +: Pure, I, X](value.asInstanceOf[X]) }
+          stateful[E, S, X, I, A, B](h, next, v, k)
+    case ij: Inject[r, e, y, i, o, a] if ownKey(h, ij.in) =>
+      var next = s
+      val op = ij.op.asInstanceOf[E[y]]
+      val g = ij.g.asInstanceOf[y => Cont[E +: Pure, I, Nothing, X]]
+      g match
+        // a map's rest: its value into the frame on top, no `Return`
+        case mk: Cont.MapK[?, ?, ?, ?, ?] => k match
+          case b: Frame.Bind[r2, x2, i2, t2, a2, v2, j2] =>
+            val f0 = mk.f.asInstanceOf[y => x2]
+            val v = guarded { val value = h.value[y](s, op); next = h.next(s, op); b.f(f0(value)) }
+            stateful(h, next, v.asInstanceOf[Cont[E +: Pure, i2, Nothing, a2]], b.rest)
+          case _ =>
+            val v = guarded { val value = h.value[y](s, op); next = h.next(s, op); g(value) }
+            stateful(h, next, v, k)
+        case _ =>
+          val v = guarded { val value = h.value[y](s, op); next = h.next(s, op); g(value) }
+          stateful(h, next, v, k)
     case Defer(p) => stateful(h, s, guarded(p()), k)
     case _ => machine(HandleState(h, s, k, c): B ! Pure)
+
+  /** the place `in` by the key of `h`'s own */
+  private def ownKey[E[_]](h: Stateful[E, ?, ?, ?, ?], in: In[?, ?]): Boolean = in match
+    case at: In.At[f, r] => h.at[f, r](at) ne null
+    case _ => false
 
   /** a handler's `ret`: a value at once, a program run */
   private def finish[B](r: B ! Pure): B = r match
@@ -66,19 +105,19 @@ object Machine:
 
   /** `p` on the machine — not through `run`'s look at its top, which would take a `HandleState` back to `stateful` */
   private def machine[A](p: A ! Pure): A =
-    drive(eval(p, Frame.end, Meta.Top(identity[A], (e: Throwable) => throw e, Out.none[A])))
+    fresh(drive(eval(p, Frame.end, Meta.Top(identity[A], (e: Throwable) => throw e, Out.none[A]))))
 
   /** `p` stepped: to its value, or to its first operation of `R` come to the top — given back with its rest */
   def stepped[R <: Row, A](p: A ! R): Step[R, A] =
-    drive(eval(p, Frame.end, Meta.Top((a: A) => Step.Done(a),
+    fresh(drive(eval(p, Frame.end, Meta.Top((a: A) => Step.Done(a),
       (e: Throwable) => if e eq Cancelled then Step.Cancelled() else Step.Failed(e),
       Out.Given[R, Step[R, A]]([E[_], Y] => (op: E[Y], in: In[E, R], resume: Y => Step[R, A],
-        fail: Throwable => Step[R, A], cancel: () => Step[R, A]) => Step.Yield(op, in, Step.Resume(resume, fail, cancel))))))
+        fail: Throwable => Step[R, A], cancel: () => Step[R, A]) => Step.Yield(op, in, Step.Resume(resume, fail, cancel)))))))
 
   /** `p` run to its value or its first operation of `R` come to the top — handed out as one object, the rest the
    * machine's own frames and levels: the light form of `stepped` for a driver that pulls (a stream, an iterator) */
   def head[R <: Row, A](p: A ! R): Head[R, A] =
-    drive(eval(p, Frame.end, Meta.Top[R, A, Head[R, A]]((a: A) => Head.Done(a), (e: Throwable) => throw e, Out.Paused[R, A]())))
+    fresh(drive(eval(p, Frame.end, Meta.Top[R, A, Head[R, A]]((a: A) => Head.Done(a), (e: Throwable) => throw e, Out.Paused[R, A]()))))
 
   /** A PROGRAM AT ITS HEAD: its value, or an operation of `R` paused with the rest — resumed with the operation's
    * value, or failed where it was; any number of times, each a run of its own */
@@ -89,11 +128,11 @@ object Machine:
         g: Y => Cont[R, I, O, B], gf: Fails[Cont[R, I, O, B]] | Null, k: Frame[R, B, I, V, J],
         top: Meta.Top[R, V, Head[R, A]]) extends Head[R, A]:
       /** the rest with the operation's value */
-      def resume(y: Y): Head[R, A] = drive(eval[R, I, O, B, V, J, Head[R, A]](guarded(g(y)), k,
-        top.asInstanceOf[Meta[R, V, J, O, Head[R, A]]]))
+      def resume(y: Y): Head[R, A] = fresh(drive(eval[R, I, O, B, V, J, Head[R, A]](guarded(g(y)), k,
+        top.asInstanceOf[Meta[R, V, J, O, Head[R, A]]])))
       /** the rest with an error raised where the operation was: its levels' guards asked */
-      def fail(e: Throwable): Head[R, A] = drive(eval[R, I, O, B, V, J, Head[R, A]](failed(gf, e), k,
-        top.asInstanceOf[Meta[R, V, J, O, Head[R, A]]]))
+      def fail(e: Throwable): Head[R, A] = fresh(drive(eval[R, I, O, B, V, J, Head[R, A]](failed(gf, e), k,
+        top.asInstanceOf[Meta[R, V, J, O, Head[R, A]]])))
 
   // THE DATA
 
@@ -174,7 +213,7 @@ object Machine:
     case _ => false
 
   /** a mask left: a cancel asked under it fired, if no mask is left outside it — unwound from outside it */
-  private def maskLeft[T <: Row, V, B, J, V2, J2, O, Z](u: Meta.UnderGuard[T, V, B, J, V2, J2, O, Z], v: V, up: J <:< O): Next[Z] =
+  private def maskLeft[T <: Row, V, B, J, V2, J2, O, Z](u: Meta.UnderGuard[T, V, B, J, V2, J2, O, Z], v: V, up: J <:< O)(using b: Bounce): Next[Z] =
     if cancelAsked(u.m) then Eff[T, J2, O, V2, V2, J2, Z](Raise(Cancelled), Frame.end, u.m)
     else Eff[T, J, O, B, V2, J2, Z](left(u, v, up), u.k, u.m)
 
@@ -291,15 +330,34 @@ object Machine:
 
   /** what a step of the loop hands on: the next, the way out of an operation, or the answer */
   sealed abstract class Next[+Z]
-  final class Eff[R <: Row, I, O, A, V, J, Z](val c: Cont[R, I, O, A], val k: Frame[R, A, I, V, J],
-      val m: Meta[R, V, J, O, Z]) extends Next[Z]
+  /** THE NEXT STEP of the loop, a program at its frames and levels — ONE a loop (`Bounce`), written at each step and
+   * read at once by `drive`: the loop's own register, never kept, confined to the thread the loop runs on (a run
+   * inside a clause, a `resume`, has its own). THE CASTS, and why they are sound: it holds one step at a time, read
+   * back at the types it was written at */
+  final class Eff[R <: Row, I, O, A, V, J, Z] private[Machine] () extends Next[Z]:
+    var c: Cont[R, I, O, A] = scala.compiletime.uninitialized
+    var k: Frame[R, A, I, V, J] = scala.compiletime.uninitialized
+    var m: Meta[R, V, J, O, Z] = scala.compiletime.uninitialized
+  /** `f` with a fresh register: a run of the loop */
+  private inline def fresh[T](inline f: Bounce ?=> T): T = f(using Eff.bounce())
+  /** a loop's register */
+  type Bounce = Eff[?, ?, ?, ?, ?, ?, ?]
+  object Eff:
+    /** a fresh register: one a run of the loop */
+    def bounce(): Bounce = new Eff[Pure, Any, Any, Any, Any, Any, Any]()
+    /** the next step, written to the loop's register */
+    inline def apply[R <: Row, I, O, A, V, J, Z](c: Cont[R, I, O, A], k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z])
+        (using b: Bounce): Next[Z] =
+      val e = b.asInstanceOf[Eff[R, I, O, A, V, J, Z]]
+      e.c = c; e.k = k; e.m = m
+      e
   /** on the way out to a handler taking `k` */
   final class Way[E[_], Y, R <: Row, I, O, A, V, J, Z](val op: E[Y], val in: In[E, R], val g: Y => Cont[R, I, O, A],
       val gf: Fails[Cont[R, I, O, A]] | Null, val k: Frame[R, A, I, V, J], val m: Meta[R, V, J, O, Z]) extends Next[Z]
   final class Done[Z](val z: Z) extends Next[Z]
 
   /** the loop, to the answer */
-  @tailrec def drive[Z](n: Next[Z]): Z = n match
+  @tailrec def drive[Z](n: Next[Z])(using b: Bounce): Z = n match
     case e: Eff[r, i, o, a, v, j, z] => drive(eval(e.c, e.k, e.m))
     case w: Way[e, y, r, i, o, a, v, j, z] => drive(outE(w.op, w.in, w.g, w.gf, w.k, w.m))
     case d: Done[z] => d.z
@@ -328,7 +386,7 @@ object Machine:
 
   /** AN ERROR RAISED: the frames of each level dropped, the levels unwound innermost first — a state's register gone
    * with its level — to the top, its answer to it */
-  @tailrec private def unwind[Z](e: Throwable, m: Meta[?, ?, ?, ?, Z]): Next[Z] = m match
+  @tailrec private def unwind[Z](e: Throwable, m: Meta[?, ?, ?, ?, Z])(using b: Bounce): Next[Z] = m match
     case u: Meta.Under[e2, t, v, b, n, v2, j2, o2, z] => e match
       case to: AbortTo => u.pending match
         case p if p eq to.pending => Eff(u.none.flip.liftCo[[x] =>> Cont[t, x, Nothing, b]](p), u.k, u.m)
@@ -427,7 +485,7 @@ object Machine:
    * for it; an abort, the levels between dropped; else out to its handler, `outE`. Inlined into the loop: its calls of
    * `eval` the loop's tail calls */
   private inline def found[E[_], Y, R <: Row, I, O, A, V, J, Z](op: E[Y], in: In[E, R], g: Y => Cont[R, I, O, A],
-      k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z]): Next[Z] = lookUp[E, R, Z](in, m) match
+      k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z])(using b: Bounce): Next[Z] = lookUp[E, R, Z](in, m) match
     case a: Answering[e4, t4, v4, b4] => fed(g, a.value[Y](op), k, m)
     case null => outE(op, in, g, null, k, m)
     case u: Meta.UnderState[e2, t2, s2, v, b, j, v2, j2, o, z] =>
@@ -437,7 +495,7 @@ object Machine:
   /** AN OPERATION'S VALUE `v` TO ITS REST `g`, in the loop: a map's (`Cont.MapK`) value straight into the frame on top —
    * no `Return` made for it; any other rest called. `v` and the map's function user code, under one guard */
   private inline def fed[Y, R <: Row, I, O, A, V, J, Z](g: Y => Cont[R, I, O, A], inline v: Y, k: Frame[R, A, I, V, J],
-      m: Meta[R, V, J, O, Z]): Next[Z] = g match
+      m: Meta[R, V, J, O, Z])(using b: Bounce): Next[Z] = g match
     // THE CASTS, and why they are sound: the map's value is the rest's `A`, which the frame on top takes; the answers
     // of a map's rest are the operation's own, the same both sides — the types erased to say it once
     case mk: MapK[?, ?, ?, ?, ?] =>
@@ -457,7 +515,7 @@ object Machine:
   /** `found` as a step of its own, out of the loop: for a place made in the loop — an operation at the head seen
    * from outside its handler, or at the top — not worth the loop's room */
   private def foundOff[E[_], Y, R <: Row, I, O, A, V, J, Z](op: E[Y], in: In[E, R], g: Y => Cont[R, I, O, A],
-      k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z]): Next[Z] = lookUp[E, R, Z](in, m) match
+      k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z])(using b: Bounce): Next[Z] = lookUp[E, R, Z](in, m) match
     case a: Answering[e4, t4, v4, b4] => Eff(guarded(g(a.value[Y](op))), k, m)
     case null => outE(op, in, g, null, k, m)
     case u: Meta.UnderState[e2, t2, s2, v, b, j, v2, j2, o, z] =>
@@ -469,7 +527,7 @@ object Machine:
    * pending. Any other handler there: out to it the usual way */
   private def aborted[E[_], T <: Row, V, B, N, V2, J2, O2, Z, Y, R <: Row, I, O, A, V1, J1, Z1 <: Z](
       u: Meta.Under[E, T, V, B, N, V2, J2, O2, Z1], op: E[Y], in: In[E, R], g: Y => Cont[R, I, O, A],
-      k: Frame[R, A, I, V1, J1], m: Meta[R, V1, J1, O, Z]): Next[Z] = u.h match
+      k: Frame[R, A, I, V1, J1], m: Meta[R, V1, J1, O, Z])(using b: Bounce): Next[Z] = u.h match
     case ab: Aborting[e4, t4, v4, b4] =>
       if guardsTo(m, u) then
         val p = guarded(ab.abort[Y](op))
@@ -543,14 +601,14 @@ object Machine:
   /** a handler taking the rest, its own operation at its level: a delimiter's clause on the level as it stands, else
    * the clause outside it */
   private def taken[E[_], T <: Row, V, B, N, V2, J2, O2, Z, Y](u: Meta.Under[E, T, V, B, N, V2, J2, O2, Z], op: E[Y],
-      k: Rest[Y, T, N, N, B]): Next[Z] =
+      k: Rest[Y, T, N, N, B])(using b: Bounce): Next[Z] =
     val p = delimited(u.h, u.none, op, k)
     if p == null then Eff(clausing(u, op, k), u.k, u.m)
     else Eff(p.nn, Frame.end, Meta.Under(u.h, u.k, u.m, u.none, null))
 
   /** the same at a handler's level merged with its view */
   private def takenViewed[E[_], T <: Row, V, B, N, F[_], T2 <: Row, V2, J2, O2, Z, Y](
-      u: Meta.UnderViewed[E, T, V, B, N, F, T2, V2, J2, O2, Z], op: E[Y], k: Rest[Y, T, N, N, B]): Next[Z] =
+      u: Meta.UnderViewed[E, T, V, B, N, F, T2, V2, J2, O2, Z], op: E[Y], k: Rest[Y, T, N, N, B])(using b: Bounce): Next[Z] =
     val p = delimited(u.h, u.none, op, k)
     if p == null then Eff(clause(u.h, u.none, op, k), Frame.end, Meta.UnderView(u.rm, u.k, u.m))
     else Eff(p.nn, Frame.end, Meta.UnderViewed(u.h, u.rm, u.k, u.m, u.none, null))
@@ -583,7 +641,7 @@ object Machine:
   // THE LOOP
 
   @tailrec def eval[R <: Row, I, O, A, V, J, Z](c: Cont[R, I, O, A], k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z])
-      : Next[Z] = c match
+      (using b: Bounce): Next[Z] = c match
     case Return(a) => k match
       case Frame.Bind(f, rest) => eval(guarded(f(a)), rest, m)
       case mf: Frame.Map[r, x, i, a1, v, j] => mf.rest match
@@ -679,7 +737,7 @@ object Machine:
    * nothing between it and the view — a shift's `k` in its body — put back as ONE level, `UnderViewed`; else as it
    * is, the view's level and the rest under it */
   private def viewing[R <: Row, I, O, A, V, J, Z](c: Cont[R, I, O, A], k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z])
-      : Next[Z] = c match
+      (using b: Bounce): Next[Z] = c match
     case v: View[e, r, t, x, i, a, j, o] => v.body match
       case rs: Resume[y, r2, i2, o2, b2] => rs.c match
         case cn: Rest.Under[y3, e2, t2, x2, i3, a2, b3, n] => v.k match
@@ -693,7 +751,7 @@ object Machine:
     case _ => Eff(c, k, m)
 
   /** the rest of the nodes, out of the loop — control's, a view's, a guard's, a failure's: each a step of its own */
-  private def rare[R <: Row, I, O, A, V, J, Z](c: Cont[R, I, O, A], k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z]): Next[Z] =
+  private def rare[R <: Row, I, O, A, V, J, Z](c: Cont[R, I, O, A], k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z])(using b: Bounce): Next[Z] =
     c match
       case v: View[e, r, t, x, i, a, j, o] => Eff(v.body, v.k, Meta.UnderView(v.rm, k, m))
       // a delimiter's `k` resumed under it: the rest's outermost level, its handler, merged with the view
@@ -716,7 +774,7 @@ object Machine:
       case _ => Eff(c, k, m)
 
   /** a value at the bottom of a level not a handler's: a view's, a lift's, a `$`'s, a guard's */
-  private def bottom[R <: Row, V, J, O, Z](a: V, m: Meta[R, V, J, O, Z], up: J <:< O): Next[Z] = m match
+  private def bottom[R <: Row, V, J, O, Z](a: V, m: Meta[R, V, J, O, Z], up: J <:< O)(using b: Bounce): Next[Z] = m match
     case l: Meta.Lifted[r, a2, s, v, j, o, z] => Eff[r, s, o, a2, v, j, Z](l.up.liftCo[[x] =>> Cont[r, s, x, a2]](Return(a)), l.k, l.m)
     case d: Meta.Dollar[t, a2, j, i2, o2, b, v2, j2, z] =>
       try
@@ -752,7 +810,7 @@ object Machine:
 
   /** a `k` resumed, its outermost level one not a handler's: put back, the rest under it */
   private def resumed[Y, T <: Row, I, O, B, V, J, O2 >: O, Z](rs: Resume[Y, T, I, O, B], k: Frame[T, B, I, V, J],
-      m: Meta[T, V, J, O2, Z]): Next[Z] = rs.c match
+      m: Meta[T, V, J, O2, Z])(using b: Bounce): Next[Z] = rs.c match
     case cn: Rest.UnderViewed[y2, e, t2, x, i2, a, b2, n, f, t3] =>
       Eff[e +: t2, i2, n, x, a, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.UnderViewed(cn.h, cn.rm, k, m, cn.none, cn.pending))
     case cn: Rest.UnderView[y2, e, r, t2, x, i2, a, j, o2] =>
@@ -776,7 +834,7 @@ object Machine:
 
   /** a `k` failed: its outermost level put back, then the error raised inside the rest — its own levels, or here */
   private def failIn[T <: Row, I, O, B, V, J, O2 >: O, Z](fl: Fail[T, I, O, B], k: Frame[T, B, I, V, J],
-      m: Meta[T, V, J, O2, Z]): Next[Z] = fl.c match
+      m: Meta[T, V, J, O2, Z])(using b: Bounce): Next[Z] = fl.c match
     case cn: Rest.UnderViewed[y, e, t2, x, i2, a, b2, n, f, t3] =>
       Eff[e +: t2, i2, n, x, a, n, Z](failed(cn.fails, fl.e), cn.k, Meta.UnderViewed(cn.h, cn.rm, k, m, cn.none, cn.pending))
     case cn: Rest.Under[y, e, t2, x, i2, a, b2, n] =>
@@ -805,7 +863,7 @@ object Machine:
    * `Rest`; at the handler's level, its clause with it — the state there; at the top, given back. Each step a tail
    * call */
   @tailrec private def outE[E[_], Y, R <: Row, I, O, A, V, J, Z](op: E[Y], in: In[E, R], g: Y => Cont[R, I, O, A],
-      gf: Fails[Cont[R, I, O, A]] | Null, k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z]): Next[Z] = m match
+      gf: Fails[Cont[R, I, O, A]] | Null, k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z])(using b: Bounce): Next[Z] = m match
     case u: Meta.Under[e, t, v, b, n, v2, j2, o2, z] => in match
       case In.Here() => 
         if u.h.isInstanceOf[Delimiting[?, ?, ?]] then taken(u, op, Rest.Under(u.h, k, g, gf, u.none, u.pending))
@@ -917,7 +975,7 @@ object Machine:
    * return, and its `k` cannot be resumed — there is no level to resume it under — so it raises */
   @tailrec private def shifted[T <: Row, I1, O1, X1, Y, R <: Row, X, I, O, V, J, Z](at: Nearest[T, R],
       f: (Y => Cont[T, I1, O1, X1]) => O, g: Y => Cont[R, I, Cont[T, I1, O1, X1], X],
-      gf: Fails[Cont[R, I, Cont[T, I1, O1, X1], X]] | Null, k: Frame[R, X, I, V, J], m: Meta[R, V, J, O, Z]): Next[Z] =
+      gf: Fails[Cont[R, I, Cont[T, I1, O1, X1], X]] | Null, k: Frame[R, X, I, V, J], m: Meta[R, V, J, O, Z])(using b: Bounce): Next[Z] =
     m match
       case th: Meta.Through[e, t, v, b, j, v2, j2, o, z] => at match
         case Nearest.There(at1) =>
@@ -953,7 +1011,7 @@ object Machine:
       case t: Meta.Top[r, v, z] => never(f, m)
 
   /** a shift0 whose body cannot return: `f` given a `k` that raises */
-  private def never[T <: Row, I1, O1, X1, Y, Z](f: (Y => Cont[T, I1, O1, X1]) => Nothing, m: Meta[?, ?, ?, ?, Z]): Next[Z] =
+  private def never[T <: Row, I1, O1, X1, Y, Z](f: (Y => Cont[T, I1, O1, X1]) => Nothing, m: Meta[?, ?, ?, ?, Z])(using b: Bounce): Next[Z] =
     try f((y: Y) => Raise[T, I1, O1, X1](IllegalStateException(
       "a shift0 with no answer, under a handler taking the rest or a lift: its k resumed")))
     catch case e: Throwable if raisable(e) => unwind(e, m)

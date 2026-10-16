@@ -20,6 +20,17 @@ class TestStatefulRun extends munit.FunSuite:
     assertEquals(right(100000).handle(state(5)).run, (100005, 100005))
   }
 
+  test("operations BY KEY at no row, the handler at its key (okay's root): the same loop, maps and binds, 100 000 each") {
+    val key = Key.fresh[St]()
+    def kget: Int ! Pure = perform[St, Pure, Int](St.Get)(using key.place[Pure])
+    def kput(n: Int): Unit ! Pure = perform[St, Pure, Unit](St.Put(n))(using key.place[Pure])
+    def right(i: Int): Int ! Pure = if i == 0 then kget else kget.flatMap(s => kput(s + 1)).flatMap(_ => right(i - 1))
+    def mapped(i: Int): Int ! Pure = if i == 0 then kget else kget.map(_ + 1).flatMap(_ => mapped(i - 1))
+    def run[A](p: A ! Pure): (Int, A) = p.handle(state[Pure, A](3).keyed(key.ref))(using Removed.byKey[St]).run
+    assertEquals(run(right(100000)), (100003, 100003))
+    assertEquals(run(mapped(100000)), (3, 3))
+  }
+
   test("a handler inside: the machine entered there, the state as it was, the rest of the run on the machine") {
     type SL = Log +: St +: Pure
     val p: Int ! S = get.flatMap(s => put(s + 10)).flatMap { _ =>
