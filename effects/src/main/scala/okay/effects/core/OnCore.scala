@@ -4,7 +4,7 @@ import okay.one.{Cont, Delim}
 import okay.one.row.Nearest
 import okay.one.handler.{Answering, Deep, Stateful, Translate}
 import okay.one.row.{+:, In, Plain, Pure, Removed, Row}
-import okay.effects.{Delimited, Effects}
+import okay.effects.{Delimited, Runner}
 
 /**
  * okay-simple's interface ON OKAY-CORE'S MACHINE, by okay-core's public API: a program is okay-core's own `Cont`,
@@ -14,7 +14,7 @@ import okay.effects.{Delimited, Effects}
  * `Stateful` (the machine's register), installed by okay-core's `handle` at its `Removed` — the effect taken from
  * its place at once. A `split` on its own, or an `embed`, is a handler translating each operation to its new place.
  */
-private[core] class OnCore extends Effects {
+private[core] class OnCore extends Runner {
   type AnyOp[X] = Any
   type P[A] = Cont[Row, Nothing, Nothing, A]
   type Place = okay.one.row.In[AnyOp, Row]
