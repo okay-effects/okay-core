@@ -679,6 +679,11 @@ object Machine:
                   case r => eval(cn.none.flip.liftCo[[x] =>> Cont[t3, x, Nothing, b3]](r), Frame.Bind(b.f, k), m)
               case _ => eval[e +: t3, i3, n, x2, a1, n, Z](body, cn.k, Meta.Under(cn.h, Frame.Bind(b.f, k), m, cn.none, cn.pending))
           case _ => eval[e +: t3, i3, n, x2, a1, n, Z](guarded(cn.inner(rs.y)), cn.k, Meta.Under(cn.h, Frame.Bind(b.f, k), m, cn.none, cn.pending))
+        // a `$` resumed, bound (native-thin): its rest a value, nothing after it — the `$`'s `ret`, its answer the
+        // program bound here, no level entered for it
+        case cn: Rest.UnderDollar[y2, t3, x2, i3, a1, j, i4, o4, b3] => cn.k match
+          case Frame.End() => resumedDollar(cn, rs.y, b.f, k, m)
+          case _ => eval(b.m, Frame.Bind(b.f, k), m)
         case _ => eval(b.m, Frame.Bind(b.f, k), m)
       case _ => eval(b.m, Frame.Bind(b.f, k), m)
     case mp: Map[r, i, o, x, a] => mp.m match
@@ -760,6 +765,25 @@ object Machine:
       case _ => Eff(Resume(rv.c, rv.y), Frame.end, Meta.UnderView(rv.rm, k, m))
     case _ => Eff(c, k, m)
 
+  /** A `$` RESUMED AND BOUND, its frames none (native-thin): the rest a value — the `$`'s `ret` its answer, the
+   * program bound to `f` here, no `$` entered for it; else the `$` put back, the bind outside it */
+  private def resumedDollar[Y, T <: Row, X, I, A, J, I2, O2, B, I3, A3, V, J3, O4 >: O2, Z](
+      cn: Rest.UnderDollar[Y, T, X, I, A, J, I2, O2, B], y: Y, f: B => Cont[T, I3, I2, A3], k: Frame[T, A3, I3, V, J3],
+      m: Meta[T, V, J3, O4, Z])(using b: Bounce): Next[Z] =
+    val body: Cont[Control[T] +: T, I, Cont[T, I2, O2, B], X] =
+      try cn.inner(y) catch case err: Throwable => raised(err)
+    cn.k match
+      case Frame.End() => body match
+        case Return(v) =>
+          val p: Cont[T, I2, O2, B] = try cn.ret(v) catch case err: Throwable => raised(err)
+          p match
+            case Return(bv) =>
+              val c: Cont[T, I3, O4, A3] = guarded(f(bv))
+              Eff(c, k, m)
+            case _ => Eff(p, Frame.Bind(f, k), m)
+        case _ => Eff(body, cn.k, Meta.Dollar(cn.ret, Frame.Bind(f, k), m))
+      case _ => Eff(body, cn.k, Meta.Dollar(cn.ret, Frame.Bind(f, k), m))
+
   /** the rest of the nodes, out of the loop — control's, a view's, a guard's, a failure's: each a step of its own */
   private def rare[R <: Row, I, O, A, V, J, Z](c: Cont[R, I, O, A], k: Frame[R, A, I, V, J], m: Meta[R, V, J, O, Z])(using b: Bounce): Next[Z] =
     c match
@@ -772,6 +796,7 @@ object Machine:
       // a shift0: out to its `$` as an operation goes out to its handler, the levels passed into its `k`
       case s: Shift0[r, t, i1, o1, x1, o, a] =>
         shifted(s.at, s.f, (y: a) => Return[r, Cont[t, i1, o1, x1], a](y), null, k, m)
+      case s: Shift0K[r, t, i1, o1, x1, o, a, i, b] => shifted(s.at, s.f, s.g, null, k, m)
       case g: Guarded[t, x, i, a, j, o, b] => Eff(g.body, g.k, Meta.UnderGuard(g.g, k, m, g.none))
       case o: Observed[t, x, i, a, b] => Eff(o.body, o.k, Meta.UnderObserve(o.o, k, m, summon[I =:= Nothing]))
       case fl: Fail[t, i, o, b] => failIn(fl, k, m)

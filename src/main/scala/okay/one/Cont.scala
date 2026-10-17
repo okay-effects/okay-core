@@ -89,6 +89,10 @@ enum Cont[R <: Row, I, +O, +A] extends okay.kernel.Prog[A @scala.annotation.unch
    * `k` — `T` the row outside the `$`, `k`'s; the answer turned from the rest's to what `f` makes */
   case Shift0[R <: Row, T <: Row, I1, O1, X1, O, A](at: Nearest[T, R], f: (A => Cont[T, I1, O1, X1]) => O)
       extends Cont[R, Cont[T, I1, O1, X1], O, A]
+  /** a shift0 and its rest, bound or mapped where it is made (native-thin): `g` the innermost of the `k` it takes,
+   * no frame for it — as `Inject` is an operation's */
+  case Shift0K[R <: Row, T <: Row, I1, O1, X1, O, A, I, B] private[one] (at: Nearest[T, R],
+      f: (A => Cont[T, I1, O1, X1]) => O, g: A => Cont[R, I, Cont[T, I1, O1, X1], B]) extends Cont[R, I, O, B]
   /** `$`: `body` under it, its value through `ret`; its answer a program over the row outside, run there */
   case Dollar[T <: Row, I, I2, O2, B, A](body: Cont[Control[T] +: T, I, Cont[T, I2, O2, B], A], ret: A => I)
       extends Cont[T, I2, O2, B]
@@ -118,6 +122,8 @@ enum Cont[R <: Row, I, +O, +A] extends okay.kernel.Prog[A @scala.annotation.unch
     case p: PerformHere[e, t, s, x] => InjectHere[e, t, x, I2, s, B](p.op, f)
     // a bind of a map: one bind, the map's function before the rest — no frame, no value made a program between them
     case mp: Map[r, i, o, x, a] => Bind(mp.m, Cont.Fused[x, A, Cont[R, I2, I, B]](mp.f, f, Cont.fused(mp.f) + 1))
+    // a shift0 bound: the bind its rest, no frame
+    case s: Shift0[r, t, i1, o1, x1, o, a] => Shift0K[R, t, i1, o1, x1, o, A, I2, B](s.at, s.f, f)
     case _ => Bind(this, f)
   def map[B](f: A => B): Cont[R, I, O, B] = this match
     // an operation mapped: its rest a `MapK` — the machine feeds `f`'s value to the frame on top, no `Return` made.
@@ -134,6 +140,14 @@ enum Cont[R <: Row, I, +O, +A] extends okay.kernel.Prog[A @scala.annotation.unch
     case mp: Map[r, i, o, x, a] =>
       if Cont.fused(mp.f) < Cont.MaxFused then Map(mp.m, Cont.Fused[x, A, B](mp.f, f, Cont.fused(mp.f) + 1))
       else Map(this, f)
+    // a shift0 mapped: the map its rest, a `MapK`, no frame
+    case s: Shift0[r, t, i1, o1, x1, o, a] => Shift0K[R, t, i1, o1, x1, o, A, I, B](s.at, s.f, Cont.MapK[R, I, I, A, B](f))
+    // a map of a shift0's map: its `MapK` the two functions fused
+    case s: Shift0K[r, t, i1, o1, x1, o, a, i, b] => s.g match
+      case mk: Cont.MapK[r2, i2, o2, y2, b2] if Cont.fused(mk.f) < Cont.MaxFused =>
+        Shift0K[R, t, i1, o1, x1, o, a, I, B](s.at, s.f, Cont.MapK[R, I, Cont[t, i1, o1, x1], a, B](
+          Cont.Fused[a, b2, B](mk.f, f, Cont.fused(mk.f) + 1)))
+      case _ => Map(this, f)
     // a map of an operation's map: its `MapK` the two functions fused
     case ih: InjectHere[e, t, y, i, o, a] => ih.g match
       case mk: Cont.MapK[r2, i2, o2, y2, b2] if Cont.fused(mk.f) < Cont.MaxFused =>

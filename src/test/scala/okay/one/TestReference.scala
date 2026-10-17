@@ -53,6 +53,8 @@ class TestReference extends munit.FunSuite:
     case h: HandleK[e, t, x, i, a, b] => effects(handled(h.h, frames(norm(h.body), h.k)))
     case v: View[e, r, t, x, i, a, j, o] => viewedC(v.rm, framesC(normC(v.body), v.k))
     case s: Shift0[r, t, i1, o1, x1, o, a] => NormC.Shifted(s.at, s.f, (y: a) => NormC.Done(y))
+    // a shift0 and its rest: the shift0 bound to it
+    case s: Shift0K[r, t, i1, o1, x1, o, a, i, b] => NormC.Shifted(s.at, s.f, (y: a) => normC(s.g(y)))
     case d: Dollar[t, i, i2, o2, b, a] => dollarC(normC(d.body), d.ret)
     case l: Lower[r, s, o] => lowerC(normC(l.c))
     case l: Lift[r, s, a] => effects(norm(l.p))

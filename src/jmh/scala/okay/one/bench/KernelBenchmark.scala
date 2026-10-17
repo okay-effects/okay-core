@@ -318,6 +318,25 @@ class KernelBenchmark:
       i += 1
     p
 
+  /** the same, written with the words (`map`, `flatMap`): what a program of control is, made as programs are */
+  def shotsW(k: Unit => C, i: Int, acc: Int): C =
+    if i == 0 then Cont.Return(acc) else k(()).flatMap((r: Int) => shotsW(k, i - 1, acc + r))
+  def capturedW(depth: Int, times: Int): Cont[okay.one.Reset, C, C, Int] =
+    var p: Cont[okay.one.Reset, C, C, Int] =
+      Cont.Shift0[okay.one.Reset, Pure, Nothing, Nothing, Int, C, Unit](okay.one.row.Nearest.Here(),
+        k => shotsW(k, times, 0)).map((_: Unit) => 1)
+    var i = 0
+    while i < depth do
+      p = p.map((x: Int) => x + 1)
+      i += 1
+    p
+  @Benchmark
+  def captureControlWords(): Int =
+    Cont.Dollar[Pure, C, Nothing, Nothing, Int, Int](capturedW(16, 8), (a: Int) => Cont.Return(a)).run
+  @Benchmark
+  def captureControlWordsShallow(): Int =
+    Cont.Dollar[Pure, C, Nothing, Nothing, Int, Int](capturedW(1, 8), (a: Int) => Cont.Return(a)).run
+
   /** under a $, the rest 16 maps, `k` 8 times — control's own nodes */
   @Benchmark
   def captureControl(): Int =
