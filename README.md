@@ -58,6 +58,7 @@ over `Effects[M]` — depends on the core with no clash on one classpath; a user
 | `okay.core.std` | the effects by their names, the kernel's std re-exported (one std): `reader` (`local`), `state` (each path its own), `cell`, `writer`, `throws` (`handleWith`), `choose`, `first`, `Emit` (`collect`, `generate`, `stream`, `Stream`, `Step`), `pstate` (the kernel's `PState`, lowered) |
 | `okay.*` | THE WORDS, `import okay.*` — `okay-core-words` (`words/`), an artifact of its own over `okay.core` and `okay.core.std` |
 | `okay.core.kernel` | `OnCore`: okay-kernel's `Effects` and `Control` on the one monad — every delimiter of the bridge a `Deep` handler of one request effect, export through `Step` ([docs/kernel.md](docs/kernel.md)); okay-kernel's TCK in the module `kernel/` |
+| `okay.effects.core` (module `effects/`) | okay-effects' interface (okay-simple's `okay.effects`, one interface of effects for Scala 3 and 2) on okay-core: `Core`, a program okay-core's own `Cont`, its places okay-core's paths, its handlers okay-core's forms; its `Delimited` native, okay-core's `shift0` and `$`; okay-effects' suite (`okay-effects-tck`) its test |
 | `okay.async` (module `async/`) | `async`, `await`, `Async.run`, asynchronous streams — the program stepped (`Step`), the driver outside; `Ref`, `Mailbox`: the core has no thread in it |
 | `okay.interop` (modules `interop/cats`, `interop/tofu`) | cats' monad over `Eff[R, *]` (every platform); tofu's `WithLocal` and `Errors` from an effect anywhere in the row, by `Intercept.at` (the JVM's) |
 | `okay.scala2` (modules `scala2/*`) | for Scala 2.13: short names of effects and rows, the same cats and tofu instances compiled by scalac 2.13; `okay.core.Ops` — the kernel's words Scala 2 can read (no inline, no extension): `perform`, `handle`, `run`, the paths as implicits |
@@ -110,6 +111,7 @@ and cats compile and test; Scala.js: they compile, the test bridge does not link
 
 ```sh
 sbt coreJVM/test kernel/test                  # the core and the kernel bridge
+sbt effects/test                              # okay-effects' interface on the core (okay-effects published locally)
 sbt bench                                     # JMH, then a summary table (project/Bench.scala)
 sbt "bench -f 1 MonadsBenchmark.state"
 sbt "bench save -prof gc"                     # keep the run in bench.d/ (index.tsv + CSV)

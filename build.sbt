@@ -80,7 +80,7 @@ lazy val allowUnsafe = javaOptions ++= (if (fork.value) Seq(unsafe) else Nil)
 /** the build's root: every platform's core and async, and the Scala 2.13 suites — `sbt test` runs them all */
 lazy val root = (project in file("."))
   .aggregate(core.jvm, core.js, core.native, words.jvm, words.js, words.native, async.jvm, async.js, async.native,
-    interopCats.jvm, interopCats.js, interopCats.native, interopTofu, scala2Prelude, scala2Cats, scala2Tofu, scala2, kernel)
+    interopCats.jvm, interopCats.js, interopCats.native, interopTofu, scala2Prelude, scala2Cats, scala2Tofu, scala2, kernel, effects)
   .settings(
     name := "okay-core-root",
     publish / skip := true,
@@ -199,6 +199,22 @@ lazy val kernel = (project in file("kernel"))
       "dev.okay" %% "okay-kernel-steps" % kernelVersion % Test,
       "dev.okay" %% "okay-kernel-tck" % kernelVersion % Test,
       "org.scalameta" %% "munit" % "1.2.3" % Test)
+  )
+
+/**
+ * OKAY-EFFECTS' INTERFACE ON OKAY-CORE (okay-simple's `okay.effects`, one interface of effects for Scala 3 and 2): the
+ * bridge `okay.effects.core.Core` — a program okay-core's own `Cont`, nothing wrapped; okay-effects' places its paths,
+ * its handlers okay-core's forms; delimited control changing answer types okay-core's own, its `shift0` and `$`.
+ * okay-effects and its suite (`okay-effects-tck`) published locally from okay-simple: `sbt +effects/publishLocal
+ * +tck/publishLocal` there
+ */
+lazy val effects = (project in file("effects"))
+  .dependsOn(core.jvm)
+  .settings(
+    name := "okay-effects-core",
+    libraryDependencies ++= Seq(
+      "dev.okay" %% "okay-effects" % "0.1.0-SNAPSHOT",
+      "dev.okay" %% "okay-effects-tck" % "0.1.0-SNAPSHOT" % Test)
   )
 
 // `sbt bench`, or `sbt "bench -f 1 -p n=100000 tailcall"`: JMH's options and a regexp go to `benchRun` (JMH,
