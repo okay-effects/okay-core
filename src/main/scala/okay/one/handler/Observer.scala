@@ -20,6 +20,8 @@ final class Seen[E[_], X, T <: Row] private[one] (val op: E[X], in: In[E, T]):
     val simple = op.getClass.getName.split('.').last
     val parts = simple.split('$').filter(p => p.nonEmpty && p != "anon" && !p.forall(_.isDigit))
     if parts.length >= 2 then parts(parts.length - 2) else parts.lastOption.getOrElse(simple)
+  /** its place in the row outside the observer: two effects of one type told apart by it */
+  def at: In[E, T] = in
   /** the operation as written: `Transfer(acct,6)` */
   def describe: String = op.toString
   /** passed on: its value the handler's further out */

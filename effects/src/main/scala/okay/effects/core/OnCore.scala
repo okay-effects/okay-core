@@ -2,7 +2,8 @@ package okay.effects.core
 
 import okay.one.{Cont, Delim}
 import okay.one.row.Nearest
-import okay.one.handler.{Answering, Deep, Stateful, Translate}
+import okay.one.handler.{Answering, Deep, Observer, Seen, Stateful, Translate}
+import okay.one.std.Audit
 import okay.one.row.{+:, In, Plain, Pure, Removed, Row}
 import okay.effects.{Delimited, Runner}
 
@@ -16,6 +17,8 @@ import okay.effects.{Delimited, Runner}
  */
 private[core] class OnCore extends Runner {
   type AnyOp[X] = Any
+  /** okay-core's row of no effect (the interface's `Pure` is another) */
+  type Nil0 = okay.one.row.Pure
   type P[A] = Cont[Row, Nothing, Nothing, A]
   type Place = okay.one.row.In[AnyOp, Row]
   type Taken = Removed[AnyOp, Row, Row]
@@ -33,6 +36,10 @@ private[core] class OnCore extends Runner {
   private def atRow(rm: Removed[AnyOp, ? <: Row, ? <: Row]): Taken = rm.asInstanceOf[Taken]
   private def atRow[A](p: Cont[? <: Row, Nothing, Nothing, A]): P[A] = p.asInstanceOf[P[A]]
   private def opOf[E[_], X](op: Any): E[X] = op.asInstanceOf[E[X]]
+  /** the same, a program seen at `Pure`: okay-core's observer asks the row it observes be marked (`Audited.Marks`),
+   * which okay-simple's phantom rows are not — at `Pure` they are */
+  private def atNil0[A](p: Cont[? <: Row, Nothing, Nothing, A]): Cont[Nil0, Nothing, Nothing, A] =
+    p.asInstanceOf[Cont[Nil0, Nothing, Nothing, A]]
 
   private val head: Taken = atRow(Removed.Head[AnyOp, Row]())
   private val here: Place = atRow(okay.one.row.In.Here[AnyOp, Row]())
@@ -105,6 +112,18 @@ private[core] class OnCore extends Runner {
   def embed[R[_], S[_], A](p: P[A])(implicit s: Sub[R, S]): P[A] = {
     val n = s.length
     s.indices.foldLeft(p)((q, i) => moving(q, head, placeAt(n - 1 - i + s(i))))
+  }
+
+  /** a fresh head before the row, then every operation on its way out seen by okay-core's observer: `E`'s — at its
+   * place one further in now — performed again at the head, any other passed on as it is */
+  protected[effects] def interposed[E[_], R[_], A](p: P[A])(implicit in: In[E, R]): P[A] = {
+    val target: Any = slot(in.depth + 1).place
+    val observer = new Observer[Nil0, A, A] {
+      def ret(a: A): Cont[Nil0, Nothing, Nothing, A] = Cont.pure(a)
+      def apply[E2[_], X](seen: Seen[E2, X, Nil0], k: X => Cont[Nil0, Nothing, Nothing, A]): Cont[Nil0, Nothing, Nothing, A] =
+        (if ((seen.at: Any) == target) atNil0(performAt[X](seen.op, here)) else seen.proceed).flatMap(k)
+    }
+    atRow(Audit.observe[Nil0, Nil0, A, A](observer)(atNil0(Cont.widen[AnyOp, Row, A](p))))
   }
 
   def handleLast[E[_], R[_], A, B](p: P[A], h: Handler[E, R, A, B]): P[B] = taking(p, deep(h), head)
