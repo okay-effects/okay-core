@@ -205,16 +205,18 @@ lazy val kernel = (project in file("kernel"))
  * OKAY-EFFECTS' INTERFACE ON OKAY-CORE (okay-simple's `okay.effects`, one interface of effects for Scala 3 and 2): the
  * bridge `okay.effects.core.Core` — a program okay-core's own `Cont`, nothing wrapped; okay-effects' places its paths,
  * its handlers okay-core's forms; delimited control changing answer types okay-core's own, its `shift0` and `$`.
- * okay-effects and its suite (`okay-effects-tck`) published locally from okay-simple: `sbt +effects/publishLocal
- * +tck/publishLocal` there
+ * Published as `io.github.okay-effects::okay-effects-core`, beside okay-effects; okay-effects and its suite
+ * (`okay-effects-tck`) are okay-simple's release, from its Maven repository on GitHub Pages
  */
 lazy val effects = (project in file("effects"))
   .dependsOn(core.jvm)
   .settings(
     name := "okay-effects-core",
+    organization := "io.github.okay-effects",
+    resolvers += "okay-effects" at "https://okay-effects.github.io/okay-simple/maven",
     libraryDependencies ++= Seq(
-      "io.github.okay-effects" %% "okay-effects" % "0.1.0-SNAPSHOT",
-      "io.github.okay-effects" %% "okay-effects-tck" % "0.1.0-SNAPSHOT" % Test)
+      "io.github.okay-effects" %% "okay-effects" % "0.1.0",
+      "io.github.okay-effects" %% "okay-effects-tck" % "0.1.0" % Test)
   )
 
 // `sbt bench`, or `sbt "bench -f 1 -p n=100000 tailcall"`: JMH's options and a regexp go to `benchRun` (JMH,
