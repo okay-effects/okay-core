@@ -213,8 +213,8 @@ lazy val effects = (project in file("effects"))
   .settings(
     name := "okay-effects-core",
     libraryDependencies ++= Seq(
-      "dev.okay" %% "okay-effects" % "0.1.0-SNAPSHOT",
-      "dev.okay" %% "okay-effects-tck" % "0.1.0-SNAPSHOT" % Test)
+      "io.github.okay-effects" %% "okay-effects" % "0.1.0-SNAPSHOT",
+      "io.github.okay-effects" %% "okay-effects-tck" % "0.1.0-SNAPSHOT" % Test)
   )
 
 // `sbt bench`, or `sbt "bench -f 1 -p n=100000 tailcall"`: JMH's options and a regexp go to `benchRun` (JMH,
