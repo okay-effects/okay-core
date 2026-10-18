@@ -2,6 +2,28 @@
 <project version="4">
   <component name="ScalaCompilerConfiguration">
     <option name="separateProdTestSources" value="true" />
-    <profile name="sbt 1" modules="okay-core,okay-core.main,okay-core.test" />
+    <profile name="sbt 1" modules="okay-core,okay-core-root,okay-core-root.main,okay-core-root.okay-core-async.asyncJS,okay-core-root.okay-core-async.asyncJVM,okay-core-root.okay-core-async.asyncJVM.main,okay-core-root.okay-core-async.asyncJVM.test,okay-core-root.okay-core-async.asyncNative,okay-core-root.okay-core-cats.interopCatsJS,okay-core-root.okay-core-cats.interopCatsJVM,okay-core-root.okay-core-cats.interopCatsJVM.main,okay-core-root.okay-core-cats.interopCatsJVM.test,okay-core-root.okay-core-cats.interopCatsNative,okay-core-root.okay-core-kernel,okay-core-root.okay-core-kernel.main,okay-core-root.okay-core-kernel.test,okay-core-root.okay-core-onokay,okay-core-root.okay-core-scala2-cats,okay-core-root.okay-core-scala2-prelude,okay-core-root.okay-core-scala2-tests,okay-core-root.okay-core-scala2-tofu,okay-core-root.okay-core-tofu,okay-core-root.okay-core-tofu.main,okay-core-root.okay-core-tofu.test,okay-core-root.okay-core-tx.txJS,okay-core-root.okay-core-tx.txJVM,okay-core-root.okay-core-tx.txJVM.main,okay-core-root.okay-core-tx.txJVM.test,okay-core-root.okay-core-tx.txNative,okay-core-root.okay-core-words.wordsJS,okay-core-root.okay-core-words.wordsJVM,okay-core-root.okay-core-words.wordsJVM.main,okay-core-root.okay-core-words.wordsJVM.test,okay-core-root.okay-core-words.wordsNative,okay-core-root.okay-core.coreJS,okay-core-root.okay-core.coreJVM,okay-core-root.okay-core.coreJVM.main,okay-core-root.okay-core.coreJVM.test,okay-core-root.okay-core.coreNative,okay-core-root.okay-effects-core,okay-core-root.okay-effects-core.main,okay-core-root.okay-effects-core.test,okay-core-root.test,okay-core.main,okay-core.okay-core-async,okay-core.okay-core-async.main,okay-core.okay-core-async.test,okay-core.okay-core-scala2,okay-core.test" />
+    <profile name="sbt 2" modules="okay-core-root.okay-core-scala2-cats.main,okay-core-root.okay-core-scala2-cats.test,okay-core-root.okay-core-scala2-prelude.main,okay-core-root.okay-core-scala2-prelude.test,okay-core-root.okay-core-scala2-tests.main,okay-core-root.okay-core-scala2-tests.test,okay-core-root.okay-core-scala2-tofu.main,okay-core-root.okay-core-scala2-tofu.test,okay-core.okay-core-scala2.main,okay-core.okay-core-scala2.test">
+      <option name="deprecationWarnings" value="true" />
+      <option name="featureWarnings" value="true" />
+      <parameters>
+        <parameter value="-Ytasty-reader" />
+        <parameter value="-Xlint" />
+      </parameters>
+    </profile>
+    <profile name="sbt 3" modules="okay-core-root.okay-core-async.asyncJS.main,okay-core-root.okay-core-async.asyncJS.test,okay-core-root.okay-core-cats.interopCatsJS.main,okay-core-root.okay-core-cats.interopCatsJS.test,okay-core-root.okay-core-tx.txJS.main,okay-core-root.okay-core-tx.txJS.test,okay-core-root.okay-core-words.wordsJS.main,okay-core-root.okay-core-words.wordsJS.test,okay-core-root.okay-core.coreJS.main,okay-core-root.okay-core.coreJS.test">
+      <parameters>
+        <parameter value="-scalajs" />
+      </parameters>
+    </profile>
+    <profile name="sbt 4" modules="okay-core-root.okay-core-async.asyncNative.main,okay-core-root.okay-core-async.asyncNative.test,okay-core-root.okay-core-cats.interopCatsNative.main,okay-core-root.okay-core-cats.interopCatsNative.test,okay-core-root.okay-core-tx.txNative.main,okay-core-root.okay-core-tx.txNative.test,okay-core-root.okay-core-words.wordsNative.main,okay-core-root.okay-core-words.wordsNative.test,okay-core-root.okay-core.coreNative.main,okay-core-root.okay-core.coreNative.test">
+      <plugins>
+        <plugin path="$USER_HOME$/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/scala-native/nscplugin_3.9.0/0.5.12/nscplugin_3.9.0-0.5.12.jar" />
+      </plugins>
+    </profile>
+    <profile name="sbt 5" modules="okay-core-root.okay-core-onokay.main,okay-core-root.okay-core-onokay.test">
+      <option name="deprecationWarnings" value="true" />
+      <option name="featureWarnings" value="true" />
+    </profile>
   </component>
 </project>

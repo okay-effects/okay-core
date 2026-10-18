@@ -8,7 +8,29 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/.js" />
+            <option value="$PROJECT_DIR$/.jvm" />
+            <option value="$PROJECT_DIR$/.native" />
+            <option value="$PROJECT_DIR$/async" />
+            <option value="$PROJECT_DIR$/async/.js" />
+            <option value="$PROJECT_DIR$/async/.jvm" />
+            <option value="$PROJECT_DIR$/async/.native" />
+            <option value="$PROJECT_DIR$/effects" />
+            <option value="$PROJECT_DIR$/interop/cats" />
+            <option value="$PROJECT_DIR$/interop/cats/.js" />
+            <option value="$PROJECT_DIR$/interop/cats/.jvm" />
+            <option value="$PROJECT_DIR$/interop/cats/.native" />
+            <option value="$PROJECT_DIR$/interop/tofu" />
+            <option value="$PROJECT_DIR$/kernel" />
             <option value="$PROJECT_DIR$/project" />
+            <option value="$PROJECT_DIR$/scala2/cats" />
+            <option value="$PROJECT_DIR$/scala2/prelude" />
+            <option value="$PROJECT_DIR$/scala2/tests" />
+            <option value="$PROJECT_DIR$/scala2/tofu" />
+            <option value="$PROJECT_DIR$/words" />
+            <option value="$PROJECT_DIR$/words/.js" />
+            <option value="$PROJECT_DIR$/words/.jvm" />
+            <option value="$PROJECT_DIR$/words/.native" />
           </set>
         </option>
         <option name="sbtVersion" value="1.13.0" />
